@@ -1,0 +1,21 @@
+services:
+  backend:
+    build: ./backend
+    network_mode: host
+    env_file: .env
+    volumes:
+      - ./backend:/app
+      - uploads:/app/uploads
+    command: uvicorn main:app --host 0.0.0.0 --port 8000 --reload
+
+  frontend:
+    build: ./frontend
+    network_mode: host
+    depends_on:
+      - backend
+    volumes:
+      - ./frontend:/app
+      - /app/node_modules
+
+volumes:
+  uploads:
