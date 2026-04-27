@@ -1,9 +1,10 @@
-from pydantic import BaseModel
+from pydantic import BaseModel, field_validator
 
 
 class GenerateRequest(BaseModel):
     profile_id: str
     job_title: str
+    company: str | None = None
     job_url: str | None = None
     job_description: str
     resume_type: str | None = None
@@ -12,15 +13,28 @@ class GenerateRequest(BaseModel):
 
 class JobDescriptionEntry(BaseModel):
     job_title: str
+    company: str | None = None
     job_url: str | None = None
     job_description: str
     resume_type: str | None = None
     skip_duplicate_check: bool = False
 
 
+BATCH_LIMIT = 5
+
+
 class BatchGenerateRequest(BaseModel):
     profile_id: str
     jobs: list[JobDescriptionEntry]
+
+    @field_validator("jobs")
+    @classmethod
+    def check_batch_limit(cls, v: list) -> list:
+        if len(v) > BATCH_LIMIT:
+            raise ValueError(
+                f"Batch size {len(v)} exceeds the maximum of {BATCH_LIMIT} applications per request."
+            )
+        return v
 
 
 class TailoredExperience(BaseModel):
@@ -46,6 +60,9 @@ class GeneratePreview(BaseModel):
 
 class GenerateResponse(BaseModel):
     application_id: str
+    profile_name: str | None = None
+    job_title: str
+    company: str | None = None
     preview: GeneratePreview
     resume_url: str
     cover_letter_url: str

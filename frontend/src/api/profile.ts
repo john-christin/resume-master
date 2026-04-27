@@ -6,7 +6,8 @@ import type {
   UserSearchResult,
 } from "../types";
 
-export const getProfiles = () => api.get<Profile[]>("/api/profiles");
+export const getProfiles = (accessibleOnly = false) =>
+  api.get<Profile[]>(`/api/profiles${accessibleOnly ? "?accessible_only=true" : ""}`);
 
 export const getProfile = (id: string) =>
   api.get<Profile>(`/api/profiles/${id}`);

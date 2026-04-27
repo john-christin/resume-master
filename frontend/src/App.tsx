@@ -13,6 +13,7 @@ import ProfileList from "./pages/ProfileList";
 import Register from "./pages/Register";
 import Rejected from "./pages/Rejected";
 import Settings from "./pages/Settings";
+import Suspended from "./pages/Suspended";
 
 function RoleRedirect() {
   const role = getUserRole();
@@ -29,6 +30,7 @@ function App() {
         <Route path="/register" element={<Register />} />
         <Route path="/pending" element={<PendingApproval />} />
         <Route path="/rejected" element={<Rejected />} />
+        <Route path="/suspended" element={<Suspended />} />
 
         <Route element={<ProtectedRoute roles={["admin", "bidder", "caller"]} />}>
           <Route element={<Layout />}>

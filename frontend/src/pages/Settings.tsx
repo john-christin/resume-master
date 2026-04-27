@@ -41,12 +41,11 @@ export default function Settings() {
       localStorage.setItem("user_username", trimmed);
       setUsernameMsg({ type: "success", text: "Username updated" });
     } catch (err: unknown) {
-      const detail =
-        err &&
-        typeof err === "object" &&
-        "response" in err &&
-        (err as { response?: { data?: { detail?: string } } }).response?.data
-          ?.detail;
+      const detail: string | undefined =
+        err && typeof err === "object" && "response" in err
+          ? (err as { response?: { data?: { detail?: string } } }).response
+              ?.data?.detail
+          : undefined;
       setUsernameMsg({
         type: "error",
         text: detail || "Failed to update username",
@@ -80,12 +79,11 @@ export default function Settings() {
       setConfirmPassword("");
       setPasswordMsg({ type: "success", text: "Password updated" });
     } catch (err: unknown) {
-      const detail =
-        err &&
-        typeof err === "object" &&
-        "response" in err &&
-        (err as { response?: { data?: { detail?: string } } }).response?.data
-          ?.detail;
+      const detail: string | undefined =
+        err && typeof err === "object" && "response" in err
+          ? (err as { response?: { data?: { detail?: string } } }).response
+              ?.data?.detail
+          : undefined;
       setPasswordMsg({
         type: "error",
         text: detail || "Failed to update password",

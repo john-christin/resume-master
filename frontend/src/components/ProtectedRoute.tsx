@@ -17,6 +17,9 @@ export default function ProtectedRoute({ roles }: Props) {
   if (status === "rejected") {
     return <Navigate to="/rejected" replace />;
   }
+  if (status === "suspended") {
+    return <Navigate to="/suspended" replace />;
+  }
 
   if (roles && roles.length > 0) {
     const role = getUserRole();

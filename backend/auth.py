@@ -79,6 +79,11 @@ def get_approved_user(
             status_code=status.HTTP_403_FORBIDDEN,
             detail="Account has been rejected",
         )
+    if current_user.status == "suspended":
+        raise HTTPException(
+            status_code=status.HTTP_403_FORBIDDEN,
+            detail="Account has been suspended",
+        )
     return current_user
 
 

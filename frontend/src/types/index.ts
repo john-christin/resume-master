@@ -70,6 +70,7 @@ export interface AuthResponse {
 export interface GenerateRequest {
   profile_id: string;
   job_title: string;
+  company?: string;
   job_url?: string;
   job_description: string;
   resume_type?: string;
@@ -78,6 +79,7 @@ export interface GenerateRequest {
 
 export interface JobDescriptionEntry {
   job_title: string;
+  company?: string;
   job_url?: string;
   job_description: string;
   resume_type?: string;
@@ -123,6 +125,9 @@ export interface GeneratePreview {
 
 export interface GenerateResponse {
   application_id: string;
+  profile_name?: string;
+  job_title: string;
+  company?: string;
   preview: GeneratePreview;
   resume_url: string;
   cover_letter_url: string;

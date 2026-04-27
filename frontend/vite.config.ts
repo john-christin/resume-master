@@ -7,6 +7,10 @@ export default defineConfig({
   server: {
     host: "0.0.0.0",
     port: 5173,
+    allowedHosts: ["aurexviper.pro", "www.aurexviper.pro"],
+    hmr: {
+      host: "localhost",
+    },
     proxy: {
       "/api": "http://localhost:8000",
       "/uploads": "http://localhost:8000",

@@ -1,7 +1,8 @@
+import random
 import uuid
 from datetime import datetime
 
-from sqlalchemy import DateTime, ForeignKey, String
+from sqlalchemy import DateTime, Float, ForeignKey, String
 from sqlalchemy.orm import Mapped, mapped_column, relationship
 
 from database import Base
@@ -22,6 +23,9 @@ class Profile(Base):
     email: Mapped[str | None] = mapped_column(String(200), nullable=True)
     linkedin: Mapped[str | None] = mapped_column(String(500), nullable=True)
     summary: Mapped[str | None] = mapped_column(String(2000), nullable=True)
+    creativity_factor: Mapped[float] = mapped_column(
+        Float, default=lambda: random.random(), nullable=False
+    )
     created_at: Mapped[datetime] = mapped_column(
         DateTime, default=datetime.utcnow
     )

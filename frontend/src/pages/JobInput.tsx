@@ -8,6 +8,7 @@ import type { DuplicateInfo, JobDescriptionEntry, Profile } from "../types";
 
 const emptyJob: JobDescriptionEntry = {
   job_title: "",
+  company: "",
   job_url: "",
   job_description: "",
 };
@@ -31,7 +32,7 @@ export default function JobInput() {
   const [duplicateInfo, setDuplicateInfo] = useState<DuplicateInfo | null>(null);
 
   useEffect(() => {
-    getProfiles()
+    getProfiles(true)
       .then((res) => {
         setProfiles(res.data);
         if (!selectedProfileId && res.data.length > 0) {
@@ -52,7 +53,12 @@ export default function JobInput() {
     );
   };
 
-  const addJob = () => setJobs((prev) => [...prev, { ...emptyJob }]);
+const BATCH_LIMIT = 5;
+
+  const addJob = () => {
+    if (jobs.length >= BATCH_LIMIT) return;
+    setJobs((prev) => [...prev, { ...emptyJob }]);
+  };
 
   const removeJob = (index: number) =>
     setJobs((prev) => prev.filter((_, i) => i !== index));
@@ -76,6 +82,7 @@ export default function JobInput() {
           profile_id: selectedProfileId,
           jobs: jobs.map((j) => ({
             job_title: j.job_title,
+            company: j.company || undefined,
             job_url: j.job_url || undefined,
             job_description: j.job_description,
             skip_duplicate_check: skipDuplicateCheck,
@@ -94,6 +101,7 @@ export default function JobInput() {
         const res = await generateApplication({
           profile_id: selectedProfileId,
           job_title: job.job_title,
+          company: job.company || undefined,
           job_url: job.job_url || undefined,
           job_description: job.job_description,
           skip_duplicate_check: skipDuplicateCheck,
@@ -225,13 +233,21 @@ export default function JobInput() {
                 <h2 className="text-lg font-semibold text-gray-800 dark:text-gray-200">
                   Job Descriptions ({jobs.length})
                 </h2>
-                <button
-                  type="button"
-                  onClick={addJob}
-                  className="text-sm px-3 py-1.5 bg-blue-50 dark:bg-blue-900/30 text-blue-600 dark:text-blue-400 rounded-md hover:bg-blue-100 dark:hover:bg-blue-900/50"
-                >
-                  + Add Job
-                </button>
+                <div className="flex items-center gap-2">
+                  {jobs.length >= BATCH_LIMIT && (
+                    <span className="text-xs text-amber-600 dark:text-amber-400 font-medium">
+                      Max {BATCH_LIMIT} applications per batch
+                    </span>
+                  )}
+                  <button
+                    type="button"
+                    onClick={addJob}
+                    disabled={jobs.length >= BATCH_LIMIT}
+                    className="text-sm px-3 py-1.5 bg-blue-50 dark:bg-blue-900/30 text-blue-600 dark:text-blue-400 rounded-md hover:bg-blue-100 dark:hover:bg-blue-900/50 disabled:opacity-40 disabled:cursor-not-allowed"
+                  >
+                    + Add Job
+                  </button>
+                </div>
               </div>
 
               {jobs.map((job, index) => (
@@ -254,7 +270,7 @@ export default function JobInput() {
                     )}
                   </div>
                   <div className="space-y-3">
-                    <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
+                    <div className="grid grid-cols-1 md:grid-cols-3 gap-3">
                       <input
                         type="text"
                         placeholder="Job Title *"
@@ -264,6 +280,15 @@ export default function JobInput() {
                         }
                         className="w-full px-3 py-2 border border-gray-300 dark:border-gray-600 rounded-md text-sm focus:ring-2 focus:ring-blue-500 focus:border-blue-500 bg-white dark:bg-gray-700 dark:text-white"
                         required
+                      />
+                      <input
+                        type="text"
+                        placeholder="Company (optional)"
+                        value={job.company || ""}
+                        onChange={(e) =>
+                          updateJob(index, "company", e.target.value)
+                        }
+                        className="w-full px-3 py-2 border border-gray-300 dark:border-gray-600 rounded-md text-sm focus:ring-2 focus:ring-blue-500 focus:border-blue-500 bg-white dark:bg-gray-700 dark:text-white"
                       />
                       <input
                         type="url"
@@ -309,18 +334,32 @@ export default function JobInput() {
                 </div>
                 <div>
                   <label className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-1">
-                    Job URL (optional)
+                    Company (optional)
                   </label>
                   <input
-                    type="url"
-                    value={jobs[0].job_url || ""}
+                    type="text"
+                    value={jobs[0].company || ""}
                     onChange={(e) =>
-                      updateJob(0, "job_url", e.target.value)
+                      updateJob(0, "company", e.target.value)
                     }
-                    placeholder="https://..."
+                    placeholder="e.g., Acme Corp"
                     className="w-full px-3 py-2 border border-gray-300 dark:border-gray-600 rounded-md text-sm focus:ring-2 focus:ring-blue-500 focus:border-blue-500 bg-white dark:bg-gray-700 dark:text-white"
                   />
                 </div>
+              </div>
+              <div>
+                <label className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-1">
+                  Job URL (optional)
+                </label>
+                <input
+                  type="url"
+                  value={jobs[0].job_url || ""}
+                  onChange={(e) =>
+                    updateJob(0, "job_url", e.target.value)
+                  }
+                  placeholder="https://..."
+                  className="w-full px-3 py-2 border border-gray-300 dark:border-gray-600 rounded-md text-sm focus:ring-2 focus:ring-blue-500 focus:border-blue-500 bg-white dark:bg-gray-700 dark:text-white"
+                />
               </div>
               <div>
                 <label className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-1">

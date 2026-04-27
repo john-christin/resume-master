@@ -126,3 +126,20 @@ class KnowledgeBaseResponse(BaseModel):
     updated_at: datetime | None = None
 
     model_config = {"from_attributes": True}
+
+
+class SystemLogItem(BaseModel):
+    id: str
+    level: str
+    category: str
+    user_id: str | None = None
+    ip_address: str | None = None
+    endpoint: str | None = None
+    message: str
+    details: str | None = None
+    error_type: str | None = None
+    stack_trace: str | None = None
+    duration_ms: int | None = None
+    created_at: datetime
+
+    model_config = {"from_attributes": True}

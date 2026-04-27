@@ -1,6 +1,6 @@
 from datetime import datetime, timezone
 
-from fastapi import APIRouter, Depends, HTTPException
+from fastapi import APIRouter, Depends, HTTPException, Request
 from sqlalchemy import select
 from sqlalchemy.orm import Session
 
@@ -14,6 +14,8 @@ from config import settings
 from database import get_db
 from models.user import User
 from schemas.auth import AuthResponse, LoginRequest, RegisterRequest
+from services import log_service
+from utils import get_client_ip
 
 router = APIRouter(prefix="/api/auth", tags=["auth"])
 
@@ -30,7 +32,7 @@ def _build_auth_response(user: User, token: str) -> AuthResponse:
 
 
 @router.post("/register", response_model=AuthResponse, status_code=201)
-def register(req: RegisterRequest, db: Session = Depends(get_db)):
+def register(req: RegisterRequest, request: Request, db: Session = Depends(get_db)):
     existing = db.scalars(
         select(User).where(User.username == req.username)
     ).first()
@@ -54,19 +56,42 @@ def register(req: RegisterRequest, db: Session = Depends(get_db)):
     db.commit()
     db.refresh(user)
 
+    log_service.log_bg(
+        log_service.INFO, log_service.AUTH,
+        f"User registered: {user.username}",
+        user_id=user.id,
+        ip_address=get_client_ip(request),
+        details={"username": user.username, "role": user.role, "status": user.status},
+    )
+
     token = create_access_token(user.id)
     return _build_auth_response(user, token)
 
 
 @router.post("/login", response_model=AuthResponse)
-def login(req: LoginRequest, db: Session = Depends(get_db)):
+def login(req: LoginRequest, request: Request, db: Session = Depends(get_db)):
+    ip = get_client_ip(request)
     user = db.scalars(
         select(User).where(User.username == req.username)
     ).first()
     if not user or not verify_password(req.password, user.hashed_password):
+        log_service.log_bg(
+            log_service.WARNING, log_service.AUTH,
+            f"Failed login attempt for username: {req.username}",
+            ip_address=ip,
+            details={"username": req.username},
+        )
         raise HTTPException(
             status_code=401, detail="Invalid username or password"
         )
+
+    log_service.log_bg(
+        log_service.INFO, log_service.AUTH,
+        f"User logged in: {user.username}",
+        user_id=user.id,
+        ip_address=ip,
+        details={"username": user.username, "role": user.role},
+    )
 
     token = create_access_token(user.id)
     return _build_auth_response(user, token)

@@ -50,7 +50,7 @@ export default function Login() {
     <div className="min-h-screen bg-gray-50 dark:bg-gray-900 flex items-center justify-center px-4">
       <div className="max-w-md w-full">
         <div className="text-center mb-8">
-          <h1 className="text-3xl font-bold text-gray-900 dark:text-white">Resume Master</h1>
+          <h1 className="text-3xl font-bold text-gray-900 dark:text-white">Aurex Viperion</h1>
           <p className="text-gray-600 dark:text-gray-400 mt-2">Sign in to your account</p>
         </div>
 

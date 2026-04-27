@@ -2,11 +2,13 @@ import hashlib
 import json
 import logging
 import re
+import time
 from dataclasses import dataclass
 from sqlalchemy import select
 
 from config import settings
 from database import SessionLocal
+from services import log_service
 
 logger = logging.getLogger(__name__)
 
@@ -26,16 +28,16 @@ experience bullet points to match a specific job description. You must:
 2. Reword and reorder bullets to emphasize skills/keywords from the job description
 3. Use strong action verbs and quantify impact where possible
 4. Remove or de-emphasize bullets that are irrelevant to the target role
-5. Each experience should have 3-5 bullets maximum
+5. Follow ALL Knowledge Base Guidelines exactly if provided (bullet counts, content rules, ordering, date format, etc.)
+6. Return ONLY the array of experience objects -- no summaries, no introductions, no other object types
+
+Every object in the array MUST have exactly these keys: company, location, title, start_date, end_date, bullets.
 
 Respond with valid JSON only. No markdown fences, no explanation."""
 
 SUMMARY_SYSTEM_PROMPT = """You are an expert resume writer. Write a professional summary for a resume. \
-The summary must be 2-3 concise sentences that:
-1. Mention the candidate's total years of experience with major tech stacks relevant to the job description
-2. Highlight both technical achievements and cultural/collaborative success
-3. Demonstrate passion and dedication to the field
-4. Align keywords and emphasis with the target job description
+Follow ALL Knowledge Base Guidelines for the summary if provided. \
+Otherwise write 2-3 concise sentences aligned with the target job description.
 
 Respond with the summary text only. No quotes, no labels, no explanation."""
 
@@ -57,16 +59,9 @@ Format:
 ]"""
 
 COVER_LETTER_SYSTEM_PROMPT = """You are an expert cover letter writer. Write a compelling, \
-professional cover letter that:
-1. Is 3-4 paragraphs long
-2. Opens with enthusiasm for the specific role and company
-3. Connects the candidate's concrete experience to the job requirements
-4. Highlights 2-3 specific achievements relevant to the role
-5. Closes with a call to action
-6. Uses a professional but warm tone -- not generic or robotic
-7. Does NOT include the header/address block -- just the letter body
-
-Write the cover letter body only (Dear Hiring Manager through sign-off)."""
+professional cover letter body (Dear Hiring Manager through sign-off, no header/address block). \
+Follow ALL Knowledge Base Guidelines for structure, length, and content if provided. \
+Use a professional but warm tone -- not generic or robotic."""
 
 COMBINED_CONTENT_SYSTEM_PROMPT = """You are an expert resume and cover letter writer. \
 You will generate three pieces of content in a single response as valid JSON.
@@ -74,16 +69,14 @@ You will generate three pieces of content in a single response as valid JSON.
 ## Output format
 Respond with valid JSON only. No markdown fences, no explanation.
 {
-  "summary": "<2-3 sentence professional summary>",
+  "summary": "<professional summary>",
   "skills": [{"category": "<Category Name>", "skills": ["Skill1", "Skill2"]}],
   "cover_letter": "<full cover letter body>"
 }
 
 ## Summary rules
-- 2-3 concise sentences
-- Mention total years of experience with major tech stacks relevant to the job
-- Highlight technical achievements and cultural/collaborative success
-- Align keywords with the target job description
+- Follow ALL Knowledge Base Guidelines for the summary if provided
+- Otherwise: 2-3 concise sentences aligned with the target job description
 
 ## Skills rules
 - Include skills the candidate actually has (from their experience)
@@ -92,11 +85,10 @@ Respond with valid JSON only. No markdown fences, no explanation.
 - Each category: 3-8 skills, ordered by relevance to the target job
 
 ## Cover letter rules
-- 3-4 paragraphs, Dear Hiring Manager through sign-off
-- Connect candidate's concrete experience to job requirements
-- Highlight 2-3 specific achievements relevant to the role
+- Follow ALL Knowledge Base Guidelines for structure, length, and content if provided
+- Otherwise: 3-4 paragraphs connecting candidate experience to job requirements
 - Professional but warm tone -- not generic or robotic
-- Body only -- no header/address block"""
+- Body only (Dear Hiring Manager through sign-off) -- no header/address block"""
 
 
 # ---------------------------------------------------------------------------
@@ -364,7 +356,40 @@ def _call_llm(
     if not handler:
         raise RuntimeError(f"Unsupported AI provider: {provider}")
 
-    return handler(messages, max_tokens, temperature, config)
+    start = time.monotonic()
+    try:
+        result = handler(messages, max_tokens, temperature, config)
+        duration_ms = int((time.monotonic() - start) * 1000)
+        log_service.log_bg(
+            log_service.INFO, log_service.AI_CALL,
+            f"LLM call succeeded · {config['provider']} / {config['model_id']}",
+            details={
+                "provider": config["provider"],
+                "model_id": config["model_id"],
+                "tier": tier,
+                "prompt_tokens": result.prompt_tokens,
+                "completion_tokens": result.completion_tokens,
+                "max_tokens": max_tokens,
+                "temperature": temperature,
+            },
+            duration_ms=duration_ms,
+        )
+        return result
+    except Exception as exc:
+        duration_ms = int((time.monotonic() - start) * 1000)
+        log_service.log_bg(
+            log_service.ERROR, log_service.AI_CALL,
+            f"LLM call failed · {config.get('provider', '?')} / {config.get('model_id', '?')}",
+            details={
+                "provider": config.get("provider"),
+                "model_id": config.get("model_id"),
+                "tier": tier,
+                "max_tokens": max_tokens,
+            },
+            duration_ms=duration_ms,
+            **log_service.exc_to_log_kwargs(exc),
+        )
+        raise
 
 
 # ---------------------------------------------------------------------------
@@ -465,8 +490,13 @@ def ai_check_same_role(jd1: str, jd2: str) -> tuple[bool, dict]:
             "completion_tokens": resp.completion_tokens,
         }
         return resp.content.upper() == "SAME", usage
-    except Exception:
+    except Exception as exc:
         logger.warning("AI duplicate check failed", exc_info=True)
+        log_service.log_bg(
+            log_service.WARNING, log_service.AI_CALL,
+            "AI duplicate check failed — returning False",
+            **log_service.exc_to_log_kwargs(exc),
+        )
         return False, usage
 
 
@@ -564,8 +594,13 @@ def extract_company_name(job_description: str) -> str | None:
         result = resp.content
         if result and result.upper() != "UNKNOWN":
             return result
-    except Exception:
+    except Exception as exc:
         logger.warning("Company extraction AI call failed", exc_info=True)
+        log_service.log_bg(
+            log_service.WARNING, log_service.AI_CALL,
+            "Company extraction AI call failed — returning None",
+            **log_service.exc_to_log_kwargs(exc),
+        )
 
     return None
 
@@ -626,8 +661,13 @@ def extract_company_name_with_usage(
             result = (ai_result, usage)
             _extraction_cache[cache_key] = result
             return result
-    except Exception:
+    except Exception as exc:
         logger.warning("Company extraction AI call failed", exc_info=True)
+        log_service.log_bg(
+            log_service.WARNING, log_service.AI_CALL,
+            "Company extraction AI call failed — returning None",
+            **log_service.exc_to_log_kwargs(exc),
+        )
 
     result = (None, usage)
     _extraction_cache[cache_key] = result
@@ -690,6 +730,19 @@ tailored to the target position."""
     return _normalize_ai_text(resp.content), usage
 
 
+def _effective_temperature(creativity_factor: float) -> float:
+    return round(0.4 + max(0.0, min(1.0, creativity_factor)) * 0.6, 3)
+
+
+def _style_hint(creativity_factor: float) -> str:
+    if creativity_factor <= 0.33:
+        return "concise, direct, and data-driven"
+    elif creativity_factor <= 0.66:
+        return "balanced and professional"
+    else:
+        return "expressive, narrative-driven, and storytelling"
+
+
 def generate_resume_content(
     user_name: str,
     email: str | None,
@@ -699,6 +752,7 @@ def generate_resume_content(
     job_title: str,
     company: str | None = None,
     knowledge_base: str | None = None,
+    creativity_factor: float = 0.3,
 ) -> tuple[dict, dict]:
     """Generate summary, skills, and cover letter in a single LLM call.
 
@@ -718,6 +772,9 @@ def generate_resume_content(
 
     jd_trimmed = _truncate_jd(job_description)
 
+    style = _style_hint(creativity_factor)
+    temperature = _effective_temperature(creativity_factor)
+
     user_prompt = f"""## Candidate Info
 Name: {user_name}
 Email: {email or "N/A"}
@@ -732,6 +789,9 @@ Title: {job_title} at {company_str}
 ## Job Description
 {jd_trimmed}
 {kb_section}
+## Writing Style
+Use a {style} writing style throughout.
+
 Generate the summary, skills, and cover letter as a single JSON object."""
 
     total_usage = {"prompt_tokens": 0, "completion_tokens": 0}
@@ -742,8 +802,8 @@ Generate the summary, skills, and cover letter as a single JSON object."""
                 {"role": "system", "content": COMBINED_CONTENT_SYSTEM_PROMPT},
                 {"role": "user", "content": user_prompt},
             ],
-            max_tokens=4096,
-            temperature=0.7,
+            max_tokens=8192,
+            temperature=temperature,
         )
 
         total_usage["prompt_tokens"] += resp.prompt_tokens
@@ -794,6 +854,7 @@ def tailor_resume(
     company: str | None = None,
     reference_bullets: list[dict] | None = None,
     knowledge_base: str | None = None,
+    creativity_factor: float = 0.3,
 ) -> tuple[list[dict], dict]:
     """Call LLM to tailor resume bullets to a job description."""
     formatted_exp = _format_experiences(experiences)
@@ -825,6 +886,8 @@ Adapt to THIS candidate's actual experience — do NOT copy verbatim or fabricat
 """
 
     jd_trimmed = _truncate_jd(job_description)
+    style = _style_hint(creativity_factor)
+    temperature = _effective_temperature(creativity_factor)
 
     user_prompt = f"""## Candidate's Experience
 {formatted_exp}
@@ -833,6 +896,9 @@ Adapt to THIS candidate's actual experience — do NOT copy verbatim or fabricat
 Title: {job_title} at {company_str}
 {jd_trimmed}
 {reference_section}{kb_section}
+## Writing Style
+Use a {style} writing style for the bullet points.
+
 ## Required Output Format
 [
   {{
@@ -853,8 +919,8 @@ Title: {job_title} at {company_str}
                 {"role": "system", "content": RESUME_SYSTEM_PROMPT},
                 {"role": "user", "content": user_prompt},
             ],
-            max_tokens=4096,
-            temperature=0.7,
+            max_tokens=8192,
+            temperature=temperature,
         )
 
         total_usage["prompt_tokens"] += resp.prompt_tokens
@@ -867,21 +933,26 @@ Title: {job_title} at {company_str}
             content = re.sub(r"\n?```\s*$", "", content)
         try:
             result = json.loads(content)
-            if isinstance(result, list):
-                # Normalize smart characters in bullet text
-                for exp in result:
-                    exp["bullets"] = [
-                        _normalize_ai_text(b) for b in exp.get("bullets", [])
-                    ]
-                return result, total_usage
-            raise ValueError("Expected a JSON array")
+            if not isinstance(result, list):
+                raise ValueError("Expected a JSON array")
+            required = {"company", "title", "start_date"}
+            invalid = [e for e in result if not required.issubset(e.keys())]
+            if invalid:
+                raise ValueError(
+                    f"Experience objects missing required keys: {invalid[0]}"
+                )
+            for exp in result:
+                exp["bullets"] = [
+                    _normalize_ai_text(b) for b in exp.get("bullets", [])
+                ]
+            return result, total_usage
         except (json.JSONDecodeError, ValueError) as e:
             if attempt == 0:
                 logger.warning(
                     "JSON parse failed on attempt 1, retrying: %s", e
                 )
                 user_prompt = (
-                    f"Your previous response was not valid JSON. "
+                    f"Your previous response was not valid JSON or had wrong structure. "
                     f"Please respond with valid JSON only.\n\n{user_prompt}"
                 )
             else:

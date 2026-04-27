@@ -15,6 +15,67 @@ export const approveUser = (userId: string, role: string) =>
 export const rejectUser = (userId: string) =>
   api.post(`/api/admin/users/${userId}/reject`);
 
+export const suspendUser = (userId: string) =>
+  api.post(`/api/admin/users/${userId}/suspend`);
+
+export const unsuspendUser = (userId: string) =>
+  api.post(`/api/admin/users/${userId}/unsuspend`);
+
+export const deleteUser = (userId: string) =>
+  api.delete(`/api/admin/users/${userId}`);
+
+export const updateUserRole = (userId: string, role: string) =>
+  api.patch(`/api/admin/users/${userId}/role`, { role });
+
+export interface SystemLogItem {
+  id: string;
+  level: string;
+  category: string;
+  user_id: string | null;
+  ip_address: string | null;
+  endpoint: string | null;
+  message: string;
+  details: string | null;
+  error_type: string | null;
+  stack_trace: string | null;
+  duration_ms: number | null;
+  created_at: string;
+}
+
+export const getLogs = (params: {
+  level?: string;
+  category?: string;
+  from_date?: string;
+  to_date?: string;
+  limit?: number;
+  offset?: number;
+}) => {
+  const p = new URLSearchParams();
+  if (params.level) p.set("level", params.level);
+  if (params.category) p.set("category", params.category);
+  if (params.from_date) p.set("from_date", params.from_date);
+  if (params.to_date) p.set("to_date", params.to_date);
+  if (params.limit != null) p.set("limit", String(params.limit));
+  if (params.offset != null) p.set("offset", String(params.offset));
+  const qs = p.toString();
+  return api.get<SystemLogItem[]>(`/api/admin/logs${qs ? `?${qs}` : ""}`);
+};
+
+export const getLogCount = (params: {
+  level?: string;
+  category?: string;
+  from_date?: string;
+  to_date?: string;
+}) => {
+  const p = new URLSearchParams();
+  if (params.level) p.set("level", params.level);
+  if (params.category) p.set("category", params.category);
+  if (params.from_date) p.set("from_date", params.from_date);
+  if (params.to_date) p.set("to_date", params.to_date);
+  const qs = p.toString();
+  return api.get<{ count: number }>(`/api/admin/logs/count${qs ? `?${qs}` : ""}`);
+};
+
 export interface DashboardStats {
   total_users: number;
   pending_users: number;

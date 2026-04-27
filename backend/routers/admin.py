@@ -6,11 +6,13 @@ from sqlalchemy.orm import Session
 
 from auth import require_role
 from database import get_db
+from services import log_service
 from models.ai_model_config import AIModelConfig
 from models.application import Application
 from services import ai_service
 from models.knowledge_base import KnowledgeBase
 from models.profile import Profile
+from models.system_log import SystemLog
 from models.token_pricing import TokenPricing
 from models.user import User
 from schemas.admin import (
@@ -25,6 +27,7 @@ from schemas.admin import (
     PricingRequest,
     PricingResponse,
     ProfileStat,
+    SystemLogItem,
     UserApproveRequest,
     UserListItem,
     UserStatItem,
@@ -115,6 +118,12 @@ def approve_user(
     user.approved_at = datetime.now(timezone.utc)
     user.approved_by = current_user.id
     db.commit()
+    log_service.log_bg(
+        log_service.INFO, log_service.ADMIN,
+        f"User approved: {user.username} → role={data.role}",
+        user_id=current_user.id,
+        details={"target_user_id": user_id, "target_username": user.username, "role": data.role},
+    )
     return {"detail": "User approved", "user_id": user_id, "role": data.role}
 
 
@@ -130,7 +139,112 @@ def reject_user(
 
     user.status = "rejected"
     db.commit()
+    log_service.log_bg(
+        log_service.INFO, log_service.ADMIN,
+        f"User rejected: {user.username}",
+        user_id=current_user.id,
+        details={"target_user_id": user_id, "target_username": user.username},
+    )
     return {"detail": "User rejected", "user_id": user_id}
+
+
+@router.patch("/users/{user_id}/role")
+def change_user_role(
+    user_id: str,
+    data: UserApproveRequest,
+    current_user: User = Depends(_admin_only),
+    db: Session = Depends(get_db),
+):
+    if data.role not in ("admin", "bidder", "caller"):
+        raise HTTPException(status_code=400, detail="Invalid role")
+
+    user = db.get(User, user_id)
+    if not user:
+        raise HTTPException(status_code=404, detail="User not found")
+
+    old_role = user.role
+    user.role = data.role
+    db.commit()
+    log_service.log_bg(
+        log_service.INFO, log_service.ADMIN,
+        f"Role changed: {user.username} {old_role} → {data.role}",
+        user_id=current_user.id,
+        details={"target_user_id": user_id, "target_username": user.username, "old_role": old_role, "new_role": data.role},
+    )
+    return {"detail": "Role updated", "user_id": user_id, "role": data.role}
+
+
+@router.post("/users/{user_id}/suspend")
+def suspend_user(
+    user_id: str,
+    current_user: User = Depends(_admin_only),
+    db: Session = Depends(get_db),
+):
+    if user_id == current_user.id:
+        raise HTTPException(status_code=400, detail="Cannot suspend yourself")
+
+    user = db.get(User, user_id)
+    if not user:
+        raise HTTPException(status_code=404, detail="User not found")
+    if user.status == "suspended":
+        raise HTTPException(status_code=400, detail="User is already suspended")
+
+    user.status = "suspended"
+    db.commit()
+    log_service.log_bg(
+        log_service.WARNING, log_service.ADMIN,
+        f"User suspended: {user.username}",
+        user_id=current_user.id,
+        details={"target_user_id": user_id, "target_username": user.username},
+    )
+    return {"detail": "User suspended", "user_id": user_id}
+
+
+@router.post("/users/{user_id}/unsuspend")
+def unsuspend_user(
+    user_id: str,
+    current_user: User = Depends(_admin_only),
+    db: Session = Depends(get_db),
+):
+    user = db.get(User, user_id)
+    if not user:
+        raise HTTPException(status_code=404, detail="User not found")
+    if user.status != "suspended":
+        raise HTTPException(status_code=400, detail="User is not suspended")
+
+    user.status = "approved"
+    db.commit()
+    log_service.log_bg(
+        log_service.INFO, log_service.ADMIN,
+        f"User unsuspended: {user.username}",
+        user_id=current_user.id,
+        details={"target_user_id": user_id, "target_username": user.username},
+    )
+    return {"detail": "User unsuspended", "user_id": user_id}
+
+
+@router.delete("/users/{user_id}", status_code=204)
+def delete_user(
+    user_id: str,
+    current_user: User = Depends(_admin_only),
+    db: Session = Depends(get_db),
+):
+    if user_id == current_user.id:
+        raise HTTPException(status_code=400, detail="Cannot delete yourself")
+
+    user = db.get(User, user_id)
+    if not user:
+        raise HTTPException(status_code=404, detail="User not found")
+
+    username = user.username
+    db.delete(user)
+    db.commit()
+    log_service.log_bg(
+        log_service.WARNING, log_service.ADMIN,
+        f"User deleted: {username}",
+        user_id=current_user.id,
+        details={"target_user_id": user_id, "target_username": username},
+    )
 
 
 @router.get("/stats", response_model=DashboardStats)
@@ -605,3 +719,51 @@ def deactivate_model(
     db.commit()
     db.refresh(model)
     return _model_to_response(model)
+
+
+# --- System Logs ---
+
+
+@router.get("/logs", response_model=list[SystemLogItem])
+def list_logs(
+    level: str | None = None,
+    category: str | None = None,
+    from_date: datetime | None = Query(None),
+    to_date: datetime | None = Query(None),
+    limit: int = Query(100, le=500),
+    offset: int = Query(0, ge=0),
+    current_user: User = Depends(_admin_only),
+    db: Session = Depends(get_db),
+):
+    stmt = select(SystemLog).order_by(SystemLog.created_at.desc())
+    if level:
+        stmt = stmt.where(SystemLog.level == level.upper())
+    if category:
+        stmt = stmt.where(SystemLog.category == category.lower())
+    if from_date:
+        stmt = stmt.where(SystemLog.created_at >= from_date)
+    if to_date:
+        stmt = stmt.where(SystemLog.created_at < to_date + timedelta(days=1))
+    stmt = stmt.offset(offset).limit(limit)
+    return db.scalars(stmt).all()
+
+
+@router.get("/logs/count")
+def count_logs(
+    level: str | None = None,
+    category: str | None = None,
+    from_date: datetime | None = Query(None),
+    to_date: datetime | None = Query(None),
+    current_user: User = Depends(_admin_only),
+    db: Session = Depends(get_db),
+):
+    stmt = select(func.count(SystemLog.id))
+    if level:
+        stmt = stmt.where(SystemLog.level == level.upper())
+    if category:
+        stmt = stmt.where(SystemLog.category == category.lower())
+    if from_date:
+        stmt = stmt.where(SystemLog.created_at >= from_date)
+    if to_date:
+        stmt = stmt.where(SystemLog.created_at < to_date + timedelta(days=1))
+    return {"count": db.scalar(stmt) or 0}

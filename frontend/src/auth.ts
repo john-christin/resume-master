@@ -35,3 +35,7 @@ export function getUserRole(): string {
 export function getUserStatus(): string {
   return localStorage.getItem("user_status") || "pending";
 }
+
+export function getUserId(): string {
+  return localStorage.getItem("user_id") || "";
+}

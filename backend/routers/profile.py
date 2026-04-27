@@ -76,11 +76,12 @@ def _get_accessible_profile(
 
 @router.get("/api/profiles", response_model=list[ProfileResponse])
 def list_profiles(
+    accessible_only: bool = False,
     current_user: User = Depends(_bidder_or_admin),
     db: Session = Depends(get_db),
 ):
-    # Admin sees all profiles
-    if current_user.role == "admin":
+    # Admin sees all profiles unless restricted to only accessible ones
+    if current_user.role == "admin" and not accessible_only:
         all_profiles = db.scalars(select(Profile)).all()
         return [
             _profile_to_response(p, current_user.id) for p in all_profiles

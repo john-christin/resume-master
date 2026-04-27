@@ -15,7 +15,7 @@ class Settings(BaseSettings):
     azure_openai_deployment: str = "gpt-4o"
     azure_openai_api_version: str = "2024-10-21"
     upload_dir: str = "./uploads"
-    cors_origins: str = "http://localhost:5173"
+    cors_origins: str = "https://aurexviper.pro"
     jwt_secret_key: str = "CHANGE-ME-IN-PRODUCTION"
     jwt_algorithm: str = "HS256"
     jwt_access_token_expire_minutes: int = 1440

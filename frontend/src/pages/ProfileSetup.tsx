@@ -1,40 +1,48 @@
 import { useEffect, useState } from "react";
 import { useNavigate } from "react-router-dom";
-import { getProfile, saveProfile } from "../api/profile";
+import { getProfiles, createProfile, updateProfile } from "../api/profile";
 import EducationForm from "../components/EducationForm";
 import ExperienceForm from "../components/ExperienceForm";
 import LoadingSpinner from "../components/LoadingSpinner";
-import type { Education, Experience, Profile } from "../types";
+import type { Education, Experience, ProfileCreate } from "../types";
 
-const emptyProfile: Profile = {
+const emptyProfile: ProfileCreate = {
   name: "",
-  phone: "",
-  email: "",
-  linkedin: "",
-  summary: "",
   educations: [],
   experiences: [],
 };
 
 export default function ProfileSetup() {
   const navigate = useNavigate();
-  const [profile, setProfile] = useState<Profile>(emptyProfile);
+  const [profile, setProfile] = useState<ProfileCreate>(emptyProfile);
+  const [profileId, setProfileId] = useState<string | null>(null);
   const [loading, setLoading] = useState(true);
   const [saving, setSaving] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [isExisting, setIsExisting] = useState(false);
 
   useEffect(() => {
-    getProfile()
+    getProfiles()
       .then((res) => {
-        setProfile(res.data);
-        setIsExisting(
-          res.data.educations.length > 0 || res.data.experiences.length > 0
-        );
+        const owned = res.data.find((p) => p.is_owner);
+        if (owned) {
+          setProfileId(owned.id);
+          setProfile({
+            name: owned.name,
+            location: owned.location,
+            phone: owned.phone,
+            email: owned.email,
+            linkedin: owned.linkedin,
+            summary: owned.summary,
+            educations: owned.educations,
+            experiences: owned.experiences,
+          });
+          setIsExisting(
+            owned.educations.length > 0 || owned.experiences.length > 0
+          );
+        }
       })
-      .catch(() => {
-        // Profile fields not filled yet, keep empty form
-      })
+      .catch(() => {})
       .finally(() => setLoading(false));
   }, []);
 
@@ -44,7 +52,11 @@ export default function ProfileSetup() {
     setError(null);
 
     try {
-      await saveProfile(profile);
+      if (profileId) {
+        await updateProfile(profileId, profile);
+      } else {
+        await createProfile(profile);
+      }
       navigate("/generate");
     } catch (err: unknown) {
       const message =

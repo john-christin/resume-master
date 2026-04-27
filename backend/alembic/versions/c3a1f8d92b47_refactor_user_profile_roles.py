@@ -229,8 +229,8 @@ def upgrade() -> None:
 
     # --- 7. Drop old columns ---
     # Drop old FK constraints first
-    op.drop_constraint("educations_ibfk_1", "educations", type_="foreignkey")
-    op.drop_constraint("experiences_ibfk_1", "experiences", type_="foreignkey")
+    op.drop_constraint("educations_user_id_fkey", "educations", type_="foreignkey")
+    op.drop_constraint("experiences_user_id_fkey", "experiences", type_="foreignkey")
 
     op.drop_column("educations", "user_id")
     op.drop_column("experiences", "user_id")

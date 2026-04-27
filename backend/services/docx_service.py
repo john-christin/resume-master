@@ -133,7 +133,7 @@ def create_resume(
             company_para = doc.add_paragraph()
             company_para.space_before = Pt(3)
             company_para.space_after = Pt(1)
-            company_text = exp["company"]
+            company_text = exp.get("company") or ""
             if exp_location:
                 company_text += f", {exp_location}"
             run = company_para.add_run(company_text)
@@ -143,9 +143,9 @@ def create_resume(
             title_para = doc.add_paragraph()
             title_para.space_after = Pt(1)
             _add_tabstop_right(title_para, content_width)
-            run = title_para.add_run(exp["title"])
+            run = title_para.add_run(exp.get("title") or "")
             _set_font(run, size=9.5)
-            run = title_para.add_run(f"\t{exp['start_date']} - {end}")
+            run = title_para.add_run(f"\t{exp.get('start_date') or ''} - {end}")
             _set_font(run, size=9)
 
             # Bullets

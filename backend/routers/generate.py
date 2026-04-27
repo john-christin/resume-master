@@ -1,3 +1,4 @@
+import asyncio
 import json
 import logging
 from pathlib import Path
@@ -11,7 +12,7 @@ from sqlalchemy.orm import Session
 
 from auth import require_role
 from config import settings
-from database import get_db
+from database import SessionLocal, get_db
 from models.ai_model_config import AIModelConfig
 from models.application import Application
 from models.knowledge_base import KnowledgeBase
@@ -28,7 +29,7 @@ from schemas.generate import (
     SkillCategory,
     TailoredExperience,
 )
-from services import ai_service, docx_service
+from services import ai_service, docx_service, log_service
 from services.pdf_service import convert_to_pdf
 
 router = APIRouter(tags=["generate"])
@@ -108,6 +109,7 @@ def _get_accessible_profile(
 async def _generate_single(
     profile: Profile,
     job_title: str,
+    company: str | None,
     job_url: str | None,
     job_description: str,
     resume_type: str | None,
@@ -119,12 +121,7 @@ async def _generate_single(
     total_prompt = 0
     total_completion = 0
 
-    # Extract company from JD
-    company, extract_usage = ai_service.extract_company_name_with_usage(
-        job_description
-    )
-    total_prompt += extract_usage["prompt_tokens"]
-    total_completion += extract_usage["completion_tokens"]
+    company = company.strip() if company else None
 
     # Duplicate check: find previous applications for same profile + company
     if not skip_duplicate_check and company:
@@ -244,42 +241,55 @@ async def _generate_single(
         else None
     )
 
-    # Tailor resume
-    try:
-        tailored, resume_usage = ai_service.tailor_resume(
-            user_name=profile.name,
-            experiences=experiences,
-            educations=educations,
-            job_description=job_description,
-            job_title=job_title,
-            company=company,
-            reference_bullets=reference_bullets,
-            knowledge_base=kb_content,
-        )
-        total_prompt += resume_usage["prompt_tokens"]
-        total_completion += resume_usage["completion_tokens"]
-    except Exception as e:
-        raise HTTPException(status_code=502, detail=f"AI service error: {e}")
+    creativity_factor = getattr(profile, "creativity_factor", 0.3)
 
-    # Generate summary, skills, and cover letter in a single AI call
+    # Tailor resume + generate summary/skills/cover letter concurrently
     try:
-        content_result, content_usage = ai_service.generate_resume_content(
-            user_name=profile.name,
-            email=profile.email,
-            phone=profile.phone,
-            experiences=experiences,
-            job_description=job_description,
-            job_title=job_title,
-            company=company,
-            knowledge_base=kb_content,
+        (tailored, resume_usage), (content_result, content_usage) = await asyncio.gather(
+            asyncio.to_thread(
+                ai_service.tailor_resume,
+                user_name=profile.name,
+                experiences=experiences,
+                educations=educations,
+                job_description=job_description,
+                job_title=job_title,
+                company=company,
+                reference_bullets=reference_bullets,
+                knowledge_base=kb_content,
+                creativity_factor=creativity_factor,
+            ),
+            asyncio.to_thread(
+                ai_service.generate_resume_content,
+                user_name=profile.name,
+                email=profile.email,
+                phone=profile.phone,
+                experiences=experiences,
+                job_description=job_description,
+                job_title=job_title,
+                company=company,
+                knowledge_base=kb_content,
+                creativity_factor=creativity_factor,
+            ),
         )
-        total_prompt += content_usage["prompt_tokens"]
-        total_completion += content_usage["completion_tokens"]
-        summary_text = content_result["summary"]
-        skills_data = content_result.get("skills", [])
-        cover_letter_text = content_result["cover_letter"]
     except Exception as e:
+        log_service.log_bg(
+            log_service.ERROR, log_service.GENERATION,
+            f"AI generation failed for '{job_title}' at '{company or 'unknown'}'",
+            user_id=current_user.id,
+            details={
+                "profile_id": profile.id,
+                "job_title": job_title,
+                "company": company,
+                "jd_snippet": job_description[:300],
+            },
+            **log_service.exc_to_log_kwargs(e),
+        )
         raise HTTPException(status_code=502, detail=f"AI service error: {e}")
+    total_prompt += resume_usage["prompt_tokens"] + content_usage["prompt_tokens"]
+    total_completion += resume_usage["completion_tokens"] + content_usage["completion_tokens"]
+    summary_text = content_result["summary"]
+    skills_data = content_result.get("skills", [])
+    cover_letter_text = content_result["cover_letter"]
 
     # Calculate cost
     cost = _calculate_cost(total_prompt, total_completion, db)
@@ -338,9 +348,16 @@ async def _generate_single(
     try:
         resume_pdf = await convert_to_pdf(resume_docx, uploads_dir)
         cover_letter_pdf = await convert_to_pdf(cover_letter_docx, uploads_dir)
-    except RuntimeError:
+    except RuntimeError as exc:
         resume_pdf = None
         cover_letter_pdf = None
+        log_service.log_bg(
+            log_service.WARNING, log_service.GENERATION,
+            "PDF conversion failed — falling back to DOCX",
+            user_id=current_user.id,
+            details={"application_id": application.id, "job_title": job_title},
+            **log_service.exc_to_log_kwargs(exc),
+        )
 
     application.resume_path = str(resume_pdf or resume_docx)
     application.cover_letter_path = str(cover_letter_pdf or cover_letter_docx)
@@ -356,8 +373,26 @@ async def _generate_single(
         cover_letter=cover_letter_text,
     )
 
+    log_service.log_bg(
+        log_service.INFO, log_service.GENERATION,
+        f"Generation succeeded for '{job_title}' at '{company or 'unknown'}'",
+        user_id=current_user.id,
+        details={
+            "application_id": application.id,
+            "profile_id": profile.id,
+            "job_title": job_title,
+            "company": company,
+            "prompt_tokens": total_prompt,
+            "completion_tokens": total_completion,
+            "cost": cost,
+        },
+    )
+
     return GenerateResponse(
         application_id=application.id,
+        profile_name=profile.name,
+        job_title=job_title,
+        company=company,
         preview=preview,
         resume_url=f"/api/download/{application.id}_resume.pdf",
         cover_letter_url=f"/api/download/{application.id}_cover_letter.pdf",
@@ -377,6 +412,7 @@ async def generate_application(
     return await _generate_single(
         profile=profile,
         job_title=req.job_title,
+        company=req.company,
         job_url=req.job_url,
         job_description=req.job_description,
         resume_type=req.resume_type,
@@ -393,38 +429,42 @@ async def batch_generate(
     db: Session = Depends(get_db),
 ):
     profile = _get_accessible_profile(req.profile_id, current_user, db)
+    profile_id = profile.id
+    user_id = current_user.id
 
-    results = []
-    total_prompt = 0
-    total_completion = 0
-    total_cost = 0.0
+    async def run_job(job) -> GenerateResponse:
+        # Each job needs its own session — concurrent writes to a shared
+        # session cause flush/commit conflicts.
+        job_db = SessionLocal()
+        try:
+            job_profile = job_db.get(Profile, profile_id)
+            job_user = job_db.get(User, user_id)
+            return await _generate_single(
+                profile=job_profile,
+                job_title=job.job_title,
+                company=job.company,
+                job_url=job.job_url,
+                job_description=job.job_description,
+                resume_type=job.resume_type,
+                current_user=job_user,
+                db=job_db,
+                skip_duplicate_check=job.skip_duplicate_check,
+            )
+        finally:
+            job_db.close()
 
-    for job in req.jobs:
-        result = await _generate_single(
-            profile=profile,
-            job_title=job.job_title,
-            job_url=job.job_url,
-            job_description=job.job_description,
-            resume_type=job.resume_type,
-            current_user=current_user,
-            db=db,
-            skip_duplicate_check=job.skip_duplicate_check,
-        )
-        results.append(result)
-        total_prompt += result.prompt_tokens
-        total_completion += result.completion_tokens
-        total_cost += result.cost
+    results = list(await asyncio.gather(*[run_job(job) for job in req.jobs]))
 
     return BatchGenerateResponse(
         results=results,
-        total_prompt_tokens=total_prompt,
-        total_completion_tokens=total_completion,
-        total_cost=total_cost,
+        total_prompt_tokens=sum(r.prompt_tokens for r in results),
+        total_completion_tokens=sum(r.completion_tokens for r in results),
+        total_cost=sum(r.cost for r in results),
     )
 
 
 @router.get("/api/download/{filename}")
-def download_file(filename: str):
+def download_file(filename: str, name: str | None = None):
     file_path = Path(settings.upload_dir) / filename
     if not file_path.exists():
         docx_fallback = file_path.with_suffix(".docx")
@@ -434,6 +474,6 @@ def download_file(filename: str):
             raise HTTPException(status_code=404, detail="File not found")
     return FileResponse(
         path=str(file_path),
-        filename=filename,
+        filename=name or filename,
         media_type="application/octet-stream",
     )

@@ -25,12 +25,19 @@ export default function Preview() {
     );
   }
 
-  const { preview, resume_url, cover_letter_url } = data;
+  const { preview, resume_url, cover_letter_url, profile_name, job_title, company } = data;
+  const safeName = (profile_name ?? "Resume").trim().replace(/\s+/g, "_");
+  const withName = (url: string, label: string) => `${url}?name=${safeName}_${label}`;
 
   return (
     <div>
       <div className="flex items-center justify-between mb-6">
-        <h1 className="text-2xl font-bold text-gray-900 dark:text-white">Preview</h1>
+        <div>
+          <h1 className="text-2xl font-bold text-gray-900 dark:text-white">Preview</h1>
+          <p className="text-sm text-gray-500 dark:text-gray-400 mt-0.5">
+            {job_title}{company ? ` · ${company}` : ""}
+          </p>
+        </div>
         <div className="flex gap-2">
           <button
             onClick={() => navigate("/generate")}
@@ -71,25 +78,25 @@ export default function Preview() {
         </h2>
         <div className="flex flex-wrap gap-2">
           <a
-            href={resume_url}
+            href={withName(resume_url, "Resume.pdf")}
             className="px-4 py-2 bg-green-600 text-white rounded-md text-sm hover:bg-green-700 transition-colors"
           >
             Resume PDF
           </a>
           <a
-            href={resume_url.replace(".pdf", ".docx")}
+            href={withName(resume_url.replace(".pdf", ".docx"), "Resume.docx")}
             className="px-4 py-2 bg-green-50 dark:bg-green-900/30 text-green-700 dark:text-green-400 border border-green-200 dark:border-green-800 rounded-md text-sm hover:bg-green-100 dark:hover:bg-green-900/50 transition-colors"
           >
             Resume DOCX
           </a>
           <a
-            href={cover_letter_url}
+            href={withName(cover_letter_url, "Cover_Letter.pdf")}
             className="px-4 py-2 bg-purple-600 text-white rounded-md text-sm hover:bg-purple-700 transition-colors"
           >
             Cover Letter PDF
           </a>
           <a
-            href={cover_letter_url.replace(".pdf", ".docx")}
+            href={withName(cover_letter_url.replace(".pdf", ".docx"), "Cover_Letter.docx")}
             className="px-4 py-2 bg-purple-50 dark:bg-purple-900/30 text-purple-700 dark:text-purple-400 border border-purple-200 dark:border-purple-800 rounded-md text-sm hover:bg-purple-100 dark:hover:bg-purple-900/50 transition-colors"
           >
             Cover Letter DOCX

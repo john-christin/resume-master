@@ -13,6 +13,9 @@ export default function ApplicationCard({ application, onDelete }: Props) {
   });
 
   const appId = application.id;
+  const safeName = (application.profile_name ?? "Resume").trim().replace(/\s+/g, "_");
+  const dl = (type: string, ext: string) =>
+    `/api/download/${appId}_${type}${ext}?name=${safeName}_${type === "resume" ? "Resume" : "Cover_Letter"}${ext}`;
 
   return (
     <div className="bg-white rounded-lg shadow-sm border border-gray-200 p-4">
@@ -45,25 +48,25 @@ export default function ApplicationCard({ application, onDelete }: Props) {
 
       <div className="flex flex-wrap gap-2 mt-3">
         <a
-          href={`/api/download/${appId}_resume.pdf`}
+          href={dl("resume", ".pdf")}
           className="px-3 py-1 bg-green-50 text-green-700 border border-green-200 rounded text-xs hover:bg-green-100"
         >
           Resume PDF
         </a>
         <a
-          href={`/api/download/${appId}_resume.docx`}
+          href={dl("resume", ".docx")}
           className="px-3 py-1 bg-gray-50 text-gray-700 border border-gray-200 rounded text-xs hover:bg-gray-100"
         >
           Resume DOCX
         </a>
         <a
-          href={`/api/download/${appId}_cover_letter.pdf`}
+          href={dl("cover_letter", ".pdf")}
           className="px-3 py-1 bg-purple-50 text-purple-700 border border-purple-200 rounded text-xs hover:bg-purple-100"
         >
           Cover Letter PDF
         </a>
         <a
-          href={`/api/download/${appId}_cover_letter.docx`}
+          href={dl("cover_letter", ".docx")}
           className="px-3 py-1 bg-gray-50 text-gray-700 border border-gray-200 rounded text-xs hover:bg-gray-100"
         >
           Cover Letter DOCX

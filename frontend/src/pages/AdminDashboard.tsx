@@ -9,6 +9,7 @@ import {
   testModel,
   deleteKnowledgeBase,
   deleteModel,
+  deleteUser,
   getDashboardStats,
   getKnowledgeBases,
   getModels,
@@ -17,14 +18,21 @@ import {
   recalculateCosts,
   rejectUser,
   setPricing,
+  suspendUser,
+  unsuspendUser,
   updateKnowledgeBase,
   updateModel,
+  updateUserRole,
+  getLogs,
+  getLogCount,
 } from "../api/admin";
+import type { SystemLogItem } from "../api/admin";
 import type { DashboardStats } from "../api/admin";
 import LoadingSpinner from "../components/LoadingSpinner";
 import type { AIModelConfig, KnowledgeBase, TokenPricing, UserListItem } from "../types";
+import { getUserId } from "../auth";
 
-type Tab = "pending" | "stats" | "pricing" | "kb" | "models";
+type Tab = "pending" | "stats" | "pricing" | "kb" | "models" | "users" | "logs";
 
 export default function AdminDashboard() {
   const [tab, setTab] = useState<Tab>("stats");
@@ -77,6 +85,25 @@ export default function AdminDashboard() {
   // Expanded user rows
   const [expandedUsers, setExpandedUsers] = useState<Set<string>>(new Set());
 
+  // User management tab
+  const [allUsers, setAllUsers] = useState<UserListItem[]>([]);
+  const [userSearch, setUserSearch] = useState("");
+  const [userStatusFilter, setUserStatusFilter] = useState("");
+  const [userActionLoading, setUserActionLoading] = useState<string | null>(null);
+  const currentUserId = getUserId();
+
+  // Logs tab
+  const [logs, setLogs] = useState<SystemLogItem[]>([]);
+  const [logTotal, setLogTotal] = useState(0);
+  const [logLevel, setLogLevel] = useState("");
+  const [logCategory, setLogCategory] = useState("");
+  const [logFromDate, setLogFromDate] = useState("");
+  const [logToDate, setLogToDate] = useState("");
+  const [logOffset, setLogOffset] = useState(0);
+  const [logLoading, setLogLoading] = useState(false);
+  const [expandedLogs, setExpandedLogs] = useState<Set<string>>(new Set());
+  const LOG_PAGE_SIZE = 100;
+
   const loadData = async () => {
     setLoading(true);
     try {
@@ -107,6 +134,17 @@ export default function AdminDashboard() {
     loadData();
   }, []);
 
+  useEffect(() => {
+    if (tab === "users") {
+      getUsers(undefined, undefined)
+        .then((res) => setAllUsers(res.data))
+        .catch(() => setError("Failed to load users"));
+    }
+    if (tab === "logs") {
+      fetchLogs(0);
+    }
+  }, [tab]);
+
   const handleDateFilter = () => {
     loadData();
   };
@@ -134,6 +172,126 @@ export default function AdminDashboard() {
       await loadData();
     } catch {
       setError("Failed to reject user");
+    }
+  };
+
+  // --- Users tab handlers ---
+
+  const fetchAllUsers = async () => {
+    try {
+      const res = await getUsers(userStatusFilter || undefined, userSearch || undefined);
+      setAllUsers(res.data);
+    } catch {
+      setError("Failed to load users");
+    }
+  };
+
+  const handleApproveUser = async (userId: string) => {
+    const role = roleSelections[userId] || "bidder";
+    setUserActionLoading(userId);
+    try {
+      await approveUser(userId, role);
+      await loadData();
+      await fetchAllUsers();
+    } catch {
+      setError("Failed to approve user");
+    } finally {
+      setUserActionLoading(null);
+    }
+  };
+
+  const handleRejectUser = async (userId: string) => {
+    setUserActionLoading(userId);
+    try {
+      await rejectUser(userId);
+      await loadData();
+      await fetchAllUsers();
+    } catch {
+      setError("Failed to reject user");
+    } finally {
+      setUserActionLoading(null);
+    }
+  };
+
+  const handleSuspendUser = async (userId: string) => {
+    setUserActionLoading(userId);
+    try {
+      await suspendUser(userId);
+      await loadData();
+      await fetchAllUsers();
+    } catch {
+      setError("Failed to suspend user");
+    } finally {
+      setUserActionLoading(null);
+    }
+  };
+
+  const handleUnsuspendUser = async (userId: string) => {
+    setUserActionLoading(userId);
+    try {
+      await unsuspendUser(userId);
+      await loadData();
+      await fetchAllUsers();
+    } catch {
+      setError("Failed to unsuspend user");
+    } finally {
+      setUserActionLoading(null);
+    }
+  };
+
+  const handleDeleteUser = async (userId: string, username: string) => {
+    if (
+      !window.confirm(
+        `Permanently delete user "${username}" and all their data? This cannot be undone.`
+      )
+    )
+      return;
+    setUserActionLoading(userId);
+    try {
+      await deleteUser(userId);
+      await loadData();
+      await fetchAllUsers();
+    } catch {
+      setError("Failed to delete user");
+    } finally {
+      setUserActionLoading(null);
+    }
+  };
+
+  const fetchLogs = async (offset = 0) => {
+    setLogLoading(true);
+    try {
+      const params = {
+        level: logLevel || undefined,
+        category: logCategory || undefined,
+        from_date: logFromDate || undefined,
+        to_date: logToDate || undefined,
+        limit: LOG_PAGE_SIZE,
+        offset,
+      };
+      const [logsRes, countRes] = await Promise.all([
+        getLogs(params),
+        getLogCount(params),
+      ]);
+      setLogs(logsRes.data);
+      setLogTotal(countRes.data.count);
+      setLogOffset(offset);
+    } catch {
+      setError("Failed to load logs");
+    } finally {
+      setLogLoading(false);
+    }
+  };
+
+  const handleChangeRole = async (userId: string, newRole: string) => {
+    setUserActionLoading(userId);
+    try {
+      await updateUserRole(userId, newRole);
+      await fetchAllUsers();
+    } catch {
+      setError("Failed to update role");
+    } finally {
+      setUserActionLoading(null);
     }
   };
 
@@ -217,10 +375,12 @@ export default function AdminDashboard() {
           {(
             [
               ["stats", "Usage & Cost"],
+              ["users", "Users"],
               ["pending", `Pending (${pendingUsers.length})`],
               ["pricing", "Token Pricing"],
               ["kb", "Knowledge Base"],
               ["models", "AI Models"],
+              ["logs", "System Logs"],
             ] as const
           ).map(([key, label]) => (
             <button
@@ -382,6 +542,200 @@ export default function AdminDashboard() {
               </tbody>
             </table>
           </div>
+        </div>
+      )}
+
+      {/* Users tab */}
+      {tab === "users" && (
+        <div>
+          {/* Search/filter bar */}
+          <div className="flex flex-wrap items-center gap-3 mb-4">
+            <input
+              type="text"
+              placeholder="Search by username..."
+              value={userSearch}
+              onChange={(e) => setUserSearch(e.target.value)}
+              onKeyDown={(e) => e.key === "Enter" && fetchAllUsers()}
+              className="px-3 py-2 border border-gray-300 dark:border-gray-600 rounded-md text-sm bg-white dark:bg-gray-700 dark:text-white"
+            />
+            <select
+              value={userStatusFilter}
+              onChange={(e) => setUserStatusFilter(e.target.value)}
+              className="px-3 py-2 border border-gray-300 dark:border-gray-600 rounded-md text-sm bg-white dark:bg-gray-700 dark:text-white"
+            >
+              <option value="">All Statuses</option>
+              <option value="pending">Pending</option>
+              <option value="approved">Approved</option>
+              <option value="rejected">Rejected</option>
+              <option value="suspended">Suspended</option>
+            </select>
+            <button
+              onClick={fetchAllUsers}
+              className="px-4 py-2 bg-blue-600 text-white rounded-md text-sm hover:bg-blue-700"
+            >
+              Search
+            </button>
+          </div>
+
+          {allUsers.length === 0 ? (
+            <p className="text-gray-500 dark:text-gray-400 text-sm py-8 text-center">
+              No users found.
+            </p>
+          ) : (
+            <div className="bg-white dark:bg-gray-800 rounded-lg shadow-sm border border-gray-200 dark:border-gray-700 overflow-x-auto">
+              <table className="w-full text-sm">
+                <thead className="bg-gray-50 dark:bg-gray-700/50 border-b border-gray-200 dark:border-gray-700">
+                  <tr>
+                    <th className="text-left px-4 py-3 font-medium text-gray-600 dark:text-gray-400">Username</th>
+                    <th className="text-left px-4 py-3 font-medium text-gray-600 dark:text-gray-400">Role</th>
+                    <th className="text-left px-4 py-3 font-medium text-gray-600 dark:text-gray-400">Status</th>
+                    <th className="text-right px-4 py-3 font-medium text-gray-600 dark:text-gray-400">Profiles</th>
+                    <th className="text-right px-4 py-3 font-medium text-gray-600 dark:text-gray-400">Apps</th>
+                    <th className="text-left px-4 py-3 font-medium text-gray-600 dark:text-gray-400">Joined</th>
+                    <th className="text-right px-4 py-3 font-medium text-gray-600 dark:text-gray-400">Actions</th>
+                  </tr>
+                </thead>
+                <tbody>
+                  {allUsers.map((user) => {
+                    const isSelf = user.id === currentUserId;
+                    const isLoading = userActionLoading === user.id;
+                    return (
+                      <tr
+                        key={user.id}
+                        className={`border-b border-gray-100 dark:border-gray-700 ${isLoading ? "opacity-50" : ""}`}
+                      >
+                        <td className="px-4 py-3 text-gray-900 dark:text-white font-medium">
+                          {user.username}
+                          {isSelf && (
+                            <span className="ml-1 text-xs text-gray-400 dark:text-gray-500">(you)</span>
+                          )}
+                        </td>
+                        <td className="px-4 py-3">
+                          {isSelf || (user.status !== "approved" && user.status !== "suspended") ? (
+                            <span
+                              className={`px-2 py-0.5 rounded text-xs font-medium ${
+                                user.role === "admin"
+                                  ? "bg-purple-100 dark:bg-purple-900/30 text-purple-700 dark:text-purple-400"
+                                  : user.role === "caller"
+                                    ? "bg-yellow-100 dark:bg-yellow-900/30 text-yellow-700 dark:text-yellow-400"
+                                    : "bg-blue-100 dark:bg-blue-900/30 text-blue-700 dark:text-blue-400"
+                              }`}
+                            >
+                              {user.role}
+                            </span>
+                          ) : (
+                            <select
+                              value={user.role}
+                              disabled={isLoading}
+                              onChange={(e) => handleChangeRole(user.id, e.target.value)}
+                              className="px-2 py-1 border border-gray-300 dark:border-gray-600 rounded text-xs bg-white dark:bg-gray-700 dark:text-gray-200 disabled:opacity-50"
+                            >
+                              <option value="bidder">Bidder</option>
+                              <option value="caller">Caller</option>
+                              <option value="admin">Admin</option>
+                            </select>
+                          )}
+                        </td>
+                        <td className="px-4 py-3">
+                          <span
+                            className={`px-2 py-0.5 rounded text-xs font-medium ${
+                              user.status === "approved"
+                                ? "bg-green-100 dark:bg-green-900/30 text-green-700 dark:text-green-400"
+                                : user.status === "pending"
+                                  ? "bg-yellow-100 dark:bg-yellow-900/30 text-yellow-700 dark:text-yellow-400"
+                                  : user.status === "suspended"
+                                    ? "bg-orange-100 dark:bg-orange-900/30 text-orange-700 dark:text-orange-400"
+                                    : "bg-red-100 dark:bg-red-900/30 text-red-700 dark:text-red-400"
+                            }`}
+                          >
+                            {user.status}
+                          </span>
+                        </td>
+                        <td className="px-4 py-3 text-right text-gray-700 dark:text-gray-300">
+                          {user.profile_count}
+                        </td>
+                        <td className="px-4 py-3 text-right text-gray-700 dark:text-gray-300">
+                          {user.application_count}
+                        </td>
+                        <td className="px-4 py-3 text-gray-500 dark:text-gray-400">
+                          {new Date(user.created_at).toLocaleDateString()}
+                        </td>
+                        <td className="px-4 py-3">
+                          {isSelf ? (
+                            <span className="text-xs text-gray-400 dark:text-gray-600">—</span>
+                          ) : (
+                            <div className="flex items-center justify-end gap-2 flex-wrap">
+                              {(user.status === "pending" || user.status === "rejected") && (
+                                <>
+                                  <select
+                                    value={roleSelections[user.id] || "bidder"}
+                                    onChange={(e) =>
+                                      setRoleSelections((prev) => ({
+                                        ...prev,
+                                        [user.id]: e.target.value,
+                                      }))
+                                    }
+                                    className="px-2 py-1 border border-gray-300 dark:border-gray-600 rounded text-xs bg-white dark:bg-gray-700 dark:text-gray-200"
+                                  >
+                                    <option value="bidder">Bidder</option>
+                                    <option value="caller">Caller</option>
+                                    <option value="admin">Admin</option>
+                                  </select>
+                                  <button
+                                    disabled={isLoading}
+                                    onClick={() => handleApproveUser(user.id)}
+                                    className="px-3 py-1 bg-green-100 dark:bg-green-900/30 text-green-700 dark:text-green-400 rounded text-xs font-medium hover:bg-green-200 dark:hover:bg-green-900/50 disabled:opacity-50"
+                                  >
+                                    Approve
+                                  </button>
+                                </>
+                              )}
+                              {user.status === "pending" && (
+                                <button
+                                  disabled={isLoading}
+                                  onClick={() => handleRejectUser(user.id)}
+                                  className="px-3 py-1 bg-red-100 dark:bg-red-900/30 text-red-700 dark:text-red-400 rounded text-xs font-medium hover:bg-red-200 dark:hover:bg-red-900/50 disabled:opacity-50"
+                                >
+                                  Reject
+                                </button>
+                              )}
+                              {user.status === "approved" && (
+                                <button
+                                  disabled={isLoading}
+                                  onClick={() => handleSuspendUser(user.id)}
+                                  className="px-3 py-1 bg-orange-100 dark:bg-orange-900/30 text-orange-700 dark:text-orange-400 rounded text-xs font-medium hover:bg-orange-200 dark:hover:bg-orange-900/50 disabled:opacity-50"
+                                >
+                                  Suspend
+                                </button>
+                              )}
+                              {user.status === "suspended" && (
+                                <button
+                                  disabled={isLoading}
+                                  onClick={() => handleUnsuspendUser(user.id)}
+                                  className="px-3 py-1 bg-green-100 dark:bg-green-900/30 text-green-700 dark:text-green-400 rounded text-xs font-medium hover:bg-green-200 dark:hover:bg-green-900/50 disabled:opacity-50"
+                                >
+                                  Unsuspend
+                                </button>
+                              )}
+                              {user.status !== "pending" && (
+                                <button
+                                  disabled={isLoading}
+                                  onClick={() => handleDeleteUser(user.id, user.username)}
+                                  className="px-3 py-1 bg-red-100 dark:bg-red-900/30 text-red-700 dark:text-red-400 rounded text-xs font-medium hover:bg-red-200 dark:hover:bg-red-900/50 disabled:opacity-50"
+                                >
+                                  Delete
+                                </button>
+                              )}
+                            </div>
+                          )}
+                        </td>
+                      </tr>
+                    );
+                  })}
+                </tbody>
+              </table>
+            </div>
+          )}
         </div>
       )}
 
@@ -748,6 +1102,184 @@ export default function AdminDashboard() {
           )}
         </div>
       )}
+      {/* System Logs tab */}
+      {tab === "logs" && (
+        <div>
+          {/* Filters */}
+          <div className="flex flex-wrap items-end gap-3 mb-4">
+            <select
+              value={logLevel}
+              onChange={(e) => setLogLevel(e.target.value)}
+              className="px-3 py-2 border border-gray-300 dark:border-gray-600 rounded-md text-sm bg-white dark:bg-gray-700 dark:text-white"
+            >
+              <option value="">All Levels</option>
+              <option value="WARNING">WARNING</option>
+              <option value="ERROR">ERROR</option>
+              <option value="CRITICAL">CRITICAL</option>
+            </select>
+            <select
+              value={logCategory}
+              onChange={(e) => setLogCategory(e.target.value)}
+              className="px-3 py-2 border border-gray-300 dark:border-gray-600 rounded-md text-sm bg-white dark:bg-gray-700 dark:text-white"
+            >
+              <option value="">All Categories</option>
+              <option value="api">API</option>
+              <option value="ai_call">AI Call</option>
+              <option value="generation">Generation</option>
+              <option value="auth">Auth</option>
+              <option value="admin">Admin</option>
+            </select>
+            <div>
+              <label className="block text-xs font-medium text-gray-600 dark:text-gray-400 mb-1">From</label>
+              <input type="date" value={logFromDate} onChange={(e) => setLogFromDate(e.target.value)}
+                className="px-3 py-2 border border-gray-300 dark:border-gray-600 rounded-md text-sm bg-white dark:bg-gray-700 dark:text-white" />
+            </div>
+            <div>
+              <label className="block text-xs font-medium text-gray-600 dark:text-gray-400 mb-1">To</label>
+              <input type="date" value={logToDate} onChange={(e) => setLogToDate(e.target.value)}
+                className="px-3 py-2 border border-gray-300 dark:border-gray-600 rounded-md text-sm bg-white dark:bg-gray-700 dark:text-white" />
+            </div>
+            <button onClick={() => fetchLogs(0)} disabled={logLoading}
+              className="px-4 py-2 bg-blue-600 text-white rounded-md text-sm hover:bg-blue-700 disabled:opacity-50">
+              {logLoading ? "Loading..." : "Search"}
+            </button>
+            <span className="text-xs text-gray-500 dark:text-gray-400 self-end pb-2">
+              {logTotal.toLocaleString()} total
+            </span>
+          </div>
+
+          {/* Log table */}
+          <div className="bg-white dark:bg-gray-800 rounded-lg shadow-sm border border-gray-200 dark:border-gray-700 overflow-x-auto">
+            <table className="w-full text-xs">
+              <thead className="bg-gray-50 dark:bg-gray-700/50 border-b border-gray-200 dark:border-gray-700">
+                <tr>
+                  <th className="w-6 px-3 py-2"></th>
+                  <th className="text-left px-3 py-2 font-medium text-gray-600 dark:text-gray-400">Time</th>
+                  <th className="text-left px-3 py-2 font-medium text-gray-600 dark:text-gray-400">Level</th>
+                  <th className="text-left px-3 py-2 font-medium text-gray-600 dark:text-gray-400">Category</th>
+                  <th className="text-left px-3 py-2 font-medium text-gray-600 dark:text-gray-400">Message</th>
+                  <th className="text-left px-3 py-2 font-medium text-gray-600 dark:text-gray-400">IP Address</th>
+                  <th className="text-left px-3 py-2 font-medium text-gray-600 dark:text-gray-400">Endpoint</th>
+                  <th className="text-right px-3 py-2 font-medium text-gray-600 dark:text-gray-400">ms</th>
+                </tr>
+              </thead>
+              <tbody>
+                {logs.length === 0 && (
+                  <tr>
+                    <td colSpan={8} className="px-4 py-8 text-center text-gray-400 dark:text-gray-500">
+                      No logs found.
+                    </td>
+                  </tr>
+                )}
+                {logs.map((log) => {
+                  const isExpanded = expandedLogs.has(log.id);
+                  const hasDetail = !!(log.details || log.stack_trace || log.error_type);
+                  const rowColor =
+                    log.level === "CRITICAL" ? "bg-red-50 dark:bg-red-900/20" :
+                    log.level === "ERROR"    ? "bg-red-50/50 dark:bg-red-900/10" :
+                    log.level === "WARNING"  ? "bg-yellow-50 dark:bg-yellow-900/10" : "";
+                  const levelColor =
+                    log.level === "CRITICAL" ? "bg-red-200 dark:bg-red-800 text-red-800 dark:text-red-200" :
+                    log.level === "ERROR"    ? "bg-red-100 dark:bg-red-900/40 text-red-700 dark:text-red-400" :
+                    log.level === "WARNING"  ? "bg-yellow-100 dark:bg-yellow-900/40 text-yellow-700 dark:text-yellow-400" :
+                                               "bg-gray-100 dark:bg-gray-700 text-gray-600 dark:text-gray-400";
+                  const catColor =
+                    log.category === "generation" ? "text-blue-600 dark:text-blue-400" :
+                    log.category === "ai_call"    ? "text-purple-600 dark:text-purple-400" :
+                    log.category === "auth"       ? "text-green-600 dark:text-green-400" :
+                    log.category === "admin"      ? "text-orange-600 dark:text-orange-400" :
+                                                    "text-gray-500 dark:text-gray-400";
+                  return (
+                    <>
+                      <tr
+                        key={log.id}
+                        className={`border-b border-gray-100 dark:border-gray-700 ${rowColor} ${hasDetail ? "cursor-pointer hover:brightness-95" : ""}`}
+                        onClick={() => {
+                          if (!hasDetail) return;
+                          setExpandedLogs((prev) => {
+                            const next = new Set(prev);
+                            next.has(log.id) ? next.delete(log.id) : next.add(log.id);
+                            return next;
+                          });
+                        }}
+                      >
+                        <td className="px-3 py-2 text-gray-400">
+                          {hasDetail && <span>{isExpanded ? "▼" : "▶"}</span>}
+                        </td>
+                        <td className="px-3 py-2 text-gray-500 dark:text-gray-400 whitespace-nowrap">
+                          {new Date(log.created_at).toLocaleString()}
+                        </td>
+                        <td className="px-3 py-2">
+                          <span className={`px-1.5 py-0.5 rounded font-medium ${levelColor}`}>{log.level}</span>
+                        </td>
+                        <td className={`px-3 py-2 font-medium ${catColor}`}>{log.category}</td>
+                        <td className="px-3 py-2 text-gray-800 dark:text-gray-200 max-w-sm truncate">{log.message}</td>
+                        <td className="px-3 py-2 text-gray-500 dark:text-gray-400 font-mono whitespace-nowrap">{log.ip_address || "—"}</td>
+                        <td className="px-3 py-2 text-gray-500 dark:text-gray-400 truncate max-w-[180px]">{log.endpoint || "—"}</td>
+                        <td className="px-3 py-2 text-right text-gray-500 dark:text-gray-400">
+                          {log.duration_ms != null ? log.duration_ms : "—"}
+                        </td>
+                      </tr>
+                      {isExpanded && hasDetail && (
+                        <tr key={`${log.id}-detail`} className={`border-b border-gray-100 dark:border-gray-700 ${rowColor}`}>
+                          <td colSpan={8} className="px-6 py-3 space-y-2">
+                            {log.error_type && (
+                              <p className="text-xs font-semibold text-red-600 dark:text-red-400">
+                                Exception: {log.error_type}
+                              </p>
+                            )}
+                            {log.details && (() => {
+                              try {
+                                const parsed = JSON.parse(log.details);
+                                return (
+                                  <pre className="text-xs text-gray-700 dark:text-gray-300 bg-gray-100 dark:bg-gray-700/50 rounded p-2 overflow-x-auto">
+                                    {JSON.stringify(parsed, null, 2)}
+                                  </pre>
+                                );
+                              } catch {
+                                return <p className="text-xs text-gray-600 dark:text-gray-400">{log.details}</p>;
+                              }
+                            })()}
+                            {log.stack_trace && (
+                              <pre className="text-xs text-red-700 dark:text-red-400 bg-red-50 dark:bg-red-900/20 rounded p-2 overflow-x-auto max-h-48">
+                                {log.stack_trace}
+                              </pre>
+                            )}
+                          </td>
+                        </tr>
+                      )}
+                    </>
+                  );
+                })}
+              </tbody>
+            </table>
+          </div>
+
+          {/* Pagination */}
+          {logTotal > LOG_PAGE_SIZE && (
+            <div className="flex items-center justify-between mt-4">
+              <button
+                disabled={logOffset === 0 || logLoading}
+                onClick={() => fetchLogs(logOffset - LOG_PAGE_SIZE)}
+                className="px-4 py-2 text-sm bg-gray-100 dark:bg-gray-700 text-gray-700 dark:text-gray-300 rounded hover:bg-gray-200 dark:hover:bg-gray-600 disabled:opacity-40"
+              >
+                ← Previous
+              </button>
+              <span className="text-sm text-gray-500 dark:text-gray-400">
+                {logOffset + 1}–{Math.min(logOffset + LOG_PAGE_SIZE, logTotal)} of {logTotal.toLocaleString()}
+              </span>
+              <button
+                disabled={logOffset + LOG_PAGE_SIZE >= logTotal || logLoading}
+                onClick={() => fetchLogs(logOffset + LOG_PAGE_SIZE)}
+                className="px-4 py-2 text-sm bg-gray-100 dark:bg-gray-700 text-gray-700 dark:text-gray-300 rounded hover:bg-gray-200 dark:hover:bg-gray-600 disabled:opacity-40"
+              >
+                Next →
+              </button>
+            </div>
+          )}
+        </div>
+      )}
+
       {/* AI Models tab */}
       {tab === "models" && (
         <div>

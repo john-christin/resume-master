@@ -294,22 +294,32 @@ export default function History() {
                       </td>
                       <td className="px-4 py-3 text-right" onClick={(e) => e.stopPropagation()}>
                         <div className="flex justify-end gap-1">
-                          {app.resume_path && (
-                            <a
-                              href={`/api/download/${app.resume_path.split("/").pop()}`}
-                              className="px-2 py-1 bg-green-50 dark:bg-green-900/30 text-green-700 dark:text-green-400 rounded text-xs hover:bg-green-100 dark:hover:bg-green-900/50"
-                            >
-                              Resume
-                            </a>
-                          )}
-                          {app.cover_letter_path && (
-                            <a
-                              href={`/api/download/${app.cover_letter_path.split("/").pop()}`}
-                              className="px-2 py-1 bg-purple-50 dark:bg-purple-900/30 text-purple-700 dark:text-purple-400 rounded text-xs hover:bg-purple-100 dark:hover:bg-purple-900/50"
-                            >
-                              Cover
-                            </a>
-                          )}
+                          {app.resume_path && (() => {
+                            const file = app.resume_path!.split("/").pop()!;
+                            const ext = file.endsWith(".docx") ? ".docx" : ".pdf";
+                            const sn = (app.profile_name ?? "Resume").trim().replace(/\s+/g, "_");
+                            return (
+                              <a
+                                href={`/api/download/${file}?name=${sn}_Resume${ext}`}
+                                className="px-2 py-1 bg-green-50 dark:bg-green-900/30 text-green-700 dark:text-green-400 rounded text-xs hover:bg-green-100 dark:hover:bg-green-900/50"
+                              >
+                                Resume
+                              </a>
+                            );
+                          })()}
+                          {app.cover_letter_path && (() => {
+                            const file = app.cover_letter_path!.split("/").pop()!;
+                            const ext = file.endsWith(".docx") ? ".docx" : ".pdf";
+                            const sn = (app.profile_name ?? "Resume").trim().replace(/\s+/g, "_");
+                            return (
+                              <a
+                                href={`/api/download/${file}?name=${sn}_Cover_Letter${ext}`}
+                                className="px-2 py-1 bg-purple-50 dark:bg-purple-900/30 text-purple-700 dark:text-purple-400 rounded text-xs hover:bg-purple-100 dark:hover:bg-purple-900/50"
+                              >
+                                Cover
+                              </a>
+                            );
+                          })()}
                           {!isCaller && (
                             <button
                               onClick={() => handleDelete(app.id)}

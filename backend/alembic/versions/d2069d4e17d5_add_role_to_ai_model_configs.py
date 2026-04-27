@@ -21,7 +21,7 @@ def upgrade() -> None:
     """Upgrade schema."""
     op.add_column('ai_model_configs', sa.Column('role', sa.String(length=20), nullable=True))
     # Migrate: set role='primary' on the currently active model
-    op.execute("UPDATE ai_model_configs SET role = 'primary' WHERE is_active = 1")
+    op.execute("UPDATE ai_model_configs SET role = 'primary' WHERE is_active = true")
 
 
 def downgrade() -> None:
