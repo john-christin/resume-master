@@ -13,6 +13,32 @@ const emptyJob: JobDescriptionEntry = {
   job_description: "",
 };
 
+function jobTitleWarning(value: string): string | null {
+  if (!value) return null;
+  if (value.includes("\n")) return "Job titles don't have line breaks — did you paste the job description here by mistake?";
+  if (value.length > 150) return "This looks too long for a job title — double-check you're filling in the right field.";
+  return null;
+}
+
+function companyWarning(value: string): string | null {
+  if (!value) return null;
+  if (value.includes("\n")) return "Company names don't have line breaks — check this field.";
+  if (value.length > 100) return "This looks too long for a company name — check this field.";
+  return null;
+}
+
+function FieldWarning({ msg }: { msg: string | null }) {
+  if (!msg) return null;
+  return (
+    <p className="mt-1 text-xs text-amber-600 dark:text-amber-400 flex items-center gap-1">
+      <svg className="w-3 h-3 shrink-0" fill="currentColor" viewBox="0 0 20 20">
+        <path fillRule="evenodd" d="M8.485 2.495c.673-1.167 2.357-1.167 3.03 0l6.28 10.875c.673 1.167-.17 2.625-1.516 2.625H3.72c-1.347 0-2.189-1.458-1.515-2.625L8.485 2.495zM10 5a.75.75 0 01.75.75v3.5a.75.75 0 01-1.5 0v-3.5A.75.75 0 0110 5zm0 9a1 1 0 100-2 1 1 0 000 2z" clipRule="evenodd" />
+      </svg>
+      {msg}
+    </p>
+  );
+}
+
 export default function JobInput() {
   const navigate = useNavigate();
   const location = useLocation();
@@ -28,7 +54,12 @@ export default function JobInput() {
   const [loading, setLoading] = useState(false);
   const [profilesLoading, setProfilesLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
-  const [workModeWarning, setWorkModeWarning] = useState<string | null>(null);
+  const [workModeWarning, setWorkModeWarning] = useState<{
+    label: string;
+    jobIndex: number;
+    jobTitle: string;
+    company: string;
+  } | null>(null);
   const [duplicateInfo, setDuplicateInfo] = useState<DuplicateInfo | null>(null);
 
   useEffect(() => {
@@ -126,20 +157,26 @@ const BATCH_LIMIT = 5;
     }
   };
 
-  const handleSubmit = async (e: React.FormEvent) => {
+  const handleSubmit = async (e: React.FormEvent<HTMLFormElement>) => {
     e.preventDefault();
     if (!selectedProfileId) {
       setError("Please select a profile");
       return;
     }
 
-    // Check for onsite/hybrid work mode
-    const allDescriptions = jobs.map((j) => j.job_description).join(" ");
-    const workMode = detectWorkMode(allDescriptions);
-    if (workMode) {
-      const label = workMode === "hybrid" ? "hybrid (partially in-office)" : "onsite (in-office)";
-      setWorkModeWarning(label);
-      return;
+    // Check each job individually so we can point to the exact offender
+    for (let i = 0; i < jobs.length; i++) {
+      const workMode = detectWorkMode(jobs[i].job_description);
+      if (workMode) {
+        const label = workMode === "hybrid" ? "hybrid (partially in-office)" : "onsite (in-office)";
+        setWorkModeWarning({
+          label,
+          jobIndex: i,
+          jobTitle: jobs[i].job_title || `Job #${i + 1}`,
+          company: jobs[i].company || "",
+        });
+        return;
+      }
     }
 
     await doGenerate();
@@ -250,7 +287,10 @@ const BATCH_LIMIT = 5;
                 </div>
               </div>
 
-              {jobs.map((job, index) => (
+              {jobs.map((job, index) => {
+                const titleWarn = jobTitleWarning(job.job_title);
+                const compWarn = companyWarning(job.company || "");
+                return (
                 <div
                   key={index}
                   className="bg-white dark:bg-gray-800 rounded-lg shadow-sm border border-gray-200 dark:border-gray-700 p-5"
@@ -271,25 +311,33 @@ const BATCH_LIMIT = 5;
                   </div>
                   <div className="space-y-3">
                     <div className="grid grid-cols-1 md:grid-cols-3 gap-3">
-                      <input
-                        type="text"
-                        placeholder="Job Title *"
-                        value={job.job_title}
-                        onChange={(e) =>
-                          updateJob(index, "job_title", e.target.value)
-                        }
-                        className="w-full px-3 py-2 border border-gray-300 dark:border-gray-600 rounded-md text-sm focus:ring-2 focus:ring-blue-500 focus:border-blue-500 bg-white dark:bg-gray-700 dark:text-white"
-                        required
-                      />
-                      <input
-                        type="text"
-                        placeholder="Company (optional)"
-                        value={job.company || ""}
-                        onChange={(e) =>
-                          updateJob(index, "company", e.target.value)
-                        }
-                        className="w-full px-3 py-2 border border-gray-300 dark:border-gray-600 rounded-md text-sm focus:ring-2 focus:ring-blue-500 focus:border-blue-500 bg-white dark:bg-gray-700 dark:text-white"
-                      />
+                      <div>
+                        <input
+                          type="text"
+                          placeholder="Job Title *"
+                          value={job.job_title}
+                          onChange={(e) =>
+                            updateJob(index, "job_title", e.target.value)
+                          }
+                          maxLength={300}
+                          className={`w-full px-3 py-2 border rounded-md text-sm focus:ring-2 focus:ring-blue-500 focus:border-blue-500 bg-white dark:bg-gray-700 dark:text-white ${titleWarn ? "border-amber-400 dark:border-amber-500" : "border-gray-300 dark:border-gray-600"}`}
+                          required
+                        />
+                        <FieldWarning msg={titleWarn} />
+                      </div>
+                      <div>
+                        <input
+                          type="text"
+                          placeholder="Company (optional)"
+                          value={job.company || ""}
+                          onChange={(e) =>
+                            updateJob(index, "company", e.target.value)
+                          }
+                          maxLength={300}
+                          className={`w-full px-3 py-2 border rounded-md text-sm focus:ring-2 focus:ring-blue-500 focus:border-blue-500 bg-white dark:bg-gray-700 dark:text-white ${compWarn ? "border-amber-400 dark:border-amber-500" : "border-gray-300 dark:border-gray-600"}`}
+                        />
+                        <FieldWarning msg={compWarn} />
+                      </div>
                       <input
                         type="url"
                         placeholder="Job URL (optional)"
@@ -312,7 +360,8 @@ const BATCH_LIMIT = 5;
                     />
                   </div>
                 </div>
-              ))}
+              );
+            })}
             </div>
           ) : (
             <div className="bg-white dark:bg-gray-800 rounded-lg shadow-sm border border-gray-200 dark:border-gray-700 p-6 space-y-4">
@@ -328,9 +377,11 @@ const BATCH_LIMIT = 5;
                       updateJob(0, "job_title", e.target.value)
                     }
                     placeholder="e.g., Senior Software Engineer"
-                    className="w-full px-3 py-2 border border-gray-300 dark:border-gray-600 rounded-md text-sm focus:ring-2 focus:ring-blue-500 focus:border-blue-500 bg-white dark:bg-gray-700 dark:text-white"
+                    maxLength={300}
+                    className={`w-full px-3 py-2 border rounded-md text-sm focus:ring-2 focus:ring-blue-500 focus:border-blue-500 bg-white dark:bg-gray-700 dark:text-white ${jobTitleWarning(jobs[0].job_title) ? "border-amber-400 dark:border-amber-500" : "border-gray-300 dark:border-gray-600"}`}
                     required
                   />
+                  <FieldWarning msg={jobTitleWarning(jobs[0].job_title)} />
                 </div>
                 <div>
                   <label className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-1">
@@ -343,8 +394,10 @@ const BATCH_LIMIT = 5;
                       updateJob(0, "company", e.target.value)
                     }
                     placeholder="e.g., Acme Corp"
-                    className="w-full px-3 py-2 border border-gray-300 dark:border-gray-600 rounded-md text-sm focus:ring-2 focus:ring-blue-500 focus:border-blue-500 bg-white dark:bg-gray-700 dark:text-white"
+                    maxLength={300}
+                    className={`w-full px-3 py-2 border rounded-md text-sm focus:ring-2 focus:ring-blue-500 focus:border-blue-500 bg-white dark:bg-gray-700 dark:text-white ${companyWarning(jobs[0].company || "") ? "border-amber-400 dark:border-amber-500" : "border-gray-300 dark:border-gray-600"}`}
                   />
+                  <FieldWarning msg={companyWarning(jobs[0].company || "")} />
                 </div>
               </div>
               <div>
@@ -406,22 +459,44 @@ const BATCH_LIMIT = 5;
                   <path strokeLinecap="round" strokeLinejoin="round" d="M12 9v3.75m-9.303 3.376c-.866 1.5.217 3.374 1.948 3.374h14.71c1.73 0 2.813-1.874 1.948-3.374L13.949 3.378c-.866-1.5-3.032-1.5-3.898 0L2.697 16.126ZM12 15.75h.007v.008H12v-.008Z" />
                 </svg>
               </div>
-              <div>
+              <div className="flex-1 min-w-0">
                 <h3 className="text-lg font-semibold text-gray-900 dark:text-white">
                   Work Mode Warning
                 </h3>
-                <p className="mt-1 text-sm text-gray-600 dark:text-gray-400">
-                  This job description appears to be <span className="font-medium text-yellow-700 dark:text-yellow-400">{workModeWarning}</span>. Are you sure you want to proceed with generating a resume for this position?
+                <div className="mt-2 px-3 py-2 bg-yellow-50 dark:bg-yellow-900/20 border border-yellow-200 dark:border-yellow-800 rounded-md">
+                  <p className="text-sm font-medium text-gray-900 dark:text-white truncate">
+                    {workModeWarning.jobTitle}
+                    {workModeWarning.company && (
+                      <span className="text-gray-500 dark:text-gray-400 font-normal"> @ {workModeWarning.company}</span>
+                    )}
+                  </p>
+                  <p className="text-xs text-yellow-700 dark:text-yellow-400 mt-0.5">
+                    Detected as <span className="font-medium">{workModeWarning.label}</span>
+                  </p>
+                </div>
+                <p className="mt-2 text-sm text-gray-600 dark:text-gray-400">
+                  Are you sure you want to generate a resume for this position?
                 </p>
               </div>
             </div>
-            <div className="flex justify-end gap-3">
+            <div className="flex justify-end gap-2">
               <button
                 onClick={() => setWorkModeWarning(null)}
                 className="px-4 py-2 text-sm font-medium text-gray-700 dark:text-gray-300 bg-gray-100 dark:bg-gray-700 rounded-md hover:bg-gray-200 dark:hover:bg-gray-600 transition-colors"
               >
                 Cancel
               </button>
+              {batchMode && jobs.length > 1 && (
+                <button
+                  onClick={() => {
+                    removeJob(workModeWarning.jobIndex);
+                    setWorkModeWarning(null);
+                  }}
+                  className="px-4 py-2 text-sm font-medium text-white bg-red-600 rounded-md hover:bg-red-700 transition-colors"
+                >
+                  Remove Job
+                </button>
+              )}
               <button
                 onClick={() => {
                   setWorkModeWarning(null);

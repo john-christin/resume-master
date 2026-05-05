@@ -1,10 +1,10 @@
-from pydantic import BaseModel, field_validator
+from pydantic import BaseModel, Field, field_validator
 
 
 class GenerateRequest(BaseModel):
     profile_id: str
-    job_title: str
-    company: str | None = None
+    job_title: str = Field(max_length=300)
+    company: str | None = Field(None, max_length=300)
     job_url: str | None = None
     job_description: str
     resume_type: str | None = None
@@ -12,8 +12,8 @@ class GenerateRequest(BaseModel):
 
 
 class JobDescriptionEntry(BaseModel):
-    job_title: str
-    company: str | None = None
+    job_title: str = Field(max_length=300)
+    company: str | None = Field(None, max_length=300)
     job_url: str | None = None
     job_description: str
     resume_type: str | None = None

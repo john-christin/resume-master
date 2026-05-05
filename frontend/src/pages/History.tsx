@@ -6,6 +6,134 @@ import LoadingSpinner from "../components/LoadingSpinner";
 import Pagination from "../components/Pagination";
 import type { ApplicationDetail, ApplicationSummary, PaginatedApplications } from "../types";
 
+async function smartDownload(url: string, filename: string): Promise<void> {
+  if ("showSaveFilePicker" in window) {
+    try {
+      const response = await fetch(url);
+      if (!response.ok) throw new Error("fetch failed");
+      const blob = await response.blob();
+      const ext = filename.endsWith(".docx") ? ".docx" : ".pdf";
+      const mimeType =
+        ext === ".docx"
+          ? "application/vnd.openxmlformats-officedocument.wordprocessingml.document"
+          : "application/pdf";
+      // eslint-disable-next-line @typescript-eslint/no-explicit-any
+      const handle = await (window as any).showSaveFilePicker({
+        suggestedName: filename,
+        types: [{ description: "Document", accept: { [mimeType]: [ext] } }],
+      });
+      const writable = await handle.createWritable();
+      await writable.write(blob);
+      await writable.close();
+      return;
+    } catch (e) {
+      if ((e as DOMException).name === "AbortError") return;
+      // fall through to anchor fallback
+    }
+  }
+  const a = document.createElement("a");
+  a.href = url;
+  a.download = filename;
+  document.body.appendChild(a);
+  a.click();
+  document.body.removeChild(a);
+}
+
+// IndexedDB helpers for persisting the chosen download directory handle
+function openHandleDB(): Promise<IDBDatabase> {
+  return new Promise((resolve, reject) => {
+    const req = indexedDB.open("resume-master-dl", 1);
+    req.onupgradeneeded = (e) => {
+      (e.target as IDBOpenDBRequest).result.createObjectStore("handles");
+    };
+    req.onsuccess = (e) => resolve((e.target as IDBOpenDBRequest).result);
+    req.onerror = () => reject(req.error);
+  });
+}
+
+async function loadSavedDirHandle(): Promise<FileSystemDirectoryHandle | null> {
+  try {
+    const db = await openHandleDB();
+    return await new Promise((resolve) => {
+      const req = db.transaction("handles").objectStore("handles").get("download-dir");
+      req.onsuccess = () => resolve((req.result as FileSystemDirectoryHandle) ?? null);
+      req.onerror = () => resolve(null);
+    });
+  } catch {
+    return null;
+  }
+}
+
+async function persistDirHandle(handle: FileSystemDirectoryHandle): Promise<void> {
+  try {
+    const db = await openHandleDB();
+    await new Promise<void>((resolve) => {
+      const tx = db.transaction("handles", "readwrite");
+      tx.objectStore("handles").put(handle, "download-dir");
+      tx.oncomplete = () => resolve();
+      tx.onerror = () => resolve();
+    });
+  } catch {
+    // non-critical — ignore
+  }
+}
+
+async function smartDownloadBoth(
+  resumeUrl: string,
+  resumeFilename: string,
+  coverUrl: string,
+  coverFilename: string,
+  onSuccess: (msg: string) => void
+): Promise<void> {
+  if ("showDirectoryPicker" in window) {
+    try {
+      const [resumeBlob, coverBlob] = await Promise.all([
+        fetch(resumeUrl).then((r) => r.blob()),
+        fetch(coverUrl).then((r) => r.blob()),
+      ]);
+
+      // Try to reuse the previously chosen directory
+      // eslint-disable-next-line @typescript-eslint/no-explicit-any
+      let dirHandle: any = await loadSavedDirHandle();
+      if (dirHandle) {
+        try {
+          const perm = await dirHandle.requestPermission({ mode: "readwrite" });
+          if (perm !== "granted") dirHandle = null;
+        } catch {
+          dirHandle = null;
+        }
+      }
+
+      // Show picker only when no valid saved handle
+      if (!dirHandle) {
+        // eslint-disable-next-line @typescript-eslint/no-explicit-any
+        dirHandle = await (window as any).showDirectoryPicker({ mode: "readwrite" });
+        await persistDirHandle(dirHandle);
+      }
+
+      for (const [blob, name] of [
+        [resumeBlob, resumeFilename],
+        [coverBlob, coverFilename],
+      ] as [Blob, string][]) {
+        const fileHandle = await dirHandle.getFileHandle(name, { create: true });
+        const writable = await fileHandle.createWritable();
+        await writable.write(blob);
+        await writable.close();
+      }
+
+      onSuccess("Resume and cover letter downloaded successfully.");
+      return;
+    } catch (e) {
+      if ((e as DOMException).name === "AbortError") return;
+      // fall through to sequential fallback
+    }
+  }
+  await smartDownload(resumeUrl, resumeFilename);
+  await new Promise((resolve) => setTimeout(resolve, 200));
+  await smartDownload(coverUrl, coverFilename);
+  onSuccess("Resume and cover letter downloaded.");
+}
+
 export default function History() {
   const navigate = useNavigate();
   const location = useLocation();
@@ -34,6 +162,14 @@ export default function History() {
   const [expandedDetail, setExpandedDetail] = useState<ApplicationDetail | null>(null);
   const [expandLoading, setExpandLoading] = useState(false);
 
+  // Toast notification
+  const [toast, setToast] = useState<string | null>(null);
+  useEffect(() => {
+    if (!toast) return;
+    const t = setTimeout(() => setToast(null), 3500);
+    return () => clearTimeout(t);
+  }, [toast]);
+
   const loadApplications = async () => {
     setLoading(true);
     try {
@@ -50,7 +186,7 @@ export default function History() {
     loadApplications();
   }, [page, pageSize, search, sortBy, sortDir]);
 
-  const handleSearch = (e: React.FormEvent) => {
+  const handleSearch = (e: React.FormEvent<HTMLFormElement>) => {
     e.preventDefault();
     setPage(1);
     setSearch(searchInput);
@@ -294,17 +430,40 @@ export default function History() {
                       </td>
                       <td className="px-4 py-3 text-right" onClick={(e) => e.stopPropagation()}>
                         <div className="flex justify-end gap-1">
+                          {app.resume_path && app.cover_letter_path && (() => {
+                            const resumeFile = app.resume_path!.split("/").pop()!;
+                            const resumeExt = resumeFile.endsWith(".docx") ? ".docx" : ".pdf";
+                            const coverFile = app.cover_letter_path!.split("/").pop()!;
+                            const coverExt = coverFile.endsWith(".docx") ? ".docx" : ".pdf";
+                            const sn = (app.profile_name ?? "Resume").trim().replace(/\s+/g, "_");
+                            return (
+                              <button
+                                onClick={() =>
+                                  smartDownloadBoth(
+                                    `/api/download/${resumeFile}?name=${sn}_Resume${resumeExt}`,
+                                    `${sn}_Resume${resumeExt}`,
+                                    `/api/download/${coverFile}?name=${sn}_Cover_Letter${coverExt}`,
+                                    `${sn}_Cover_Letter${coverExt}`,
+                                    setToast
+                                  )
+                                }
+                                className="px-2 py-1 bg-blue-50 dark:bg-blue-900/30 text-blue-700 dark:text-blue-400 rounded text-xs hover:bg-blue-100 dark:hover:bg-blue-800/50"
+                              >
+                                Both
+                              </button>
+                            );
+                          })()}
                           {app.resume_path && (() => {
                             const file = app.resume_path!.split("/").pop()!;
                             const ext = file.endsWith(".docx") ? ".docx" : ".pdf";
                             const sn = (app.profile_name ?? "Resume").trim().replace(/\s+/g, "_");
                             return (
-                              <a
-                                href={`/api/download/${file}?name=${sn}_Resume${ext}`}
+                              <button
+                                onClick={() => smartDownload(`/api/download/${file}?name=${sn}_Resume${ext}`, `${sn}_Resume${ext}`)}
                                 className="px-2 py-1 bg-green-50 dark:bg-green-900/30 text-green-700 dark:text-green-400 rounded text-xs hover:bg-green-100 dark:hover:bg-green-900/50"
                               >
                                 Resume
-                              </a>
+                              </button>
                             );
                           })()}
                           {app.cover_letter_path && (() => {
@@ -312,12 +471,12 @@ export default function History() {
                             const ext = file.endsWith(".docx") ? ".docx" : ".pdf";
                             const sn = (app.profile_name ?? "Resume").trim().replace(/\s+/g, "_");
                             return (
-                              <a
-                                href={`/api/download/${file}?name=${sn}_Cover_Letter${ext}`}
+                              <button
+                                onClick={() => smartDownload(`/api/download/${file}?name=${sn}_Cover_Letter${ext}`, `${sn}_Cover_Letter${ext}`)}
                                 className="px-2 py-1 bg-purple-50 dark:bg-purple-900/30 text-purple-700 dark:text-purple-400 rounded text-xs hover:bg-purple-100 dark:hover:bg-purple-900/50"
                               >
                                 Cover
-                              </a>
+                              </button>
                             );
                           })()}
                           {!isCaller && (
@@ -391,6 +550,15 @@ export default function History() {
             />
           )}
         </>
+      )}
+
+      {toast && (
+        <div className="fixed bottom-6 right-6 z-50 flex items-center gap-2 px-4 py-3 rounded-lg shadow-lg text-sm bg-gray-900 dark:bg-gray-100 text-white dark:text-gray-900 animate-fade-in">
+          <svg className="w-4 h-4 shrink-0 text-green-400 dark:text-green-600" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2.5}>
+            <path strokeLinecap="round" strokeLinejoin="round" d="M5 13l4 4L19 7" />
+          </svg>
+          {toast}
+        </div>
       )}
     </div>
   );
