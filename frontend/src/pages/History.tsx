@@ -162,6 +162,34 @@ export default function History() {
   const [expandedDetail, setExpandedDetail] = useState<ApplicationDetail | null>(null);
   const [expandLoading, setExpandLoading] = useState(false);
 
+  // Format picker dialog
+  type FormatPicker = { type: "both" | "resume" | "cover"; resumeFile: string | null; coverFile: string | null; profileName: string };
+  const [formatPicker, setFormatPicker] = useState<FormatPicker | null>(null);
+
+  const handleFormatPick = (fmt: "pdf" | "docx") => {
+    if (!formatPicker) return;
+    const { type, resumeFile, coverFile, profileName: sn } = formatPicker;
+    setFormatPicker(null);
+
+    const toFile = (raw: string, label: string, ext: string) => {
+      const base = raw.replace(/\.(pdf|docx)$/, "");
+      const filename = `${base}.${ext}`;
+      return { url: `/api/download/${filename}?name=${sn}_${label}.${ext}`, name: `${sn}_${label}.${ext}` };
+    };
+
+    if (type === "both" && resumeFile && coverFile) {
+      const r = toFile(resumeFile, "Resume", fmt);
+      const c = toFile(coverFile, "Cover_Letter", fmt);
+      smartDownloadBoth(r.url, r.name, c.url, c.name, setToast);
+    } else if (type === "resume" && resumeFile) {
+      const r = toFile(resumeFile, "Resume", fmt);
+      smartDownload(r.url, r.name);
+    } else if (type === "cover" && coverFile) {
+      const c = toFile(coverFile, "Cover_Letter", fmt);
+      smartDownload(c.url, c.name);
+    }
+  };
+
   // Toast notification
   const [toast, setToast] = useState<string | null>(null);
   useEffect(() => {
@@ -432,21 +460,11 @@ export default function History() {
                         <div className="flex justify-end gap-1">
                           {app.resume_path && app.cover_letter_path && (() => {
                             const resumeFile = app.resume_path!.split("/").pop()!;
-                            const resumeExt = resumeFile.endsWith(".docx") ? ".docx" : ".pdf";
                             const coverFile = app.cover_letter_path!.split("/").pop()!;
-                            const coverExt = coverFile.endsWith(".docx") ? ".docx" : ".pdf";
                             const sn = (app.profile_name ?? "Resume").trim().replace(/\s+/g, "_");
                             return (
                               <button
-                                onClick={() =>
-                                  smartDownloadBoth(
-                                    `/api/download/${resumeFile}?name=${sn}_Resume${resumeExt}`,
-                                    `${sn}_Resume${resumeExt}`,
-                                    `/api/download/${coverFile}?name=${sn}_Cover_Letter${coverExt}`,
-                                    `${sn}_Cover_Letter${coverExt}`,
-                                    setToast
-                                  )
-                                }
+                                onClick={() => setFormatPicker({ type: "both", resumeFile, coverFile, profileName: sn })}
                                 className="px-2 py-1 bg-blue-50 dark:bg-blue-900/30 text-blue-700 dark:text-blue-400 rounded text-xs hover:bg-blue-100 dark:hover:bg-blue-800/50"
                               >
                                 Both
@@ -455,11 +473,10 @@ export default function History() {
                           })()}
                           {app.resume_path && (() => {
                             const file = app.resume_path!.split("/").pop()!;
-                            const ext = file.endsWith(".docx") ? ".docx" : ".pdf";
                             const sn = (app.profile_name ?? "Resume").trim().replace(/\s+/g, "_");
                             return (
                               <button
-                                onClick={() => smartDownload(`/api/download/${file}?name=${sn}_Resume${ext}`, `${sn}_Resume${ext}`)}
+                                onClick={() => setFormatPicker({ type: "resume", resumeFile: file, coverFile: null, profileName: sn })}
                                 className="px-2 py-1 bg-green-50 dark:bg-green-900/30 text-green-700 dark:text-green-400 rounded text-xs hover:bg-green-100 dark:hover:bg-green-900/50"
                               >
                                 Resume
@@ -468,11 +485,10 @@ export default function History() {
                           })()}
                           {app.cover_letter_path && (() => {
                             const file = app.cover_letter_path!.split("/").pop()!;
-                            const ext = file.endsWith(".docx") ? ".docx" : ".pdf";
                             const sn = (app.profile_name ?? "Resume").trim().replace(/\s+/g, "_");
                             return (
                               <button
-                                onClick={() => smartDownload(`/api/download/${file}?name=${sn}_Cover_Letter${ext}`, `${sn}_Cover_Letter${ext}`)}
+                                onClick={() => setFormatPicker({ type: "cover", resumeFile: null, coverFile: file, profileName: sn })}
                                 className="px-2 py-1 bg-purple-50 dark:bg-purple-900/30 text-purple-700 dark:text-purple-400 rounded text-xs hover:bg-purple-100 dark:hover:bg-purple-900/50"
                               >
                                 Cover
@@ -550,6 +566,46 @@ export default function History() {
             />
           )}
         </>
+      )}
+
+      {/* Format picker dialog */}
+      {formatPicker && (
+        <div
+          className="fixed inset-0 z-50 flex items-center justify-center bg-black/40"
+          onClick={() => setFormatPicker(null)}
+        >
+          <div
+            className="bg-white dark:bg-gray-800 rounded-xl shadow-xl border border-gray-200 dark:border-gray-700 p-6 w-72"
+            onClick={(e) => e.stopPropagation()}
+          >
+            <p className="text-sm font-semibold text-gray-900 dark:text-white mb-1">
+              Choose format
+            </p>
+            <p className="text-xs text-gray-500 dark:text-gray-400 mb-5">
+              {formatPicker.type === "both" ? "Both files" : formatPicker.type === "resume" ? "Resume" : "Cover Letter"} will be downloaded in the selected format.
+            </p>
+            <div className="flex gap-3">
+              <button
+                onClick={() => handleFormatPick("pdf")}
+                className="flex-1 py-2.5 rounded-lg bg-red-50 dark:bg-red-900/30 text-red-700 dark:text-red-400 text-sm font-medium hover:bg-red-100 dark:hover:bg-red-900/50 transition-colors"
+              >
+                PDF
+              </button>
+              <button
+                onClick={() => handleFormatPick("docx")}
+                className="flex-1 py-2.5 rounded-lg bg-blue-50 dark:bg-blue-900/30 text-blue-700 dark:text-blue-400 text-sm font-medium hover:bg-blue-100 dark:hover:bg-blue-800/50 transition-colors"
+              >
+                DOCX
+              </button>
+            </div>
+            <button
+              onClick={() => setFormatPicker(null)}
+              className="mt-3 w-full py-2 text-xs text-gray-400 dark:text-gray-500 hover:text-gray-600 dark:hover:text-gray-300 transition-colors"
+            >
+              Cancel
+            </button>
+          </div>
+        </div>
       )}
 
       {toast && (

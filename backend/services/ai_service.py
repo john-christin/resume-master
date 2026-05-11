@@ -228,7 +228,7 @@ def _call_anthropic(messages, max_tokens, temperature, config):
                 "x-api-key": config["api_key"],
                 "anthropic-version": "2023-06-01",
             },
-            timeout=120,
+            timeout=httpx.Timeout(connect=15.0, read=600.0, write=30.0, pool=15.0),
         )
         resp.raise_for_status()
         data = resp.json()

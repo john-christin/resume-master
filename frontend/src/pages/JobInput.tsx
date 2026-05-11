@@ -1,7 +1,8 @@
 import axios from "axios";
 import { useEffect, useState } from "react";
 import { useLocation, useNavigate } from "react-router-dom";
-import { batchGenerate, generateApplication } from "../api/generate";
+import { generateApplication } from "../api/generate";
+import { submitBatchJob } from "../api/batch_jobs";
 import { getProfiles } from "../api/profile";
 import LoadingSpinner from "../components/LoadingSpinner";
 import type { DuplicateInfo, JobDescriptionEntry, Profile } from "../types";
@@ -84,7 +85,7 @@ export default function JobInput() {
     );
   };
 
-const BATCH_LIMIT = 5;
+const BATCH_LIMIT = 10;
 
   const addJob = () => {
     if (jobs.length >= BATCH_LIMIT) return;
@@ -109,7 +110,7 @@ const BATCH_LIMIT = 5;
 
     try {
       if (batchMode && jobs.length > 1) {
-        const res = await batchGenerate({
+        const res = await submitBatchJob({
           profile_id: selectedProfileId,
           jobs: jobs.map((j) => ({
             job_title: j.job_title,
@@ -119,14 +120,7 @@ const BATCH_LIMIT = 5;
             skip_duplicate_check: skipDuplicateCheck,
           })),
         });
-        navigate("/history", {
-          state: {
-            batchResult: {
-              count: res.data.results.length,
-              totalCost: res.data.total_cost,
-            },
-          },
-        });
+        navigate(`/batch-jobs/${res.data.job_id}`);
       } else {
         const job = jobs[0];
         const res = await generateApplication({
@@ -190,7 +184,7 @@ const BATCH_LIMIT = 5;
       <LoadingSpinner
         message={
           batchMode && jobs.length > 1
-            ? `Generating ${jobs.length} applications... This may take a while.`
+            ? "Submitting batch job..."
             : "Tailoring your resume and generating cover letter... This may take 10-15 seconds."
         }
       />

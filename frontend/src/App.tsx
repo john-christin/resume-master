@@ -3,6 +3,7 @@ import { getUserRole } from "./auth";
 import Layout from "./components/Layout";
 import ProtectedRoute from "./components/ProtectedRoute";
 import AdminDashboard from "./pages/AdminDashboard";
+import BatchJobStatus from "./pages/BatchJobStatus";
 import History from "./pages/History";
 import JobInput from "./pages/JobInput";
 import Login from "./pages/Login";
@@ -47,6 +48,7 @@ function App() {
             <Route element={<ProtectedRoute roles={["admin", "bidder"]} />}>
               <Route path="/generate" element={<JobInput />} />
               <Route path="/preview/:applicationId" element={<Preview />} />
+              <Route path="/batch-jobs/:jobId" element={<BatchJobStatus />} />
             </Route>
 
             {/* History - all approved roles */}

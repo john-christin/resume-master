@@ -227,3 +227,31 @@ export interface UserSearchResult {
   id: string;
   username: string;
 }
+
+export interface BatchJobError {
+  index: number;
+  job_title: string;
+  error: string;
+}
+
+export interface BatchJobSubmitResponse {
+  job_id: string;
+  status: string;
+  total_jobs: number;
+}
+
+export interface BatchJobStatus {
+  id: string;
+  status: "pending" | "running" | "completed" | "partial" | "failed";
+  profile_name: string | null;
+  total_jobs: number;
+  completed_jobs: number;
+  failed_jobs: number;
+  total_cost: number;
+  total_prompt_tokens: number;
+  total_completion_tokens: number;
+  error_details: BatchJobError[];
+  created_at: string;
+  started_at: string | null;
+  completed_at: string | null;
+}

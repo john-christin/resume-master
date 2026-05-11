@@ -20,7 +20,7 @@ class JobDescriptionEntry(BaseModel):
     skip_duplicate_check: bool = False
 
 
-BATCH_LIMIT = 5
+BATCH_LIMIT = 10
 
 
 class BatchGenerateRequest(BaseModel):

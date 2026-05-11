@@ -14,8 +14,9 @@ from starlette.requests import Request
 from config import settings
 from database import SessionLocal
 from models.token_pricing import TokenPricing
-from routers import admin, applications, auth, generate, profile, user_settings
+from routers import admin, applications, auth, batch_jobs, generate, profile, user_settings
 from services import log_service
+from services.batch_worker import start_worker
 from utils import get_client_ip
 
 logger = logging.getLogger(__name__)
@@ -115,6 +116,7 @@ async def lifespan(app: FastAPI):
     removed = log_service.cleanup_old_logs(retention_days=15)
     if removed:
         logger.info("Cleaned up %d log entries older than 15 days", removed)
+    await start_worker()
     yield
 
 
@@ -137,6 +139,7 @@ app.mount("/uploads", StaticFiles(directory=str(uploads_dir)), name="uploads")
 app.include_router(auth.router)
 app.include_router(profile.router)
 app.include_router(generate.router)
+app.include_router(batch_jobs.router)
 app.include_router(applications.router)
 app.include_router(admin.router)
 app.include_router(user_settings.router)
