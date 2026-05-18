@@ -10,7 +10,9 @@ from models.education import Education
 from models.experience import Experience
 from models.profile import Profile
 from models.profile_share import profile_shares
+from models.tech_stack import TechStack
 from models.user import User
+from schemas.admin import TechStackResponse
 from schemas.profile import (
     ProfileCreate,
     ProfileResponse,
@@ -24,6 +26,17 @@ router = APIRouter(tags=["profiles"])
 _bidder_or_admin = require_role("admin", "bidder")
 
 
+@router.get("/api/tech-stacks", response_model=list[TechStackResponse])
+def list_tech_stacks_public(
+    current_user: User = Depends(_bidder_or_admin),
+    db: Session = Depends(get_db),
+):
+    """Return active tech stacks for profile-form dropdowns."""
+    return db.scalars(
+        select(TechStack).where(TechStack.is_active.is_(True)).order_by(TechStack.name.asc())
+    ).all()
+
+
 def _profile_to_response(profile: Profile, current_user_id: str) -> dict:
     """Convert a Profile ORM object to a response dict with ownership flags."""
     data = {
@@ -35,6 +48,7 @@ def _profile_to_response(profile: Profile, current_user_id: str) -> dict:
         "email": profile.email,
         "linkedin": profile.linkedin,
         "summary": profile.summary,
+        "tech_stack_id": profile.tech_stack_id,
         "educations": profile.educations,
         "experiences": profile.experiences,
         "is_owner": profile.owner_id == current_user_id,
@@ -128,6 +142,7 @@ def create_profile(
         email=data.email,
         linkedin=data.linkedin,
         summary=data.summary,
+        tech_stack_id=data.tech_stack_id or None,
     )
 
     for edu in data.educations:
@@ -172,6 +187,7 @@ def update_profile(
     profile.email = data.email
     profile.linkedin = data.linkedin
     profile.summary = data.summary
+    profile.tech_stack_id = data.tech_stack_id or None
 
     profile.educations.clear()
     for edu in data.educations:

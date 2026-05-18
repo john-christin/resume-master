@@ -16,7 +16,8 @@ export default function Layout() {
 
   const navItems: { path: string; label: string }[] = [];
   if (role === "admin") {
-    navItems.push({ path: "/admin", label: "Dashboard" });
+    navItems.push({ path: "/admin/dashboard", label: "Dashboard" });
+    navItems.push({ path: "/admin/settings", label: "Settings" });
     navItems.push({ path: "/profiles", label: "Profiles" });
     navItems.push({ path: "/generate", label: "Generate" });
     navItems.push({ path: "/history", label: "History" });
@@ -24,6 +25,7 @@ export default function Layout() {
     navItems.push({ path: "/history", label: "Search" });
   } else {
     // bidder
+    navItems.push({ path: "/dashboard", label: "Dashboard" });
     navItems.push({ path: "/profiles", label: "Profiles" });
     navItems.push({ path: "/generate", label: "Generate" });
     navItems.push({ path: "/history", label: "History" });
@@ -43,7 +45,7 @@ export default function Layout() {
                   key={item.path}
                   to={item.path}
                   className={`px-4 py-2 rounded-md text-sm font-medium transition-colors ${
-                    location.pathname === item.path
+                    (location.pathname === item.path || location.pathname.startsWith(item.path + "/"))
                       ? "bg-blue-100 text-blue-700 dark:bg-blue-900 dark:text-blue-300"
                       : "text-gray-600 hover:bg-gray-100 hover:text-gray-900 dark:text-gray-300 dark:hover:bg-gray-700 dark:hover:text-white"
                   }`}

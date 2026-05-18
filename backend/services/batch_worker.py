@@ -202,7 +202,6 @@ async def _run_batch(batch_id: str) -> None:
                     resume_type=job_data.get("resume_type"),
                     current_user=user,
                     db=job_db,
-                    skip_duplicate_check=job_data.get("skip_duplicate_check", False),
                 )
                 _record_success(batch_id, index, result)
                 logger.info("Batch %s job %d ✓ (%s)", batch_id, index, job_data.get("job_title"))

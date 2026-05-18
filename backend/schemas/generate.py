@@ -1,3 +1,5 @@
+from datetime import datetime
+
 from pydantic import BaseModel, Field, field_validator
 
 
@@ -76,3 +78,24 @@ class BatchGenerateResponse(BaseModel):
     total_prompt_tokens: int = 0
     total_completion_tokens: int = 0
     total_cost: float = 0.0
+
+
+class CompanyCheckRequest(BaseModel):
+    profile_id: str
+    companies: list[str]
+
+
+class ExistingApplicationInfo(BaseModel):
+    id: str
+    job_title: str
+    company: str
+    created_at: datetime
+
+
+class CompanyMatch(BaseModel):
+    company: str
+    existing_applications: list[ExistingApplicationInfo]
+
+
+class CompanyCheckResponse(BaseModel):
+    matches: list[CompanyMatch]

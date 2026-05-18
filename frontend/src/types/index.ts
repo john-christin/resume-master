@@ -18,6 +18,14 @@ export interface Experience {
   end_date?: string;
 }
 
+export interface TechStack {
+  id: string;
+  name: string;
+  description?: string | null;
+  is_active: boolean;
+  created_at: string;
+}
+
 export interface Profile {
   id: string;
   owner_id: string;
@@ -27,6 +35,7 @@ export interface Profile {
   email?: string;
   linkedin?: string;
   summary?: string;
+  tech_stack_id?: string | null;
   educations: Education[];
   experiences: Experience[];
   is_owner: boolean;
@@ -43,6 +52,7 @@ export interface ProfileCreate {
   email?: string;
   linkedin?: string;
   summary?: string;
+  tech_stack_id?: string | null;
   educations: Education[];
   experiences: Experience[];
 }
@@ -86,15 +96,20 @@ export interface JobDescriptionEntry {
   skip_duplicate_check?: boolean;
 }
 
-export interface DuplicateInfo {
-  duplicate: boolean;
-  similarity: number;
-  existing_application: {
-    id: string;
-    job_title: string;
-    company: string;
-    created_at: string;
-  };
+export interface ExistingApplicationInfo {
+  id: string;
+  job_title: string;
+  company: string;
+  created_at: string;
+}
+
+export interface CompanyMatch {
+  company: string;
+  existing_applications: ExistingApplicationInfo[];
+}
+
+export interface CompanyCheckResponse {
+  matches: CompanyMatch[];
 }
 
 export interface BatchGenerateRequest {
@@ -153,6 +168,8 @@ export interface ApplicationSummary {
   cover_letter_path?: string;
   profile_name?: string;
   location?: string;
+  tech_stack_name?: string | null;
+  call_scheduled?: boolean;
   user_username?: string;
   prompt_tokens?: number;
   completion_tokens?: number;
@@ -190,6 +207,7 @@ export interface KnowledgeBase {
   name: string;
   content: string;
   is_active: boolean;
+  tech_stack_id?: string | null;
   created_at: string;
   updated_at?: string;
 }

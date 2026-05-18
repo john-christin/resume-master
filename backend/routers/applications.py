@@ -1,7 +1,7 @@
 import math
 from pathlib import Path
 
-from fastapi import APIRouter, Depends, HTTPException, Query
+from fastapi import APIRouter, Body, Depends, HTTPException, Query
 from sqlalchemy import func, or_, select
 from sqlalchemy.orm import Session
 
@@ -31,6 +31,8 @@ def _app_to_summary(app: Application, db: Session, include_cost: bool = True) ->
         "cover_letter_path": app.cover_letter_path,
         "profile_name": app.profile_name,
         "location": app.location,
+        "tech_stack_name": app.tech_stack_name,
+        "call_scheduled": app.call_scheduled,
         "created_at": app.created_at,
         "user_username": app.user.username if app.user else None,
     }
@@ -48,6 +50,7 @@ def list_applications(
     search: str | None = None,
     sort_by: str = "created_at",
     sort_dir: str = "desc",
+    tech_stack_id: str | None = None,
     current_user: User = Depends(get_approved_user),
     db: Session = Depends(get_db),
 ):
@@ -60,6 +63,11 @@ def list_applications(
         stmt = stmt.where(Application.user_id == current_user.id)
         count_stmt = count_stmt.where(Application.user_id == current_user.id)
     # caller and admin see all
+
+    # Tech stack filter
+    if tech_stack_id:
+        stmt = stmt.where(Application.tech_stack_id == tech_stack_id)
+        count_stmt = count_stmt.where(Application.tech_stack_id == tech_stack_id)
 
     # Search filter
     if search:
@@ -161,3 +169,26 @@ def delete_application(
 
     db.delete(application)
     db.commit()
+
+
+@router.patch("/{app_id}/call-status", response_model=ApplicationSummary)
+def update_call_status(
+    app_id: str,
+    call_scheduled: bool = Body(..., embed=True),
+    current_user: User = Depends(get_approved_user),
+    db: Session = Depends(get_db),
+):
+    application = db.get(Application, app_id)
+    if not application:
+        raise HTTPException(status_code=404, detail="Application not found")
+
+    # Bidders can only update their own; callers cannot update
+    if current_user.role == "caller":
+        raise HTTPException(status_code=403, detail="Callers cannot update call status")
+    if current_user.role == "bidder" and application.user_id != current_user.id:
+        raise HTTPException(status_code=404, detail="Application not found")
+
+    application.call_scheduled = call_scheduled
+    db.commit()
+    db.refresh(application)
+    return _app_to_summary(application, db, include_cost=current_user.role in ("admin", "caller"))

@@ -30,6 +30,7 @@ class ProfileCreate(BaseModel):
     email: str | None = None
     linkedin: str | None = None
     summary: str | None = None
+    tech_stack_id: str | None = None
     educations: list[EducationSchema] = []
     experiences: list[ExperienceSchema] = []
 
@@ -43,6 +44,7 @@ class ProfileResponse(BaseModel):
     email: str | None = None
     linkedin: str | None = None
     summary: str | None = None
+    tech_stack_id: str | None = None
     educations: list[EducationSchema] = []
     experiences: list[ExperienceSchema] = []
     is_owner: bool = False

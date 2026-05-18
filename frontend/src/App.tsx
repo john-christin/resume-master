@@ -2,8 +2,10 @@ import { BrowserRouter, Navigate, Route, Routes } from "react-router-dom";
 import { getUserRole } from "./auth";
 import Layout from "./components/Layout";
 import ProtectedRoute from "./components/ProtectedRoute";
-import AdminDashboard from "./pages/AdminDashboard";
+import AdminDashboardPage from "./pages/AdminDashboardPage";
+import AdminSettings from "./pages/AdminSettings";
 import BatchJobStatus from "./pages/BatchJobStatus";
+import BidderDashboard from "./pages/BidderDashboard";
 import History from "./pages/History";
 import JobInput from "./pages/JobInput";
 import Login from "./pages/Login";
@@ -18,9 +20,10 @@ import Suspended from "./pages/Suspended";
 
 function RoleRedirect() {
   const role = getUserRole();
-  if (role === "admin") return <Navigate to="/admin" replace />;
+  if (role === "admin") return <Navigate to="/admin/dashboard" replace />;
+  if (role === "bidder") return <Navigate to="/dashboard" replace />;
   if (role === "caller") return <Navigate to="/history" replace />;
-  return <Navigate to="/profiles" replace />;
+  return <Navigate to="/login" replace />;
 }
 
 function App() {
@@ -36,6 +39,11 @@ function App() {
         <Route element={<ProtectedRoute roles={["admin", "bidder", "caller"]} />}>
           <Route element={<Layout />}>
             <Route path="/" element={<RoleRedirect />} />
+
+            {/* Bidder dashboard */}
+            <Route element={<ProtectedRoute roles={["bidder"]} />}>
+              <Route path="/dashboard" element={<BidderDashboard />} />
+            </Route>
 
             {/* Profiles - bidder + admin */}
             <Route element={<ProtectedRoute roles={["admin", "bidder"]} />}>
@@ -57,9 +65,11 @@ function App() {
             {/* Settings - all approved roles */}
             <Route path="/settings" element={<Settings />} />
 
-            {/* Admin dashboard */}
+            {/* Admin routes */}
             <Route element={<ProtectedRoute roles={["admin"]} />}>
-              <Route path="/admin" element={<AdminDashboard />} />
+              <Route path="/admin" element={<Navigate to="/admin/dashboard" replace />} />
+              <Route path="/admin/dashboard" element={<AdminDashboardPage />} />
+              <Route path="/admin/settings" element={<AdminSettings />} />
             </Route>
           </Route>
         </Route>

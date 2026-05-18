@@ -12,7 +12,6 @@ import {
   deleteModel,
   deleteTechStack,
   deleteUser,
-  getDashboardStats,
   getKnowledgeBases,
   getModels,
   getPricing,
@@ -31,25 +30,18 @@ import {
   getLogCount,
 } from "../api/admin";
 import type { SystemLogItem } from "../api/admin";
-import type { DashboardStats } from "../api/admin";
 import LoadingSpinner from "../components/LoadingSpinner";
 import type { AIModelConfig, KnowledgeBase, TechStack, TokenPricing, UserListItem } from "../types";
 import { getUserId } from "../auth";
 
-type Tab = "pending" | "stats" | "pricing" | "stacks" | "kb" | "models" | "users" | "logs";
+type Tab = "pending" | "pricing" | "stacks" | "kb" | "models" | "users" | "logs";
 
-export default function AdminDashboard() {
-  const [tab, setTab] = useState<Tab>("stats");
+export default function AdminSettings() {
+  const [tab, setTab] = useState<Tab>("pending");
   const [pendingUsers, setPendingUsers] = useState<UserListItem[]>([]);
-  const [stats, setStats] = useState<DashboardStats | null>(null);
   const [pricing, setPricingState] = useState<TokenPricing | null>(null);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
-
-  // Date range — default to today
-  const today = new Date().toISOString().split("T")[0];
-  const [fromDate, setFromDate] = useState(today);
-  const [toDate, setToDate] = useState(today);
 
   // Pricing form
   const [inputPrice, setInputPrice] = useState("");
@@ -98,9 +90,6 @@ export default function AdminDashboard() {
   const [editingModelId, setEditingModelId] = useState<string | null>(null);
   const [modelModalOpen, setModelModalOpen] = useState(false);
 
-  // Expanded user rows
-  const [expandedUsers, setExpandedUsers] = useState<Set<string>>(new Set());
-
   // User management tab
   const [allUsers, setAllUsers] = useState<UserListItem[]>([]);
   const [userSearch, setUserSearch] = useState("");
@@ -123,16 +112,14 @@ export default function AdminDashboard() {
   const loadData = async () => {
     setLoading(true);
     try {
-      const [pendingRes, statsRes, pricingRes, kbRes, modelsRes, stacksRes] = await Promise.all([
+      const [pendingRes, pricingRes, kbRes, modelsRes, stacksRes] = await Promise.all([
         getUsers("pending"),
-        getDashboardStats(fromDate || undefined, toDate || undefined),
         getPricing(),
         getKnowledgeBases(),
         getModels(),
         getTechStacks(),
       ]);
       setPendingUsers(pendingRes.data);
-      setStats(statsRes.data);
       setPricingState(pricingRes.data);
       setKbList(kbRes.data);
       setModelList(modelsRes.data);
@@ -142,7 +129,7 @@ export default function AdminDashboard() {
         setOutputPrice(String(pricingRes.data.output_price_per_1k));
       }
     } catch {
-      setError("Failed to load admin data");
+      setError("Failed to load settings");
     } finally {
       setLoading(false);
     }
@@ -162,17 +149,6 @@ export default function AdminDashboard() {
       fetchLogs(0);
     }
   }, [tab]);
-
-  const handleDateFilter = () => {
-    loadData();
-  };
-
-  const handleClearDateFilter = () => {
-    setFromDate("");
-    setToDate("");
-    // Reload with no filters after state update
-    setTimeout(() => loadData(), 0);
-  };
 
   const handleApprove = async (userId: string) => {
     const role = roleSelections[userId] || "bidder";
@@ -330,21 +306,12 @@ export default function AdminDashboard() {
     }
   };
 
-  const toggleExpand = (userId: string) => {
-    setExpandedUsers((prev) => {
-      const next = new Set(prev);
-      if (next.has(userId)) next.delete(userId);
-      else next.add(userId);
-      return next;
-    });
-  };
-
-  if (loading) return <LoadingSpinner message="Loading admin dashboard..." />;
+  if (loading) return <LoadingSpinner message="Loading settings..." />;
 
   return (
     <div>
       <h1 className="text-2xl font-bold text-gray-900 dark:text-white mb-6">
-        Admin Dashboard
+        Admin Settings
       </h1>
 
       {error && (
@@ -353,48 +320,13 @@ export default function AdminDashboard() {
         </div>
       )}
 
-      {/* Stats cards */}
-      {stats && (
-        <div className="grid grid-cols-2 md:grid-cols-4 gap-4 mb-6">
-          <div className="bg-white dark:bg-gray-800 rounded-lg shadow-sm border border-gray-200 dark:border-gray-700 p-4">
-            <p className="text-sm text-gray-500 dark:text-gray-400">Total Users</p>
-            <p className="text-2xl font-bold text-gray-900 dark:text-white">
-              {stats.total_users}
-            </p>
-          </div>
-          <div className="bg-white dark:bg-gray-800 rounded-lg shadow-sm border border-gray-200 dark:border-gray-700 p-4">
-            <p className="text-sm text-gray-500 dark:text-gray-400">Pending Approval</p>
-            <p className="text-2xl font-bold text-yellow-600 dark:text-yellow-400">
-              {stats.pending_users}
-            </p>
-          </div>
-          <div className="bg-white dark:bg-gray-800 rounded-lg shadow-sm border border-gray-200 dark:border-gray-700 p-4">
-            <p className="text-sm text-gray-500 dark:text-gray-400">
-              Applications{(fromDate || toDate) ? " (filtered)" : ""}
-            </p>
-            <p className="text-2xl font-bold text-blue-600 dark:text-blue-400">
-              {stats.total_applications}
-            </p>
-          </div>
-          <div className="bg-white dark:bg-gray-800 rounded-lg shadow-sm border border-gray-200 dark:border-gray-700 p-4">
-            <p className="text-sm text-gray-500 dark:text-gray-400">
-              Total Cost{(fromDate || toDate) ? " (filtered)" : ""}
-            </p>
-            <p className="text-2xl font-bold text-green-600 dark:text-green-400">
-              ${stats.total_cost.toFixed(4)}
-            </p>
-          </div>
-        </div>
-      )}
-
       {/* Tab navigation */}
       <div className="border-b border-gray-200 dark:border-gray-700 mb-6">
         <div className="flex space-x-6">
           {(
             [
-              ["stats", "Usage & Cost"],
-              ["users", "Users"],
               ["pending", `Pending (${pendingUsers.length})`],
+              ["users", "Users"],
               ["pricing", "Token Pricing"],
               ["stacks", "Tech Stacks"],
               ["kb", "Knowledge Base"],
@@ -416,153 +348,6 @@ export default function AdminDashboard() {
           ))}
         </div>
       </div>
-
-      {/* Usage & Cost tab */}
-      {tab === "stats" && stats && (
-        <div>
-          {/* Date range filter */}
-          <div className="flex flex-wrap items-end gap-3 mb-4">
-            <div>
-              <label className="block text-xs font-medium text-gray-600 dark:text-gray-400 mb-1">
-                From
-              </label>
-              <input
-                type="date"
-                value={fromDate}
-                onChange={(e) => setFromDate(e.target.value)}
-                className="px-3 py-2 border border-gray-300 dark:border-gray-600 rounded-md text-sm bg-white dark:bg-gray-700 dark:text-white"
-              />
-            </div>
-            <div>
-              <label className="block text-xs font-medium text-gray-600 dark:text-gray-400 mb-1">
-                To
-              </label>
-              <input
-                type="date"
-                value={toDate}
-                onChange={(e) => setToDate(e.target.value)}
-                className="px-3 py-2 border border-gray-300 dark:border-gray-600 rounded-md text-sm bg-white dark:bg-gray-700 dark:text-white"
-              />
-            </div>
-            <button
-              onClick={handleDateFilter}
-              className="px-4 py-2 bg-blue-600 text-white rounded-md text-sm hover:bg-blue-700"
-            >
-              Apply
-            </button>
-            {(fromDate || toDate) && (
-              <button
-                onClick={handleClearDateFilter}
-                className="px-3 py-2 text-gray-500 hover:text-gray-700 dark:text-gray-400 dark:hover:text-gray-300 text-sm"
-              >
-                Clear
-              </button>
-            )}
-          </div>
-
-          {/* Per-user table */}
-          <div className="bg-white dark:bg-gray-800 rounded-lg shadow-sm border border-gray-200 dark:border-gray-700 overflow-x-auto">
-            <table className="w-full text-sm">
-              <thead className="bg-gray-50 dark:bg-gray-700/50 border-b border-gray-200 dark:border-gray-700">
-                <tr>
-                  <th className="text-left px-4 py-3 font-medium text-gray-600 dark:text-gray-400 w-8"></th>
-                  <th className="text-left px-4 py-3 font-medium text-gray-600 dark:text-gray-400">
-                    User
-                  </th>
-                  <th className="text-left px-4 py-3 font-medium text-gray-600 dark:text-gray-400">
-                    Role
-                  </th>
-                  <th className="text-right px-4 py-3 font-medium text-gray-600 dark:text-gray-400">
-                    Profiles
-                  </th>
-                  <th className="text-right px-4 py-3 font-medium text-gray-600 dark:text-gray-400">
-                    Applications
-                  </th>
-                  <th className="text-right px-4 py-3 font-medium text-gray-600 dark:text-gray-400">
-                    Cost
-                  </th>
-                </tr>
-              </thead>
-              <tbody>
-                {stats.users.map((user) => (
-                  <>
-                    <tr
-                      key={user.id}
-                      className="border-b border-gray-100 dark:border-gray-700 hover:bg-gray-50 dark:hover:bg-gray-700/50 cursor-pointer"
-                      onClick={() => toggleExpand(user.id)}
-                    >
-                      <td className="px-4 py-3 text-gray-400 dark:text-gray-500">
-                        {user.profiles.length > 0 && (
-                          <span className="text-xs">
-                            {expandedUsers.has(user.id) ? "\u25BC" : "\u25B6"}
-                          </span>
-                        )}
-                      </td>
-                      <td className="px-4 py-3 text-gray-900 dark:text-white font-medium">
-                        {user.username}
-                      </td>
-                      <td className="px-4 py-3">
-                        <span
-                          className={`px-2 py-0.5 rounded text-xs font-medium ${
-                            user.role === "admin"
-                              ? "bg-purple-100 dark:bg-purple-900/30 text-purple-700 dark:text-purple-400"
-                              : user.role === "caller"
-                                ? "bg-yellow-100 dark:bg-yellow-900/30 text-yellow-700 dark:text-yellow-400"
-                                : "bg-blue-100 dark:bg-blue-900/30 text-blue-700 dark:text-blue-400"
-                          }`}
-                        >
-                          {user.role}
-                        </span>
-                      </td>
-                      <td className="px-4 py-3 text-right text-gray-700 dark:text-gray-300">
-                        {user.profile_count}
-                      </td>
-                      <td className="px-4 py-3 text-right text-gray-700 dark:text-gray-300">
-                        {user.application_count}
-                      </td>
-                      <td className="px-4 py-3 text-right text-gray-700 dark:text-gray-300 font-medium">
-                        ${user.total_cost.toFixed(4)}
-                      </td>
-                    </tr>
-                    {expandedUsers.has(user.id) &&
-                      user.profiles.map((p) => (
-                        <tr
-                          key={`${user.id}-${p.profile_id}`}
-                          className="bg-gray-50 dark:bg-gray-700/30 border-b border-gray-100 dark:border-gray-700"
-                        >
-                          <td className="px-4 py-2"></td>
-                          <td
-                            className="px-4 py-2 text-gray-600 dark:text-gray-400 text-xs pl-8"
-                            colSpan={2}
-                          >
-                            {p.name}
-                          </td>
-                          <td className="px-4 py-2"></td>
-                          <td className="px-4 py-2 text-right text-gray-600 dark:text-gray-400 text-xs">
-                            {p.application_count}
-                          </td>
-                          <td className="px-4 py-2 text-right text-gray-600 dark:text-gray-400 text-xs">
-                            ${p.total_cost.toFixed(4)}
-                          </td>
-                        </tr>
-                      ))}
-                  </>
-                ))}
-                {stats.users.length === 0 && (
-                  <tr>
-                    <td
-                      colSpan={6}
-                      className="px-4 py-8 text-center text-gray-400 dark:text-gray-500"
-                    >
-                      No approved users yet.
-                    </td>
-                  </tr>
-                )}
-              </tbody>
-            </table>
-          </div>
-        </div>
-      )}
 
       {/* Users tab */}
       {tab === "users" && (

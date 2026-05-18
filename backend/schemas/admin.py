@@ -106,15 +106,38 @@ class ActivateModelRequest(BaseModel):
     role: str = "primary"  # "primary" | "utility"
 
 
+class TechStackCreate(BaseModel):
+    name: str
+    description: str | None = None
+
+
+class TechStackUpdate(BaseModel):
+    name: str | None = None
+    description: str | None = None
+    is_active: bool | None = None
+
+
+class TechStackResponse(BaseModel):
+    id: str
+    name: str
+    description: str | None = None
+    is_active: bool
+    created_at: datetime
+
+    model_config = {"from_attributes": True}
+
+
 class KnowledgeBaseCreate(BaseModel):
     name: str
     content: str
+    tech_stack_id: str | None = None
 
 
 class KnowledgeBaseUpdate(BaseModel):
     name: str | None = None
     content: str | None = None
     is_active: bool | None = None
+    tech_stack_id: str | None = None
 
 
 class KnowledgeBaseResponse(BaseModel):
@@ -122,10 +145,60 @@ class KnowledgeBaseResponse(BaseModel):
     name: str
     content: str
     is_active: bool
+    tech_stack_id: str | None = None
     created_at: datetime
     updated_at: datetime | None = None
 
     model_config = {"from_attributes": True}
+
+
+class DailyStatPoint(BaseModel):
+    date: str
+    count: int
+    cost: float
+
+
+class UserDailyPoint(BaseModel):
+    date: str
+    user_id: str
+    username: str
+    count: int
+    cost: float
+
+
+class ProfileStatPoint(BaseModel):
+    profile_id: str
+    name: str
+    username: str
+    count: int
+    cost: float
+
+
+class UserCostStat(BaseModel):
+    user_id: str
+    username: str
+    today_count: int
+    today_cost: float
+    week_count: int
+    week_cost: float
+    month_count: int
+    month_cost: float
+
+
+class AdminOverview(BaseModel):
+    today_count: int
+    today_cost: float
+    active_users: int
+    pending_users: int
+    calls_scheduled: int
+
+
+class UserCallStat(BaseModel):
+    user_id: str
+    username: str
+    total: int
+    scheduled: int
+    not_scheduled: int
 
 
 class SystemLogItem(BaseModel):

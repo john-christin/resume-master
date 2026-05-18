@@ -16,6 +16,7 @@ from database import SessionLocal, get_db
 from models.ai_model_config import AIModelConfig
 from models.application import Application
 from models.knowledge_base import KnowledgeBase
+from models.tech_stack import TechStack
 from models.profile import Profile
 from models.profile_share import profile_shares
 from models.token_pricing import TokenPricing
@@ -23,6 +24,10 @@ from models.user import User
 from schemas.generate import (
     BatchGenerateRequest,
     BatchGenerateResponse,
+    CompanyCheckRequest,
+    CompanyCheckResponse,
+    CompanyMatch,
+    ExistingApplicationInfo,
     GeneratePreview,
     GenerateRequest,
     GenerateResponse,
@@ -115,65 +120,12 @@ async def _generate_single(
     resume_type: str | None,
     current_user: User,
     db: Session,
-    skip_duplicate_check: bool = False,
 ) -> GenerateResponse:
     """Core generation logic for a single job description."""
     total_prompt = 0
     total_completion = 0
 
     company = company.strip() if company else None
-
-    # Duplicate check: find previous applications for same profile + company
-    if not skip_duplicate_check and company:
-        existing_apps = db.scalars(
-            select(Application)
-            .where(
-                Application.profile_id == profile.id,
-                Application.company.ilike(company),
-            )
-            .order_by(Application.created_at.desc())
-        ).all()
-
-        for prev_app in existing_apps:
-            similarity = ai_service.text_similarity(
-                job_description, prev_app.job_description
-            )
-            if similarity > 0.9:
-                # High similarity — definitely a duplicate
-                raise HTTPException(
-                    status_code=409,
-                    detail={
-                        "duplicate": True,
-                        "similarity": round(similarity, 2),
-                        "existing_application": {
-                            "id": prev_app.id,
-                            "job_title": prev_app.job_title,
-                            "company": prev_app.company,
-                            "created_at": prev_app.created_at.isoformat(),
-                        },
-                    },
-                )
-            if similarity > 0.6:
-                # Ambiguous — use AI to confirm
-                is_same, ai_usage = ai_service.ai_check_same_role(
-                    job_description, prev_app.job_description
-                )
-                total_prompt += ai_usage["prompt_tokens"]
-                total_completion += ai_usage["completion_tokens"]
-                if is_same:
-                    raise HTTPException(
-                        status_code=409,
-                        detail={
-                            "duplicate": True,
-                            "similarity": round(similarity, 2),
-                            "existing_application": {
-                                "id": prev_app.id,
-                                "job_title": prev_app.job_title,
-                                "company": prev_app.company,
-                                "created_at": prev_app.created_at.isoformat(),
-                            },
-                        },
-                    )
 
     # Cross-profile reference: find similar applications from other profiles
     reference_bullets = None
@@ -231,9 +183,25 @@ async def _generate_single(
         for edu in profile.educations
     ]
 
-    # Load active knowledge bases
+    # Load active knowledge bases: general (no stack) + stack-specific
+    tech_stack_id = profile.tech_stack_id
+    tech_stack_name: str | None = None
+    if tech_stack_id:
+        ts = db.get(TechStack, tech_stack_id)
+        tech_stack_name = ts.name if ts else None
+
+    kb_filter = KnowledgeBase.is_active.is_(True)
+    if tech_stack_id:
+        from sqlalchemy import or_
+        kb_filter = kb_filter & or_(
+            KnowledgeBase.tech_stack_id.is_(None),
+            KnowledgeBase.tech_stack_id == tech_stack_id,
+        )
+    else:
+        kb_filter = kb_filter & KnowledgeBase.tech_stack_id.is_(None)
+
     active_kbs = db.scalars(
-        select(KnowledgeBase).where(KnowledgeBase.is_active.is_(True))
+        select(KnowledgeBase).where(kb_filter)
     ).all()
     kb_content = (
         "\n\n".join(f"### {kb.name}\n{kb.content}" for kb in active_kbs)
@@ -243,9 +211,9 @@ async def _generate_single(
 
     creativity_factor = getattr(profile, "creativity_factor", 0.3)
 
-    # Tailor resume + generate summary/skills/cover letter concurrently
+    # Tailor resume + generate summary/skills + generate cover letter concurrently
     try:
-        (tailored, resume_usage), (content_result, content_usage) = await asyncio.gather(
+        (tailored, resume_usage), (content_result, content_usage), (cover_letter_text, cl_usage) = await asyncio.gather(
             asyncio.to_thread(
                 ai_service.tailor_resume,
                 user_name=profile.name,
@@ -260,6 +228,18 @@ async def _generate_single(
             ),
             asyncio.to_thread(
                 ai_service.generate_resume_content,
+                user_name=profile.name,
+                email=profile.email,
+                phone=profile.phone,
+                experiences=experiences,
+                job_description=job_description,
+                job_title=job_title,
+                company=company,
+                knowledge_base=kb_content,
+                creativity_factor=creativity_factor,
+            ),
+            asyncio.to_thread(
+                ai_service.generate_cover_letter,
                 user_name=profile.name,
                 email=profile.email,
                 phone=profile.phone,
@@ -285,11 +265,10 @@ async def _generate_single(
             **log_service.exc_to_log_kwargs(e),
         )
         raise HTTPException(status_code=502, detail=f"AI service error: {e}")
-    total_prompt += resume_usage["prompt_tokens"] + content_usage["prompt_tokens"]
-    total_completion += resume_usage["completion_tokens"] + content_usage["completion_tokens"]
+    total_prompt += resume_usage["prompt_tokens"] + content_usage["prompt_tokens"] + cl_usage["prompt_tokens"]
+    total_completion += resume_usage["completion_tokens"] + content_usage["completion_tokens"] + cl_usage["completion_tokens"]
     summary_text = content_result["summary"]
     skills_data = content_result.get("skills", [])
-    cover_letter_text = content_result["cover_letter"]
 
     # Calculate cost
     cost = _calculate_cost(total_prompt, total_completion, db)
@@ -305,6 +284,8 @@ async def _generate_single(
         job_url=job_url,
         job_description=job_description,
         resume_type=resume_type,
+        tech_stack_id=tech_stack_id,
+        tech_stack_name=tech_stack_name,
         tailored_bullets=json.dumps(tailored),
         cover_letter_text=cover_letter_text,
         prompt_tokens=total_prompt,
@@ -402,6 +383,62 @@ async def _generate_single(
     )
 
 
+def _company_name_similar(a: str, b: str) -> bool:
+    """True if the two company names are an exact match or one contains the other."""
+    a = a.lower().strip()
+    b = b.lower().strip()
+    return a == b or a in b or b in a
+
+
+@router.post("/api/generate/check-companies", response_model=CompanyCheckResponse)
+async def check_company_duplicates(
+    req: CompanyCheckRequest,
+    current_user: User = Depends(_bidder_or_admin),
+    db: Session = Depends(get_db),
+):
+    """Return previous applications that share a similar company name.
+
+    Only checks company-name similarity (exact or substring match).
+    Does not inspect job descriptions or use AI. The caller decides
+    whether to proceed.
+    """
+    profile = _get_accessible_profile(req.profile_id, current_user, db)
+
+    existing_apps = db.scalars(
+        select(Application)
+        .where(Application.profile_id == profile.id)
+        .order_by(Application.created_at.desc())
+    ).all()
+
+    seen: set[str] = set()
+    matches: list[CompanyMatch] = []
+
+    for new_company in req.companies:
+        if not new_company or not new_company.strip():
+            continue
+        key = new_company.lower().strip()
+        if key in seen:
+            continue
+        seen.add(key)
+
+        matched: list[ExistingApplicationInfo] = []
+        for app in existing_apps:
+            if app.company and _company_name_similar(new_company, app.company):
+                matched.append(
+                    ExistingApplicationInfo(
+                        id=str(app.id),
+                        job_title=app.job_title,
+                        company=app.company,
+                        created_at=app.created_at,
+                    )
+                )
+
+        if matched:
+            matches.append(CompanyMatch(company=new_company, existing_applications=matched))
+
+    return CompanyCheckResponse(matches=matches)
+
+
 @router.post("/api/generate", response_model=GenerateResponse)
 async def generate_application(
     req: GenerateRequest,
@@ -418,7 +455,6 @@ async def generate_application(
         resume_type=req.resume_type,
         current_user=current_user,
         db=db,
-        skip_duplicate_check=req.skip_duplicate_check,
     )
 
 
@@ -448,7 +484,6 @@ async def batch_generate(
                 resume_type=job.resume_type,
                 current_user=job_user,
                 db=job_db,
-                skip_duplicate_check=job.skip_duplicate_check,
             )
         finally:
             job_db.close()

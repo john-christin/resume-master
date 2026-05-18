@@ -1,11 +1,17 @@
-import axios from "axios";
 import { useEffect, useState } from "react";
 import { useLocation, useNavigate } from "react-router-dom";
-import { generateApplication } from "../api/generate";
+import { checkCompanies, generateApplication } from "../api/generate";
 import { submitBatchJob } from "../api/batch_jobs";
 import { getProfiles } from "../api/profile";
 import LoadingSpinner from "../components/LoadingSpinner";
-import type { DuplicateInfo, JobDescriptionEntry, Profile } from "../types";
+import type { ExistingApplicationInfo, JobDescriptionEntry, Profile } from "../types";
+
+interface JobMatch {
+  jobIndex: number;
+  jobTitle: string;
+  jobCompany: string;
+  existingApplications: ExistingApplicationInfo[];
+}
 
 const emptyJob: JobDescriptionEntry = {
   job_title: "",
@@ -61,7 +67,9 @@ export default function JobInput() {
     jobTitle: string;
     company: string;
   } | null>(null);
-  const [duplicateInfo, setDuplicateInfo] = useState<DuplicateInfo | null>(null);
+  const [pendingMatches, setPendingMatches] = useState<JobMatch[]>([]);
+  const [markedForRemoval, setMarkedForRemoval] = useState<Set<number>>(new Set());
+  const [expandedMatches, setExpandedMatches] = useState<Set<number>>(new Set());
 
   useEffect(() => {
     getProfiles(true)
@@ -104,51 +112,115 @@ const BATCH_LIMIT = 10;
     return null;
   };
 
-  const doGenerate = async (skipDuplicateCheck = false) => {
+  const doGenerate = async (activeJobs: JobDescriptionEntry[]) => {
     setLoading(true);
     setError(null);
 
     try {
-      if (batchMode && jobs.length > 1) {
+      if (batchMode && activeJobs.length > 1) {
         const res = await submitBatchJob({
           profile_id: selectedProfileId,
-          jobs: jobs.map((j) => ({
+          jobs: activeJobs.map((j) => ({
             job_title: j.job_title,
             company: j.company || undefined,
             job_url: j.job_url || undefined,
             job_description: j.job_description,
-            skip_duplicate_check: skipDuplicateCheck,
           })),
         });
         navigate(`/batch-jobs/${res.data.job_id}`);
       } else {
-        const job = jobs[0];
+        const job = activeJobs[0];
         const res = await generateApplication({
           profile_id: selectedProfileId,
           job_title: job.job_title,
           company: job.company || undefined,
           job_url: job.job_url || undefined,
           job_description: job.job_description,
-          skip_duplicate_check: skipDuplicateCheck,
         });
         navigate(`/preview/${res.data.application_id}`, {
           state: res.data,
         });
       }
     } catch (err: unknown) {
-      if (axios.isAxiosError(err) && err.response?.status === 409) {
-        const data = err.response.data?.detail as DuplicateInfo;
-        if (data?.duplicate) {
-          setDuplicateInfo(data);
-          return;
-        }
-      }
       const message =
         err instanceof Error ? err.message : "Failed to generate application";
       setError(message);
     } finally {
       setLoading(false);
     }
+  };
+
+  const runCompanyCheckThenGenerate = async (activeJobs: JobDescriptionEntry[]) => {
+    const companies = activeJobs
+      .map((j) => j.company?.trim())
+      .filter((c): c is string => !!c);
+
+    if (companies.length > 0) {
+      try {
+        const res = await checkCompanies(selectedProfileId, companies);
+        if (res.data.matches.length > 0) {
+          const matchByCompany = new Map(
+            res.data.matches.map((m) => [m.company.toLowerCase().trim(), m])
+          );
+          const jobMatches: JobMatch[] = [];
+          activeJobs.forEach((job, idx) => {
+            if (!job.company) return;
+            const key = job.company.toLowerCase().trim();
+            const match = matchByCompany.get(key);
+            if (match) {
+              jobMatches.push({
+                jobIndex: idx,
+                jobTitle: job.job_title,
+                jobCompany: job.company,
+                existingApplications: match.existing_applications,
+              });
+            }
+          });
+          if (jobMatches.length > 0) {
+            setPendingMatches(jobMatches);
+            setMarkedForRemoval(new Set());
+            return;
+          }
+        }
+      } catch {
+        // If the check call fails, proceed silently — don't block generation
+      }
+    }
+
+    await doGenerate(activeJobs);
+  };
+
+  const handleContinueDespiteMatches = async () => {
+    const filteredJobs = jobs.filter((_, i) => !markedForRemoval.has(i));
+    setJobs(filteredJobs);
+    setPendingMatches([]);
+    setMarkedForRemoval(new Set());
+    setExpandedMatches(new Set());
+    await doGenerate(filteredJobs);
+  };
+
+  const dismissMatchModal = () => {
+    setPendingMatches([]);
+    setMarkedForRemoval(new Set());
+    setExpandedMatches(new Set());
+  };
+
+  const toggleRemoval = (jobIndex: number) => {
+    setMarkedForRemoval((prev) => {
+      const next = new Set(prev);
+      if (next.has(jobIndex)) next.delete(jobIndex);
+      else next.add(jobIndex);
+      return next;
+    });
+  };
+
+  const toggleExpanded = (jobIndex: number) => {
+    setExpandedMatches((prev) => {
+      const next = new Set(prev);
+      if (next.has(jobIndex)) next.delete(jobIndex);
+      else next.add(jobIndex);
+      return next;
+    });
   };
 
   const handleSubmit = async (e: React.FormEvent<HTMLFormElement>) => {
@@ -173,7 +245,7 @@ const BATCH_LIMIT = 10;
       }
     }
 
-    await doGenerate();
+    await runCompanyCheckThenGenerate(jobs);
   };
 
   if (profilesLoading)
@@ -293,15 +365,14 @@ const BATCH_LIMIT = 10;
                     <span className="text-sm font-medium text-gray-500 dark:text-gray-400">
                       Job #{index + 1}
                     </span>
-                    {jobs.length > 1 && (
-                      <button
-                        type="button"
-                        onClick={() => removeJob(index)}
-                        className="text-sm text-red-500 hover:text-red-700 dark:text-red-400 dark:hover:text-red-300"
-                      >
-                        Remove
-                      </button>
-                    )}
+                    <button
+                      type="button"
+                      onClick={() => removeJob(index)}
+                      disabled={jobs.length === 1}
+                      className="text-sm text-red-500 hover:text-red-700 dark:text-red-400 dark:hover:text-red-300 disabled:opacity-30 disabled:cursor-not-allowed"
+                    >
+                      Remove
+                    </button>
                   </div>
                   <div className="space-y-3">
                     <div className="grid grid-cols-1 md:grid-cols-3 gap-3">
@@ -494,7 +565,7 @@ const BATCH_LIMIT = 10;
               <button
                 onClick={() => {
                   setWorkModeWarning(null);
-                  doGenerate();
+                  runCompanyCheckThenGenerate(jobs);
                 }}
                 className="px-4 py-2 text-sm font-medium text-white bg-yellow-600 rounded-md hover:bg-yellow-700 transition-colors"
               >
@@ -505,62 +576,137 @@ const BATCH_LIMIT = 10;
         </div>
       )}
 
-      {/* Duplicate application modal */}
-      {duplicateInfo && (
+      {/* Already-applied company alert */}
+      {pendingMatches.length > 0 && (
         <div className="fixed inset-0 z-50 flex items-center justify-center">
           <div
             className="absolute inset-0 bg-black/50"
-            onClick={() => setDuplicateInfo(null)}
+            onClick={dismissMatchModal}
           />
-          <div className="relative bg-white dark:bg-gray-800 rounded-lg shadow-xl border border-gray-200 dark:border-gray-700 max-w-md w-full mx-4 p-6">
+          <div className="relative bg-white dark:bg-gray-800 rounded-lg shadow-xl border border-gray-200 dark:border-gray-700 max-w-lg w-full mx-4 p-6">
             <div className="flex items-start gap-3 mb-4">
               <div className="flex-shrink-0 w-10 h-10 rounded-full bg-orange-100 dark:bg-orange-900/40 flex items-center justify-center">
                 <svg className="w-5 h-5 text-orange-600 dark:text-orange-400" fill="none" viewBox="0 0 24 24" strokeWidth={2} stroke="currentColor">
-                  <path strokeLinecap="round" strokeLinejoin="round" d="M15.75 17.25v3.375c0 .621-.504 1.125-1.125 1.125h-9.75a1.125 1.125 0 0 1-1.125-1.125V7.875c0-.621.504-1.125 1.125-1.125H6.75a9.06 9.06 0 0 1 1.5.124m7.5 10.376h3.375c.621 0 1.125-.504 1.125-1.125V11.25c0-4.46-3.243-8.161-7.5-8.876a9.06 9.06 0 0 0-1.5-.124H9.375c-.621 0-1.125.504-1.125 1.125v3.5m7.5 10.375H9.375a1.125 1.125 0 0 1-1.125-1.125v-9.25m12 6.625v-1.875a3.375 3.375 0 0 0-3.375-3.375h-1.5a1.125 1.125 0 0 1-1.125-1.125v-1.5a3.375 3.375 0 0 0-3.375-3.375H9.75" />
+                  <path strokeLinecap="round" strokeLinejoin="round" d="M12 9v3.75m-9.303 3.376c-.866 1.5.217 3.374 1.948 3.374h14.71c1.73 0 2.813-1.874 1.948-3.374L13.949 3.378c-.866-1.5-3.032-1.5-3.898 0L2.697 16.126ZM12 15.75h.007v.008H12v-.008Z" />
                 </svg>
               </div>
               <div>
                 <h3 className="text-lg font-semibold text-gray-900 dark:text-white">
-                  Duplicate Application Detected
+                  Already Applied to {pendingMatches.length === 1 ? "This Company" : "These Companies"}
                 </h3>
                 <p className="mt-1 text-sm text-gray-600 dark:text-gray-400">
-                  A similar application for this role has already been generated with the same profile.
+                  {pendingMatches.length === 1
+                    ? "This profile has a previous application for this company."
+                    : `This profile has previous applications for ${pendingMatches.length} of the selected companies.`}
+                  {" "}Click a row to expand. You can remove jobs or continue anyway.
                 </p>
               </div>
             </div>
 
-            <div className="mb-5 p-3 bg-gray-50 dark:bg-gray-700/50 rounded-lg border border-gray-200 dark:border-gray-600">
-              <p className="text-xs font-medium text-gray-500 dark:text-gray-400 uppercase tracking-wide mb-2">
-                Previous Application
-              </p>
-              <div className="space-y-1 text-sm">
-                <p className="text-gray-900 dark:text-white font-medium">
-                  {duplicateInfo.existing_application.job_title}
-                </p>
-                <p className="text-gray-600 dark:text-gray-400">
-                  {duplicateInfo.existing_application.company}
-                </p>
-                <p className="text-gray-500 dark:text-gray-400 text-xs">
-                  Generated on {new Date(duplicateInfo.existing_application.created_at).toLocaleDateString()} &middot; {Math.round(duplicateInfo.similarity * 100)}% match
-                </p>
-              </div>
+            <div className="space-y-2 max-h-96 overflow-y-auto mb-5">
+              {pendingMatches.map((match) => {
+                const removing = markedForRemoval.has(match.jobIndex);
+                const expanded = expandedMatches.has(match.jobIndex);
+                const mostRecent = match.existingApplications[0];
+                const jobData = jobs[match.jobIndex];
+                return (
+                  <div
+                    key={match.jobIndex}
+                    className={`rounded-lg border transition-opacity ${
+                      removing
+                        ? "opacity-40 border-gray-200 dark:border-gray-600 bg-gray-50 dark:bg-gray-700/30"
+                        : "border-orange-200 dark:border-orange-800 bg-orange-50 dark:bg-orange-900/20"
+                    }`}
+                  >
+                    {/* Collapsed header — always visible, click to toggle */}
+                    <button
+                      type="button"
+                      onClick={() => toggleExpanded(match.jobIndex)}
+                      className="w-full flex items-start justify-between gap-3 p-3 text-left"
+                    >
+                      <div className="min-w-0 flex-1">
+                        <p className="text-sm font-medium text-gray-900 dark:text-white truncate">
+                          {match.jobTitle || "Untitled"}{" "}
+                          <span className="text-gray-500 dark:text-gray-400 font-normal">@ {mostRecent.company}</span>
+                        </p>
+                        <p className="text-xs text-gray-500 dark:text-gray-400 mt-0.5">
+                          Previously applied for{" "}
+                          <span className="font-medium text-gray-700 dark:text-gray-300">{mostRecent.job_title}</span>
+                          {" "}· {new Date(mostRecent.created_at).toLocaleDateString()}
+                          {match.existingApplications.length > 1 && (
+                            <span className="ml-1 text-orange-600 dark:text-orange-400">
+                              (+{match.existingApplications.length - 1} more)
+                            </span>
+                          )}
+                        </p>
+                      </div>
+                      <svg
+                        className={`shrink-0 w-4 h-4 mt-0.5 text-gray-400 transition-transform duration-150 ${expanded ? "rotate-180" : ""}`}
+                        fill="none" viewBox="0 0 24 24" strokeWidth={2} stroke="currentColor"
+                      >
+                        <path strokeLinecap="round" strokeLinejoin="round" d="m19.5 8.25-7.5 7.5-7.5-7.5" />
+                      </svg>
+                    </button>
+
+                    {/* Expanded detail */}
+                    {expanded && (
+                      <div className="px-3 pb-3 space-y-2 border-t border-orange-200 dark:border-orange-800/60 pt-2">
+                        {jobData?.job_url && (
+                          <div>
+                            <p className="text-xs font-medium text-gray-500 dark:text-gray-400 uppercase tracking-wide mb-0.5">Job URL</p>
+                            <a
+                              href={jobData.job_url}
+                              target="_blank"
+                              rel="noopener noreferrer"
+                              onClick={(e) => e.stopPropagation()}
+                              className="text-xs text-blue-600 dark:text-blue-400 hover:underline break-all"
+                            >
+                              {jobData.job_url}
+                            </a>
+                          </div>
+                        )}
+                        <div>
+                          <p className="text-xs font-medium text-gray-500 dark:text-gray-400 uppercase tracking-wide mb-0.5">Job Description</p>
+                          <p className="text-xs text-gray-700 dark:text-gray-300 whitespace-pre-line max-h-36 overflow-y-auto leading-relaxed">
+                            {jobData?.job_description || "—"}
+                          </p>
+                        </div>
+                      </div>
+                    )}
+
+                    {/* Remove/Undo button — batch only */}
+                    {batchMode && jobs.length > 1 && (
+                      <div className="px-3 pb-3 flex justify-end">
+                        <button
+                          type="button"
+                          onClick={(e) => { e.stopPropagation(); toggleRemoval(match.jobIndex); }}
+                          className={`text-xs font-medium px-2.5 py-1 rounded-md transition-colors ${
+                            removing
+                              ? "bg-gray-200 dark:bg-gray-600 text-gray-700 dark:text-gray-300 hover:bg-gray-300 dark:hover:bg-gray-500"
+                              : "bg-red-100 dark:bg-red-900/40 text-red-700 dark:text-red-400 hover:bg-red-200 dark:hover:bg-red-900/60"
+                          }`}
+                        >
+                          {removing ? "Undo" : "Remove"}
+                        </button>
+                      </div>
+                    )}
+                  </div>
+                );
+              })}
             </div>
 
             <div className="flex justify-end gap-3">
               <button
-                onClick={() => setDuplicateInfo(null)}
+                onClick={dismissMatchModal}
                 className="px-4 py-2 text-sm font-medium text-gray-700 dark:text-gray-300 bg-gray-100 dark:bg-gray-700 rounded-md hover:bg-gray-200 dark:hover:bg-gray-600 transition-colors"
               >
                 Cancel
               </button>
               <button
-                onClick={() => {
-                  setDuplicateInfo(null);
-                  doGenerate(true);
-                }}
+                onClick={handleContinueDespiteMatches}
                 className="px-4 py-2 text-sm font-medium text-white bg-orange-600 rounded-md hover:bg-orange-700 transition-colors"
               >
-                Generate Anyway
+                Continue
               </button>
             </div>
           </div>

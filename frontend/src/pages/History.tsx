@@ -1,10 +1,11 @@
 import { useEffect, useState } from "react";
 import { useLocation, useNavigate } from "react-router-dom";
-import { deleteApplication, getApplication, getApplications } from "../api/applications";
+import { deleteApplication, getApplication, getApplications, updateCallStatus } from "../api/applications";
+import { getTechStacksPublic } from "../api/profile";
 import { getUserRole } from "../auth";
 import LoadingSpinner from "../components/LoadingSpinner";
 import Pagination from "../components/Pagination";
-import type { ApplicationDetail, ApplicationSummary, PaginatedApplications } from "../types";
+import type { ApplicationDetail, ApplicationSummary, PaginatedApplications, TechStack } from "../types";
 
 async function smartDownload(url: string, filename: string): Promise<void> {
   if ("showSaveFilePicker" in window) {
@@ -156,11 +157,27 @@ export default function History() {
   const [sortBy, setSortBy] = useState("created_at");
   const [sortDir, setSortDir] = useState("desc");
   const [searchInput, setSearchInput] = useState("");
+  const [techStackFilter, setTechStackFilter] = useState("");
+  const [techStacks, setTechStacks] = useState<TechStack[]>([]);
 
   // Expanded row state
   const [expandedId, setExpandedId] = useState<string | null>(null);
   const [expandedDetail, setExpandedDetail] = useState<ApplicationDetail | null>(null);
   const [expandLoading, setExpandLoading] = useState(false);
+
+  // Call status local override map (appId -> boolean)
+  const [callStatus, setCallStatus] = useState<Record<string, boolean>>({});
+
+  const handleCallToggle = async (appId: string, currentValue: boolean) => {
+    const next = !currentValue;
+    setCallStatus((prev) => ({ ...prev, [appId]: next }));
+    try {
+      await updateCallStatus(appId, next);
+    } catch {
+      // revert on failure
+      setCallStatus((prev) => ({ ...prev, [appId]: currentValue }));
+    }
+  };
 
   // Format picker dialog
   type FormatPicker = { type: "both" | "resume" | "cover"; resumeFile: string | null; coverFile: string | null; profileName: string };
@@ -198,10 +215,14 @@ export default function History() {
     return () => clearTimeout(t);
   }, [toast]);
 
+  useEffect(() => {
+    getTechStacksPublic().then((res) => setTechStacks(res.data)).catch(() => {});
+  }, []);
+
   const loadApplications = async () => {
     setLoading(true);
     try {
-      const res = await getApplications(page, pageSize, search || undefined, sortBy, sortDir);
+      const res = await getApplications(page, pageSize, search || undefined, sortBy, sortDir, techStackFilter || undefined);
       setData(res.data);
     } catch {
       setError("Failed to load applications");
@@ -212,7 +233,7 @@ export default function History() {
 
   useEffect(() => {
     loadApplications();
-  }, [page, pageSize, search, sortBy, sortDir]);
+  }, [page, pageSize, search, sortBy, sortDir, techStackFilter]);
 
   const handleSearch = (e: React.FormEvent<HTMLFormElement>) => {
     e.preventDefault();
@@ -283,11 +304,8 @@ export default function History() {
   const isCaller = role === "caller";
   const showCost = role === "admin";
 
-  // Count columns for detail row colSpan
-  let colCount = 5; // title, company, profile, date, actions
-  if (role === "caller" || role === "admin") colCount++; // user
-  if (role === "admin") colCount++; // location
-  if (showCost) colCount++;
+  // title, company, profile, date, call, actions
+  const colCount = 6;
 
   return (
     <div>
@@ -323,35 +341,49 @@ export default function History() {
         </div>
       )}
 
-      {/* Search bar */}
-      <form onSubmit={handleSearch} className="mb-4 flex gap-2">
-        <input
-          type="text"
-          placeholder="Search by job title, company, URL, profile..."
-          value={searchInput}
-          onChange={(e) => setSearchInput(e.target.value)}
-          className="flex-1 px-3 py-2 border border-gray-300 dark:border-gray-600 rounded-md text-sm focus:ring-2 focus:ring-blue-500 focus:border-blue-500 bg-white dark:bg-gray-700 dark:text-white"
-        />
-        <button
-          type="submit"
-          className="px-4 py-2 bg-gray-100 dark:bg-gray-700 text-gray-700 dark:text-gray-300 rounded-md text-sm hover:bg-gray-200 dark:hover:bg-gray-600"
-        >
-          Search
-        </button>
-        {search && (
+      {/* Search bar + filters */}
+      <div className="mb-4 flex flex-wrap gap-2">
+        <form onSubmit={handleSearch} className="flex flex-1 gap-2 min-w-0">
+          <input
+            type="text"
+            placeholder="Search by job title, company, URL, profile..."
+            value={searchInput}
+            onChange={(e) => setSearchInput(e.target.value)}
+            className="flex-1 px-3 py-2 border border-gray-300 dark:border-gray-600 rounded-md text-sm focus:ring-2 focus:ring-blue-500 focus:border-blue-500 bg-white dark:bg-gray-700 dark:text-white min-w-0"
+          />
           <button
-            type="button"
-            onClick={() => {
-              setSearchInput("");
-              setSearch("");
-              setPage(1);
-            }}
-            className="px-3 py-2 text-gray-500 hover:text-gray-700 dark:text-gray-400 dark:hover:text-gray-300 text-sm"
+            type="submit"
+            className="px-4 py-2 bg-gray-100 dark:bg-gray-700 text-gray-700 dark:text-gray-300 rounded-md text-sm hover:bg-gray-200 dark:hover:bg-gray-600"
           >
-            Clear
+            Search
           </button>
+          {search && (
+            <button
+              type="button"
+              onClick={() => {
+                setSearchInput("");
+                setSearch("");
+                setPage(1);
+              }}
+              className="px-3 py-2 text-gray-500 hover:text-gray-700 dark:text-gray-400 dark:hover:text-gray-300 text-sm"
+            >
+              Clear
+            </button>
+          )}
+        </form>
+        {techStacks.length > 0 && (
+          <select
+            value={techStackFilter}
+            onChange={(e) => { setTechStackFilter(e.target.value); setPage(1); }}
+            className="px-3 py-2 border border-gray-300 dark:border-gray-600 rounded-md text-sm bg-white dark:bg-gray-700 dark:text-white"
+          >
+            <option value="">All Tech Stacks</option>
+            {techStacks.map((ts) => (
+              <option key={ts.id} value={ts.id}>{ts.name}</option>
+            ))}
+          </select>
         )}
-      </form>
+      </div>
 
       {applications.length === 0 && !loading ? (
         <div className="text-center py-12 bg-white dark:bg-gray-800 rounded-lg shadow-sm border border-gray-200 dark:border-gray-700">
@@ -388,27 +420,17 @@ export default function History() {
                   <th className="text-left px-4 py-3 font-medium text-gray-600 dark:text-gray-400">
                     Profile
                   </th>
-                  {role === "admin" && (
-                    <th className="text-left px-4 py-3 font-medium text-gray-600 dark:text-gray-400">
-                      Location
-                    </th>
-                  )}
-                  {(role === "caller" || role === "admin") && (
-                    <th className="text-left px-4 py-3 font-medium text-gray-600 dark:text-gray-400">
-                      User
-                    </th>
-                  )}
-                  {showCost && (
-                    <th className="text-right px-4 py-3 font-medium text-gray-600 dark:text-gray-400">
-                      Cost
-                    </th>
-                  )}
                   <th
                     className="text-left px-4 py-3 font-medium text-gray-600 dark:text-gray-400 cursor-pointer select-none hover:text-gray-900 dark:hover:text-white"
                     onClick={() => handleSort("created_at")}
                   >
                     Date <SortIcon column="created_at" />
                   </th>
+                  {!isCaller && (
+                    <th className="text-center px-4 py-3 font-medium text-gray-600 dark:text-gray-400">
+                      Call
+                    </th>
+                  )}
                   <th className="text-right px-4 py-3 font-medium text-gray-600 dark:text-gray-400">
                     Actions
                   </th>
@@ -424,7 +446,7 @@ export default function History() {
                       }`}
                       onClick={() => handleRowClick(app.id)}
                     >
-                      <td className="px-4 py-3 text-gray-900 dark:text-white font-medium max-w-[200px] truncate">
+                      <td className="px-4 py-3 text-gray-900 dark:text-white font-medium">
                         <span className="mr-1.5 text-gray-400 dark:text-gray-500 text-xs">
                           {expandedId === app.id ? "\u25BC" : "\u25B6"}
                         </span>
@@ -436,26 +458,29 @@ export default function History() {
                       <td className="px-4 py-3 text-gray-600 dark:text-gray-400">
                         {app.profile_name || "-"}
                       </td>
-                      {role === "admin" && (
-                        <td className="px-4 py-3 text-gray-600 dark:text-gray-400">
-                          {app.location || "-"}
-                        </td>
-                      )}
-                      {(role === "caller" || role === "admin") && (
-                        <td className="px-4 py-3 text-gray-600 dark:text-gray-400">
-                          {app.user_username || "-"}
-                        </td>
-                      )}
-                      {showCost && (
-                        <td className="px-4 py-3 text-right text-gray-600 dark:text-gray-400">
-                          {app.total_cost != null
-                            ? `$${app.total_cost.toFixed(4)}`
-                            : "-"}
-                        </td>
-                      )}
                       <td className="px-4 py-3 text-gray-500 dark:text-gray-400">
                         {new Date(app.created_at).toLocaleDateString()}
                       </td>
+                      {!isCaller && (() => {
+                        const scheduled = callStatus[app.id] !== undefined ? callStatus[app.id] : (app.call_scheduled ?? false);
+                        return (
+                          <td className="px-4 py-3 text-center" onClick={(e) => e.stopPropagation()}>
+                            <button
+                              onClick={() => handleCallToggle(app.id, scheduled)}
+                              title={scheduled ? "Call scheduled — click to unmark" : "Mark call as scheduled"}
+                              className={`relative inline-flex items-center w-10 h-5 rounded-full transition-colors focus:outline-none ${
+                                scheduled ? "bg-green-500" : "bg-gray-300 dark:bg-gray-600"
+                              }`}
+                            >
+                              <span
+                                className={`inline-block w-4 h-4 bg-white rounded-full shadow transform transition-transform ${
+                                  scheduled ? "translate-x-5" : "translate-x-1"
+                                }`}
+                              />
+                            </button>
+                          </td>
+                        );
+                      })()}
                       <td className="px-4 py-3 text-right" onClick={(e) => e.stopPropagation()}>
                         <div className="flex justify-end gap-1">
                           {app.resume_path && app.cover_letter_path && (() => {
@@ -518,6 +543,36 @@ export default function History() {
                             </div>
                           ) : expandedDetail ? (
                             <div className="space-y-3">
+                              {/* Meta row: tech stack, user, location, cost */}
+                              <div className="flex flex-wrap gap-4 text-sm">
+                                {expandedDetail.tech_stack_name && (
+                                  <div>
+                                    <span className="text-xs font-medium text-gray-500 dark:text-gray-400 uppercase tracking-wide block mb-0.5">Tech Stack</span>
+                                    <span className="px-2 py-0.5 rounded text-xs font-medium bg-indigo-100 dark:bg-indigo-900/30 text-indigo-700 dark:text-indigo-400">
+                                      {expandedDetail.tech_stack_name}
+                                    </span>
+                                  </div>
+                                )}
+                                {expandedDetail.location && (
+                                  <div>
+                                    <span className="text-xs font-medium text-gray-500 dark:text-gray-400 uppercase tracking-wide block mb-0.5">Location</span>
+                                    <span className="text-gray-700 dark:text-gray-300 text-xs">{expandedDetail.location}</span>
+                                  </div>
+                                )}
+                                {(role === "caller" || role === "admin") && expandedDetail.user_username && (
+                                  <div>
+                                    <span className="text-xs font-medium text-gray-500 dark:text-gray-400 uppercase tracking-wide block mb-0.5">User</span>
+                                    <span className="text-gray-700 dark:text-gray-300 text-xs">{expandedDetail.user_username}</span>
+                                  </div>
+                                )}
+                                {showCost && expandedDetail.total_cost != null && (
+                                  <div>
+                                    <span className="text-xs font-medium text-gray-500 dark:text-gray-400 uppercase tracking-wide block mb-0.5">Cost</span>
+                                    <span className="text-gray-700 dark:text-gray-300 text-xs">${expandedDetail.total_cost.toFixed(4)}</span>
+                                  </div>
+                                )}
+                              </div>
+
                               {/* Job URL */}
                               {expandedDetail.job_url && (
                                 <div>

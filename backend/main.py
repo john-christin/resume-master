@@ -14,7 +14,7 @@ from starlette.requests import Request
 from config import settings
 from database import SessionLocal
 from models.token_pricing import TokenPricing
-from routers import admin, applications, auth, batch_jobs, generate, profile, user_settings
+from routers import admin, applications, auth, batch_jobs, generate, profile, stats, user_settings
 from services import log_service
 from services.batch_worker import start_worker
 from utils import get_client_ip
@@ -142,6 +142,7 @@ app.include_router(generate.router)
 app.include_router(batch_jobs.router)
 app.include_router(applications.router)
 app.include_router(admin.router)
+app.include_router(stats.router)
 app.include_router(user_settings.router)
 
 

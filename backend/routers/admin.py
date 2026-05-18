@@ -1,7 +1,7 @@
-from datetime import datetime, timedelta, timezone
+from datetime import datetime, date, timedelta, timezone
 
 from fastapi import APIRouter, Depends, HTTPException, Query
-from sqlalchemy import func, select
+from sqlalchemy import func, select, cast, Date, Integer
 from sqlalchemy.orm import Session
 
 from auth import require_role
@@ -12,14 +12,17 @@ from models.application import Application
 from services import ai_service
 from models.knowledge_base import KnowledgeBase
 from models.profile import Profile
+from models.tech_stack import TechStack
 from models.system_log import SystemLog
 from models.token_pricing import TokenPricing
 from models.user import User
 from schemas.admin import (
     ActivateModelRequest,
+    AdminOverview,
     AIModelConfigCreate,
     AIModelConfigResponse,
     AIModelConfigUpdate,
+    DailyStatPoint,
     DashboardStats,
     KnowledgeBaseCreate,
     KnowledgeBaseResponse,
@@ -27,8 +30,15 @@ from schemas.admin import (
     PricingRequest,
     PricingResponse,
     ProfileStat,
+    ProfileStatPoint,
     SystemLogItem,
+    TechStackCreate,
+    TechStackResponse,
+    TechStackUpdate,
     UserApproveRequest,
+    UserCallStat,
+    UserCostStat,
+    UserDailyPoint,
     UserListItem,
     UserStatItem,
     UserStatsResponse,
@@ -245,6 +255,207 @@ def delete_user(
         user_id=current_user.id,
         details={"target_user_id": user_id, "target_username": username},
     )
+
+
+@router.get("/stats/overview", response_model=AdminOverview)
+def get_admin_overview(
+    current_user: User = Depends(_admin_only),
+    db: Session = Depends(get_db),
+):
+    now = datetime.now(timezone.utc)
+    today_start = now.replace(hour=0, minute=0, second=0, microsecond=0)
+    tomorrow = today_start + timedelta(days=1)
+
+    today_count = db.scalar(
+        select(func.count(Application.id)).where(
+            Application.created_at >= today_start,
+            Application.created_at < tomorrow,
+        )
+    ) or 0
+    today_cost = float(
+        db.scalar(
+            select(func.coalesce(func.sum(Application.total_cost), 0)).where(
+                Application.created_at >= today_start,
+                Application.created_at < tomorrow,
+            )
+        ) or 0
+    )
+    active_users = db.scalar(select(func.count(User.id)).where(User.status == "approved")) or 0
+    pending_users = db.scalar(select(func.count(User.id)).where(User.status == "pending")) or 0
+    calls_scheduled = db.scalar(
+        select(func.count(Application.id)).where(Application.call_scheduled == True)  # noqa: E712
+    ) or 0
+    return AdminOverview(
+        today_count=today_count,
+        today_cost=today_cost,
+        active_users=active_users,
+        pending_users=pending_users,
+        calls_scheduled=calls_scheduled,
+    )
+
+
+@router.get("/stats/daily", response_model=list[DailyStatPoint])
+def get_daily_stats(
+    from_date: datetime | None = Query(None),
+    to_date: datetime | None = Query(None),
+    user_id: str | None = Query(None),
+    current_user: User = Depends(_admin_only),
+    db: Session = Depends(get_db),
+):
+    day_col = cast(Application.created_at, Date).label("day")
+    stmt = (
+        select(day_col, func.count(Application.id), func.coalesce(func.sum(Application.total_cost), 0))
+        .group_by(day_col)
+        .order_by(day_col)
+    )
+    for f in _build_app_filter(from_date, to_date):
+        stmt = stmt.where(f)
+    if user_id:
+        stmt = stmt.where(Application.user_id == user_id)
+    rows = db.execute(stmt).all()
+    return [DailyStatPoint(date=str(r[0]), count=r[1], cost=float(r[2])) for r in rows]
+
+
+@router.get("/stats/per-user-daily", response_model=list[UserDailyPoint])
+def get_per_user_daily(
+    from_date: datetime | None = Query(None),
+    to_date: datetime | None = Query(None),
+    current_user: User = Depends(_admin_only),
+    db: Session = Depends(get_db),
+):
+    day_col = cast(Application.created_at, Date).label("day")
+    stmt = (
+        select(
+            day_col,
+            Application.user_id,
+            User.username,
+            func.count(Application.id),
+            func.coalesce(func.sum(Application.total_cost), 0),
+        )
+        .join(User, User.id == Application.user_id)
+        .group_by(day_col, Application.user_id, User.username)
+        .order_by(day_col, User.username)
+    )
+    for f in _build_app_filter(from_date, to_date):
+        stmt = stmt.where(f)
+    rows = db.execute(stmt).all()
+    return [
+        UserDailyPoint(date=str(r[0]), user_id=r[1], username=r[2], count=r[3], cost=float(r[4]))
+        for r in rows
+    ]
+
+
+@router.get("/stats/per-profile", response_model=list[ProfileStatPoint])
+def get_per_profile_stats(
+    from_date: datetime | None = Query(None),
+    to_date: datetime | None = Query(None),
+    current_user: User = Depends(_admin_only),
+    db: Session = Depends(get_db),
+):
+    stmt = (
+        select(
+            Application.profile_id,
+            Profile.name,
+            User.username,
+            func.count(Application.id),
+            func.coalesce(func.sum(Application.total_cost), 0),
+        )
+        .join(Profile, Profile.id == Application.profile_id)
+        .join(User, User.id == Application.user_id)
+        .group_by(Application.profile_id, Profile.name, User.username)
+        .order_by(func.count(Application.id).desc())
+    )
+    for f in _build_app_filter(from_date, to_date):
+        stmt = stmt.where(f)
+    rows = db.execute(stmt).all()
+    return [
+        ProfileStatPoint(profile_id=r[0], name=r[1], username=r[2], count=r[3], cost=float(r[4]))
+        for r in rows
+    ]
+
+
+@router.get("/stats/user-costs", response_model=list[UserCostStat])
+def get_user_costs(
+    current_user: User = Depends(_admin_only),
+    db: Session = Depends(get_db),
+):
+    now = datetime.now(timezone.utc)
+    today_start = now.replace(hour=0, minute=0, second=0, microsecond=0)
+    week_start = today_start - timedelta(days=6)
+    month_start = today_start - timedelta(days=29)
+    tomorrow = today_start + timedelta(days=1)
+
+    users = db.scalars(select(User).where(User.status == "approved").order_by(User.username)).all()
+    result = []
+    for u in users:
+        def _count_cost(start: datetime, end: datetime) -> tuple[int, float]:
+            c = db.scalar(
+                select(func.count(Application.id)).where(
+                    Application.user_id == u.id,
+                    Application.created_at >= start,
+                    Application.created_at < end,
+                )
+            ) or 0
+            cost = float(db.scalar(
+                select(func.coalesce(func.sum(Application.total_cost), 0)).where(
+                    Application.user_id == u.id,
+                    Application.created_at >= start,
+                    Application.created_at < end,
+                )
+            ) or 0)
+            return c, cost
+
+        tc, tco = _count_cost(today_start, tomorrow)
+        wc, wco = _count_cost(week_start, tomorrow)
+        mc, mco = _count_cost(month_start, tomorrow)
+        result.append(UserCostStat(
+            user_id=u.id, username=u.username,
+            today_count=tc, today_cost=tco,
+            week_count=wc, week_cost=wco,
+            month_count=mc, month_cost=mco,
+        ))
+    return result
+
+
+@router.get("/stats/daily-calls", response_model=list[DailyStatPoint])
+def get_daily_calls(
+    from_date: datetime | None = Query(None),
+    to_date: datetime | None = Query(None),
+    current_user: User = Depends(_admin_only),
+    db: Session = Depends(get_db),
+):
+    day_col = cast(Application.created_at, Date).label("day")
+    stmt = (
+        select(day_col, func.count(Application.id))
+        .where(Application.call_scheduled == True)  # noqa: E712
+        .group_by(day_col)
+        .order_by(day_col)
+    )
+    for f in _build_app_filter(from_date, to_date):
+        stmt = stmt.where(f)
+    rows = db.execute(stmt).all()
+    return [DailyStatPoint(date=str(r[0]), count=r[1], cost=0.0) for r in rows]
+
+
+@router.get("/stats/per-user-daily-calls", response_model=list[UserDailyPoint])
+def get_per_user_daily_calls(
+    from_date: datetime | None = Query(None),
+    to_date: datetime | None = Query(None),
+    current_user: User = Depends(_admin_only),
+    db: Session = Depends(get_db),
+):
+    day_col = cast(Application.created_at, Date).label("day")
+    stmt = (
+        select(day_col, Application.user_id, User.username, func.count(Application.id))
+        .join(User, User.id == Application.user_id)
+        .where(Application.call_scheduled == True)  # noqa: E712
+        .group_by(day_col, Application.user_id, User.username)
+        .order_by(day_col, User.username)
+    )
+    for f in _build_app_filter(from_date, to_date):
+        stmt = stmt.where(f)
+    rows = db.execute(stmt).all()
+    return [UserDailyPoint(date=str(r[0]), user_id=r[1], username=r[2], count=r[3], cost=0.0) for r in rows]
 
 
 @router.get("/stats", response_model=DashboardStats)
@@ -499,7 +710,7 @@ def create_knowledge_base(
     current_user: User = Depends(_admin_only),
     db: Session = Depends(get_db),
 ):
-    kb = KnowledgeBase(name=data.name, content=data.content)
+    kb = KnowledgeBase(name=data.name, content=data.content, tech_stack_id=data.tech_stack_id)
     db.add(kb)
     db.commit()
     db.refresh(kb)
@@ -522,6 +733,8 @@ def update_knowledge_base(
         kb.content = data.content
     if data.is_active is not None:
         kb.is_active = data.is_active
+    if data.tech_stack_id is not None:
+        kb.tech_stack_id = data.tech_stack_id
     db.commit()
     db.refresh(kb)
     return kb
@@ -537,6 +750,71 @@ def delete_knowledge_base(
     if not kb:
         raise HTTPException(status_code=404, detail="Knowledge base not found")
     db.delete(kb)
+    db.commit()
+
+
+# --- Tech Stack CRUD ---
+
+
+@router.get("/tech-stacks", response_model=list[TechStackResponse])
+def list_tech_stacks(
+    current_user: User = Depends(_admin_only),
+    db: Session = Depends(get_db),
+):
+    return db.scalars(
+        select(TechStack).order_by(TechStack.created_at.asc())
+    ).all()
+
+
+@router.post("/tech-stacks", response_model=TechStackResponse, status_code=201)
+def create_tech_stack(
+    data: TechStackCreate,
+    current_user: User = Depends(_admin_only),
+    db: Session = Depends(get_db),
+):
+    existing = db.scalars(
+        select(TechStack).where(TechStack.name == data.name)
+    ).first()
+    if existing:
+        raise HTTPException(status_code=400, detail="Tech stack with this name already exists")
+    ts = TechStack(name=data.name, description=data.description)
+    db.add(ts)
+    db.commit()
+    db.refresh(ts)
+    return ts
+
+
+@router.put("/tech-stacks/{ts_id}", response_model=TechStackResponse)
+def update_tech_stack(
+    ts_id: str,
+    data: TechStackUpdate,
+    current_user: User = Depends(_admin_only),
+    db: Session = Depends(get_db),
+):
+    ts = db.get(TechStack, ts_id)
+    if not ts:
+        raise HTTPException(status_code=404, detail="Tech stack not found")
+    if data.name is not None:
+        ts.name = data.name
+    if data.description is not None:
+        ts.description = data.description
+    if data.is_active is not None:
+        ts.is_active = data.is_active
+    db.commit()
+    db.refresh(ts)
+    return ts
+
+
+@router.delete("/tech-stacks/{ts_id}", status_code=204)
+def delete_tech_stack(
+    ts_id: str,
+    current_user: User = Depends(_admin_only),
+    db: Session = Depends(get_db),
+):
+    ts = db.get(TechStack, ts_id)
+    if not ts:
+        raise HTTPException(status_code=404, detail="Tech stack not found")
+    db.delete(ts)
     db.commit()
 
 

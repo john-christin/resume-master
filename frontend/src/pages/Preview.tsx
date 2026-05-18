@@ -1,5 +1,6 @@
 import { useState } from "react";
 import { useLocation, useNavigate } from "react-router-dom";
+import { deleteApplication } from "../api/applications";
 import { getUserRole } from "../auth";
 import type { GenerateResponse } from "../types";
 
@@ -7,9 +8,9 @@ export default function Preview() {
   const location = useLocation();
   const navigate = useNavigate();
   const data = location.state as GenerateResponse | null;
-  const [activeTab, setActiveTab] = useState<"resume" | "cover_letter">(
-    "resume"
-  );
+  const [activeTab, setActiveTab] = useState<"resume" | "cover_letter">("resume");
+  const [confirmDelete, setConfirmDelete] = useState(false);
+  const [deleting, setDeleting] = useState(false);
 
   if (!data) {
     return (
@@ -38,7 +39,41 @@ export default function Preview() {
             {job_title}{company ? ` · ${company}` : ""}
           </p>
         </div>
-        <div className="flex gap-2">
+        <div className="flex items-center gap-2">
+          {confirmDelete ? (
+            <div className="flex items-center gap-2 px-3 py-1.5 bg-red-50 dark:bg-red-900/30 border border-red-200 dark:border-red-800 rounded-md">
+              <span className="text-sm text-red-700 dark:text-red-400">Remove this application?</span>
+              <button
+                disabled={deleting}
+                onClick={async () => {
+                  setDeleting(true);
+                  try {
+                    await deleteApplication(data.application_id);
+                    navigate("/history");
+                  } catch {
+                    setDeleting(false);
+                    setConfirmDelete(false);
+                  }
+                }}
+                className="text-sm font-medium text-white bg-red-600 hover:bg-red-700 px-2.5 py-1 rounded disabled:opacity-60"
+              >
+                {deleting ? "Removing…" : "Yes, remove"}
+              </button>
+              <button
+                onClick={() => setConfirmDelete(false)}
+                className="text-sm text-gray-500 dark:text-gray-400 hover:text-gray-700 dark:hover:text-gray-300 px-1"
+              >
+                Cancel
+              </button>
+            </div>
+          ) : (
+            <button
+              onClick={() => setConfirmDelete(true)}
+              className="px-4 py-2 border border-red-200 dark:border-red-800 text-red-600 dark:text-red-400 rounded-md text-sm hover:bg-red-50 dark:hover:bg-red-900/30"
+            >
+              Remove
+            </button>
+          )}
           <button
             onClick={() => navigate("/generate")}
             className="px-4 py-2 border border-gray-300 dark:border-gray-600 text-gray-700 dark:text-gray-300 rounded-md text-sm hover:bg-gray-50 dark:hover:bg-gray-700"

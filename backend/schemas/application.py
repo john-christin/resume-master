@@ -13,10 +13,12 @@ class ApplicationSummary(BaseModel):
     cover_letter_path: str | None = None
     profile_name: str | None = None
     location: str | None = None
+    tech_stack_name: str | None = None
     user_username: str | None = None
     prompt_tokens: int | None = None
     completion_tokens: int | None = None
     total_cost: float | None = None
+    call_scheduled: bool = False
     created_at: datetime
 
     model_config = {"from_attributes": True}

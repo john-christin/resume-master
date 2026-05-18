@@ -1,4 +1,5 @@
 from models.user import User
+from models.tech_stack import TechStack
 from models.profile import Profile
 from models.profile_share import profile_shares
 from models.education import Education

@@ -1,11 +1,11 @@
 import { useEffect, useState } from "react";
 import { useNavigate, useParams } from "react-router-dom";
-import { createProfile, getProfile, updateProfile } from "../api/profile";
+import { createProfile, getProfile, getTechStacksPublic, updateProfile } from "../api/profile";
 import { getUserRole } from "../auth";
 import EducationForm from "../components/EducationForm";
 import ExperienceForm from "../components/ExperienceForm";
 import LoadingSpinner from "../components/LoadingSpinner";
-import type { Education, Experience, ProfileCreate } from "../types";
+import type { Education, Experience, ProfileCreate, TechStack } from "../types";
 
 const emptyProfile: ProfileCreate = {
   name: "",
@@ -14,6 +14,7 @@ const emptyProfile: ProfileCreate = {
   email: "",
   linkedin: "",
   summary: "",
+  tech_stack_id: null,
   educations: [],
   experiences: [],
 };
@@ -28,6 +29,11 @@ export default function ProfileEdit() {
   const [saving, setSaving] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [readOnly, setReadOnly] = useState(false);
+  const [techStacks, setTechStacks] = useState<TechStack[]>([]);
+
+  useEffect(() => {
+    getTechStacksPublic().then((res) => setTechStacks(res.data)).catch(() => {});
+  }, []);
 
   useEffect(() => {
     if (!profileId) return;
@@ -41,6 +47,7 @@ export default function ProfileEdit() {
           email: p.email || "",
           linkedin: p.linkedin || "",
           summary: p.summary || "",
+          tech_stack_id: p.tech_stack_id ?? null,
           educations: p.educations,
           experiences: p.experiences,
         });
@@ -168,6 +175,24 @@ export default function ProfileEdit() {
                 readOnly={readOnly}
               />
             </div>
+          </div>
+          <div>
+            <label className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-1">
+              Tech Stack
+            </label>
+            <select
+              value={profile.tech_stack_id ?? ""}
+              onChange={(e) =>
+                setProfile({ ...profile, tech_stack_id: e.target.value || null })
+              }
+              disabled={readOnly}
+              className="w-full px-3 py-2 border border-gray-300 dark:border-gray-600 rounded-md text-sm focus:ring-2 focus:ring-blue-500 focus:border-blue-500 bg-white dark:bg-gray-700 dark:text-white disabled:opacity-60"
+            >
+              <option value="">— None selected —</option>
+              {techStacks.map((ts) => (
+                <option key={ts.id} value={ts.id}>{ts.name}</option>
+              ))}
+            </select>
           </div>
           <div>
             <label className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-1">

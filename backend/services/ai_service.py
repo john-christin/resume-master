@@ -63,15 +63,14 @@ professional cover letter body (Dear Hiring Manager through sign-off, no header/
 Follow ALL Knowledge Base Guidelines for structure, length, and content if provided. \
 Use a professional but warm tone -- not generic or robotic."""
 
-COMBINED_CONTENT_SYSTEM_PROMPT = """You are an expert resume and cover letter writer. \
-You will generate three pieces of content in a single response as valid JSON.
+COMBINED_CONTENT_SYSTEM_PROMPT = """You are an expert resume writer. \
+You will generate two pieces of content in a single response as valid JSON.
 
 ## Output format
 Respond with valid JSON only. No markdown fences, no explanation.
 {
   "summary": "<professional summary>",
-  "skills": [{"category": "<Category Name>", "skills": ["Skill1", "Skill2"]}],
-  "cover_letter": "<full cover letter body>"
+  "skills": [{"category": "<Category Name>", "skills": ["Skill1", "Skill2"]}]
 }
 
 ## Summary rules
@@ -82,13 +81,7 @@ Respond with valid JSON only. No markdown fences, no explanation.
 - Include skills the candidate actually has (from their experience)
 - Prioritize skills matching the job description
 - Group into 3-6 logical categories (e.g., "Programming Languages", "Cloud & DevOps", etc.)
-- Each category: 3-8 skills, ordered by relevance to the target job
-
-## Cover letter rules
-- Follow ALL Knowledge Base Guidelines for structure, length, and content if provided
-- Otherwise: 3-4 paragraphs connecting candidate experience to job requirements
-- Professional but warm tone -- not generic or robotic
-- Body only (Dear Hiring Manager through sign-off) -- no header/address block"""
+- Each category: 3-8 skills, ordered by relevance to the target job"""
 
 
 # ---------------------------------------------------------------------------
@@ -754,10 +747,10 @@ def generate_resume_content(
     knowledge_base: str | None = None,
     creativity_factor: float = 0.3,
 ) -> tuple[dict, dict]:
-    """Generate summary, skills, and cover letter in a single LLM call.
+    """Generate summary and skills in a single LLM call.
 
     Returns (content_dict, usage_dict) where content_dict has keys:
-    "summary" (str), "skills" (list[dict]), "cover_letter" (str).
+    "summary" (str), "skills" (list[dict]).
     """
     formatted_exp = _format_experiences(experiences)
     company_str = company or "the company"
@@ -818,14 +811,11 @@ Generate the summary, skills, and cover letter as a single JSON object."""
             result = json.loads(content)
             if not isinstance(result, dict):
                 raise ValueError("Expected a JSON object")
-            # Validate required keys
-            if "summary" not in result or "cover_letter" not in result:
-                raise ValueError("Missing required keys: summary, cover_letter")
+            if "summary" not in result:
+                raise ValueError("Missing required key: summary")
             if "skills" not in result:
                 result["skills"] = []
-            # Normalize smart characters to plain ASCII
             result["summary"] = _normalize_ai_text(result["summary"])
-            result["cover_letter"] = _normalize_ai_text(result["cover_letter"])
             for cat in result["skills"]:
                 cat["skills"] = [_normalize_ai_text(s) for s in cat.get("skills", [])]
             return result, total_usage
@@ -970,11 +960,18 @@ def generate_cover_letter(
     job_description: str,
     job_title: str,
     company: str | None = None,
+    knowledge_base: str | None = None,
+    creativity_factor: float = 0.3,
 ) -> tuple[str, dict]:
     """Call LLM to generate a cover letter."""
     formatted_exp = _format_experiences(experiences)
     company_str = company or "the company"
     jd_trimmed = _truncate_jd(job_description)
+    temperature = _effective_temperature(creativity_factor)
+
+    kb_section = ""
+    if knowledge_base:
+        kb_section = f"\n\n## Knowledge Base Guidelines (MUST FOLLOW)\n{knowledge_base}"
 
     user_prompt = f"""## Candidate Info
 Name: {user_name}
@@ -988,7 +985,7 @@ Phone: {phone or "N/A"}
 Title: {job_title} at {company_str}
 
 ## Job Description
-{jd_trimmed}
+{jd_trimmed}{kb_section}
 
 Write the cover letter body only (Dear Hiring Manager through sign-off)."""
 
@@ -998,7 +995,7 @@ Write the cover letter body only (Dear Hiring Manager through sign-off)."""
             {"role": "user", "content": user_prompt},
         ],
         max_tokens=2048,
-        temperature=0.7,
+        temperature=temperature,
     )
 
     usage = {

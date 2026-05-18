@@ -1,5 +1,5 @@
 import api from "./client";
-import type { AIModelConfig, KnowledgeBase, TokenPricing, UserListItem } from "../types";
+import type { AIModelConfig, KnowledgeBase, TechStack, TokenPricing, UserListItem } from "../types";
 
 export const getUsers = (status?: string, search?: string) => {
   const params = new URLSearchParams();
@@ -123,16 +123,31 @@ export const setPricing = (inputPrice: number, outputPrice: number) =>
 export const recalculateCosts = () =>
   api.post<{ detail: string }>("/api/admin/pricing/recalculate");
 
+// Tech Stacks
+export const getTechStacks = () =>
+  api.get<TechStack[]>("/api/admin/tech-stacks");
+
+export const createTechStack = (name: string, description?: string) =>
+  api.post<TechStack>("/api/admin/tech-stacks", { name, description });
+
+export const updateTechStack = (
+  id: string,
+  data: { name?: string; description?: string; is_active?: boolean }
+) => api.put<TechStack>(`/api/admin/tech-stacks/${id}`, data);
+
+export const deleteTechStack = (id: string) =>
+  api.delete(`/api/admin/tech-stacks/${id}`);
+
 // Knowledge Base
 export const getKnowledgeBases = () =>
   api.get<KnowledgeBase[]>("/api/admin/knowledge-bases");
 
-export const createKnowledgeBase = (name: string, content: string) =>
-  api.post<KnowledgeBase>("/api/admin/knowledge-bases", { name, content });
+export const createKnowledgeBase = (name: string, content: string, tech_stack_id?: string | null) =>
+  api.post<KnowledgeBase>("/api/admin/knowledge-bases", { name, content, tech_stack_id: tech_stack_id ?? null });
 
 export const updateKnowledgeBase = (
   id: string,
-  data: { name?: string; content?: string; is_active?: boolean }
+  data: { name?: string; content?: string; is_active?: boolean; tech_stack_id?: string | null }
 ) => api.put<KnowledgeBase>(`/api/admin/knowledge-bases/${id}`, data);
 
 export const deleteKnowledgeBase = (id: string) =>
@@ -185,3 +200,76 @@ export const activateModel = (id: string, role: string = "primary") =>
 
 export const deactivateModel = (id: string) =>
   api.post<AIModelConfig>(`/api/admin/models/${id}/deactivate`);
+
+// Dashboard stat types
+export interface AdminOverview {
+  today_count: number;
+  today_cost: number;
+  active_users: number;
+  pending_users: number;
+  calls_scheduled: number;
+}
+
+
+export interface DailyStatPoint {
+  date: string;
+  count: number;
+  cost: number;
+}
+
+export interface UserDailyPoint {
+  date: string;
+  user_id: string;
+  username: string;
+  count: number;
+  cost: number;
+}
+
+export interface ProfileStatPoint {
+  profile_id: string;
+  name: string;
+  username: string;
+  count: number;
+  cost: number;
+}
+
+export interface UserCostStat {
+  user_id: string;
+  username: string;
+  today_count: number;
+  today_cost: number;
+  week_count: number;
+  week_cost: number;
+  month_count: number;
+  month_cost: number;
+}
+
+const _buildDateParams = (from?: string, to?: string, userId?: string) => {
+  const p = new URLSearchParams();
+  if (from) p.set("from_date", from);
+  if (to) p.set("to_date", to);
+  if (userId) p.set("user_id", userId);
+  const qs = p.toString();
+  return qs ? `?${qs}` : "";
+};
+
+export const getAdminOverview = () =>
+  api.get<AdminOverview>("/api/admin/stats/overview");
+
+export const getAdminDailyStats = (from?: string, to?: string, userId?: string) =>
+  api.get<DailyStatPoint[]>(`/api/admin/stats/daily${_buildDateParams(from, to, userId)}`);
+
+export const getAdminPerUserDaily = (from?: string, to?: string) =>
+  api.get<UserDailyPoint[]>(`/api/admin/stats/per-user-daily${_buildDateParams(from, to)}`);
+
+export const getAdminPerProfile = (from?: string, to?: string) =>
+  api.get<ProfileStatPoint[]>(`/api/admin/stats/per-profile${_buildDateParams(from, to)}`);
+
+export const getAdminUserCosts = () =>
+  api.get<UserCostStat[]>("/api/admin/stats/user-costs");
+
+export const getAdminDailyCallStats = (from?: string, to?: string) =>
+  api.get<DailyStatPoint[]>(`/api/admin/stats/daily-calls${_buildDateParams(from, to)}`);
+
+export const getAdminPerUserDailyCallStats = (from?: string, to?: string) =>
+  api.get<UserDailyPoint[]>(`/api/admin/stats/per-user-daily-calls${_buildDateParams(from, to)}`);

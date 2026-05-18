@@ -1,7 +1,7 @@
 import uuid
 from datetime import datetime
 
-from sqlalchemy import DateTime, Float, ForeignKey, Index, Integer, String, Text
+from sqlalchemy import Boolean, DateTime, Float, ForeignKey, Index, Integer, String, Text
 from sqlalchemy.orm import Mapped, mapped_column, relationship
 
 from database import Base
@@ -32,6 +32,13 @@ class Application(Base):
     job_url: Mapped[str | None] = mapped_column(String(1000), nullable=True)
     job_description: Mapped[str] = mapped_column(Text)
     resume_type: Mapped[str | None] = mapped_column(String(100), nullable=True)
+    tech_stack_id: Mapped[str | None] = mapped_column(
+        String(36),
+        ForeignKey("tech_stacks.id", ondelete="SET NULL"),
+        nullable=True,
+        index=True,
+    )
+    tech_stack_name: Mapped[str | None] = mapped_column(String(200), nullable=True)
     tailored_bullets: Mapped[str | None] = mapped_column(Text, nullable=True)
     cover_letter_text: Mapped[str | None] = mapped_column(Text, nullable=True)
     resume_path: Mapped[str | None] = mapped_column(String(500), nullable=True)
@@ -41,6 +48,7 @@ class Application(Base):
     prompt_tokens: Mapped[int] = mapped_column(Integer, default=0)
     completion_tokens: Mapped[int] = mapped_column(Integer, default=0)
     total_cost: Mapped[float] = mapped_column(Float, default=0.0)
+    call_scheduled: Mapped[bool] = mapped_column(Boolean, default=False, nullable=False, server_default="false")
     created_at: Mapped[datetime] = mapped_column(
         DateTime, default=datetime.utcnow, index=True
     )
