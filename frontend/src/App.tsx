@@ -1,9 +1,16 @@
 import { BrowserRouter, Navigate, Route, Routes } from "react-router-dom";
 import { getUserRole } from "./auth";
+import AdminLayout from "./components/AdminLayout";
 import Layout from "./components/Layout";
 import ProtectedRoute from "./components/ProtectedRoute";
 import AdminDashboardPage from "./pages/AdminDashboardPage";
-import AdminSettings from "./pages/AdminSettings";
+import KnowledgeBasePage from "./pages/admin/KnowledgeBasePage";
+import LogsPage from "./pages/admin/LogsPage";
+import ModelsPage from "./pages/admin/ModelsPage";
+import PendingPage from "./pages/admin/PendingPage";
+import PricingPage from "./pages/admin/PricingPage";
+import TechStacksPage from "./pages/admin/TechStacksPage";
+import UsersPage from "./pages/admin/UsersPage";
 import BatchJobStatus from "./pages/BatchJobStatus";
 import BidderDashboard from "./pages/BidderDashboard";
 import History from "./pages/History";
@@ -65,11 +72,19 @@ function App() {
             {/* Settings - all approved roles */}
             <Route path="/settings" element={<Settings />} />
 
-            {/* Admin routes */}
+            {/* Admin routes — nested under AdminLayout for left sidebar */}
             <Route element={<ProtectedRoute roles={["admin"]} />}>
-              <Route path="/admin" element={<Navigate to="/admin/dashboard" replace />} />
-              <Route path="/admin/dashboard" element={<AdminDashboardPage />} />
-              <Route path="/admin/settings" element={<AdminSettings />} />
+              <Route path="/admin" element={<AdminLayout />}>
+                <Route index element={<Navigate to="/admin/dashboard" replace />} />
+                <Route path="dashboard" element={<AdminDashboardPage />} />
+                <Route path="pending" element={<PendingPage />} />
+                <Route path="users" element={<UsersPage />} />
+                <Route path="pricing" element={<PricingPage />} />
+                <Route path="stacks" element={<TechStacksPage />} />
+                <Route path="kb" element={<KnowledgeBasePage />} />
+                <Route path="models" element={<ModelsPage />} />
+                <Route path="logs" element={<LogsPage />} />
+              </Route>
             </Route>
           </Route>
         </Route>

@@ -1,3 +1,4 @@
+import { UserPlus, X } from "lucide-react";
 import { useEffect, useState } from "react";
 import {
   getProfileShares,
@@ -6,6 +7,20 @@ import {
   unshareProfile,
 } from "../api/profile";
 import type { ProfileShareUser, UserSearchResult } from "../types";
+import { Alert, AlertDescription } from "./ui/alert";
+import { Avatar, AvatarFallback } from "./ui/avatar";
+import { Button } from "./ui/button";
+import {
+  Dialog,
+  DialogContent,
+  DialogDescription,
+  DialogHeader,
+  DialogTitle,
+} from "./ui/dialog";
+import { Input } from "./ui/input";
+import { Label } from "./ui/label";
+import { ScrollArea } from "./ui/scroll-area";
+import { Separator } from "./ui/separator";
 
 interface Props {
   profileId: string;
@@ -32,11 +47,8 @@ export default function ShareDialog({ profileId, onClose }: Props) {
     const timer = setTimeout(() => {
       searchUsers(searchQuery)
         .then((res) => {
-          // Filter out already shared users
           const sharedIds = new Set(shares.map((s) => s.user_id));
-          setSearchResults(
-            res.data.filter((u) => !sharedIds.has(u.id))
-          );
+          setSearchResults(res.data.filter((u) => !sharedIds.has(u.id)));
         })
         .catch(() => {});
     }, 300);
@@ -46,7 +58,6 @@ export default function ShareDialog({ profileId, onClose }: Props) {
   const handleShare = async (userId: string) => {
     try {
       await shareProfile(profileId, [userId]);
-      // Refresh shares
       const res = await getProfileShares(profileId);
       setShares(res.data);
       setSearchQuery("");
@@ -66,86 +77,104 @@ export default function ShareDialog({ profileId, onClose }: Props) {
   };
 
   return (
-    <div className="fixed inset-0 bg-black/50 flex items-center justify-center z-50">
-      <div className="bg-white dark:bg-gray-800 rounded-lg shadow-lg w-full max-w-md mx-4 p-6">
-        <div className="flex items-center justify-between mb-4">
-          <h2 className="text-lg font-semibold text-gray-900 dark:text-white">
+    <Dialog open onOpenChange={(open) => !open && onClose()}>
+      <DialogContent className="max-w-md">
+        <DialogHeader>
+          <DialogTitle className="flex items-center gap-2">
+            <UserPlus className="h-5 w-5 text-primary" />
             Share Profile
-          </h2>
-          <button
-            onClick={onClose}
-            className="text-gray-400 hover:text-gray-600 dark:hover:text-gray-300 text-xl"
-          >
-            &times;
-          </button>
-        </div>
+          </DialogTitle>
+          <DialogDescription>
+            Search for users to share this profile with.
+          </DialogDescription>
+        </DialogHeader>
 
         {error && (
-          <div className="mb-3 p-2 bg-red-50 dark:bg-red-900/30 border border-red-200 dark:border-red-800 text-red-700 dark:text-red-400 rounded text-sm">
-            {error}
-          </div>
+          <Alert variant="destructive">
+            <AlertDescription>{error}</AlertDescription>
+          </Alert>
         )}
 
-        <div className="mb-4">
-          <input
-            type="text"
-            placeholder="Search by user ID..."
-            value={searchQuery}
-            onChange={(e) => setSearchQuery(e.target.value)}
-            className="w-full px-3 py-2 border border-gray-300 dark:border-gray-600 rounded-md text-sm focus:ring-2 focus:ring-blue-500 focus:border-blue-500 bg-white dark:bg-gray-700 dark:text-white"
-          />
-          {searchResults.length > 0 && (
-            <div className="mt-1 border border-gray-200 dark:border-gray-600 rounded-md max-h-40 overflow-y-auto bg-white dark:bg-gray-700">
-              {searchResults.map((user) => (
-                <button
-                  key={user.id}
-                  onClick={() => handleShare(user.id)}
-                  className="w-full text-left px-3 py-2 text-sm hover:bg-blue-50 dark:hover:bg-blue-900/30 border-b border-gray-100 dark:border-gray-600 last:border-0 dark:text-gray-200"
-                >
-                  {user.username}
-                </button>
-              ))}
-            </div>
-          )}
+        <div className="space-y-1.5">
+          <Label htmlFor="share-search">Search users</Label>
+          <div className="relative">
+            <Input
+              id="share-search"
+              placeholder="Type username..."
+              value={searchQuery}
+              onChange={(e) => setSearchQuery(e.target.value)}
+            />
+            {searchResults.length > 0 && (
+              <div className="absolute top-full mt-1 w-full z-10 rounded-md border bg-popover shadow-md overflow-hidden">
+                {searchResults.map((user) => (
+                  <button
+                    key={user.id}
+                    onClick={() => handleShare(user.id)}
+                    className="w-full text-left px-3 py-2 text-sm hover:bg-accent hover:text-accent-foreground flex items-center gap-2 border-b last:border-0 border-border"
+                  >
+                    <Avatar className="h-6 w-6">
+                      <AvatarFallback className="text-[10px]">
+                        {user.username.slice(0, 2).toUpperCase()}
+                      </AvatarFallback>
+                    </Avatar>
+                    {user.username}
+                  </button>
+                ))}
+              </div>
+            )}
+          </div>
         </div>
 
+        <Separator />
+
         <div>
-          <h3 className="text-sm font-medium text-gray-700 dark:text-gray-300 mb-2">
-            Shared with ({shares.length})
-          </h3>
+          <p className="text-sm font-medium mb-3">
+            Shared with{" "}
+            <span className="text-muted-foreground">({shares.length})</span>
+          </p>
           {shares.length === 0 ? (
-            <p className="text-sm text-gray-400 dark:text-gray-500">
+            <p className="text-sm text-muted-foreground text-center py-4">
               Not shared with anyone yet.
             </p>
           ) : (
-            <div className="space-y-2 max-h-48 overflow-y-auto">
-              {shares.map((share) => (
-                <div
-                  key={share.user_id}
-                  className="flex items-center justify-between px-3 py-2 bg-gray-50 dark:bg-gray-700 rounded"
-                >
-                  <span className="text-sm text-gray-700 dark:text-gray-300">{share.username}</span>
-                  <button
-                    onClick={() => handleUnshare(share.user_id)}
-                    className="text-xs text-red-500 hover:text-red-700 dark:text-red-400 dark:hover:text-red-300"
+            <ScrollArea className="max-h-48">
+              <div className="space-y-1.5">
+                {shares.map((share) => (
+                  <div
+                    key={share.user_id}
+                    className="flex items-center justify-between px-3 py-2 rounded-lg bg-muted/50"
                   >
-                    Remove
-                  </button>
-                </div>
-              ))}
-            </div>
+                    <div className="flex items-center gap-2">
+                      <Avatar className="h-6 w-6">
+                        <AvatarFallback className="text-[10px]">
+                          {share.username.slice(0, 2).toUpperCase()}
+                        </AvatarFallback>
+                      </Avatar>
+                      <span className="text-sm font-medium">
+                        {share.username}
+                      </span>
+                    </div>
+                    <Button
+                      variant="ghost"
+                      size="icon"
+                      className="h-6 w-6 text-muted-foreground hover:text-destructive"
+                      onClick={() => handleUnshare(share.user_id)}
+                    >
+                      <X className="h-3.5 w-3.5" />
+                    </Button>
+                  </div>
+                ))}
+              </div>
+            </ScrollArea>
           )}
         </div>
 
-        <div className="mt-4 flex justify-end">
-          <button
-            onClick={onClose}
-            className="px-4 py-2 bg-gray-100 dark:bg-gray-700 text-gray-700 dark:text-gray-300 rounded-md text-sm hover:bg-gray-200 dark:hover:bg-gray-600"
-          >
+        <div className="flex justify-end">
+          <Button variant="outline" onClick={onClose}>
             Done
-          </button>
+          </Button>
         </div>
-      </div>
-    </div>
+      </DialogContent>
+    </Dialog>
   );
 }

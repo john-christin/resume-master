@@ -1,3 +1,13 @@
+import {
+  AlertCircle,
+  ArrowRight,
+  Calendar,
+  DollarSign,
+  History,
+  Phone,
+  TrendingUp,
+  Wand2,
+} from "lucide-react";
 import { useEffect, useState } from "react";
 import { Link } from "react-router-dom";
 import {
@@ -15,12 +25,33 @@ import {
 } from "recharts";
 import { getApplications } from "../api/applications";
 import { getMyStats } from "../api/stats";
-import type { MyProfileStat, MyStackStat, MyStatsResponse } from "../api/stats";
-import type { ApplicationSummary } from "../types";
+import type {
+  MyProfileStat,
+  MyStackStat,
+  MyStatsResponse,
+} from "../api/stats";
 import LoadingSpinner from "../components/LoadingSpinner";
+import { Alert, AlertDescription } from "../components/ui/alert";
+import { Button } from "../components/ui/button";
+import {
+  Card,
+  CardContent,
+  CardHeader,
+  CardTitle,
+} from "../components/ui/card";
+import { Input } from "../components/ui/input";
+import {
+  Table,
+  TableBody,
+  TableCell,
+  TableHead,
+  TableHeader,
+  TableRow,
+} from "../components/ui/table";
+import type { ApplicationSummary } from "../types";
 
 const CHART_COLORS = [
-  "#3b82f6", "#10b981", "#f59e0b", "#ef4444", "#8b5cf6",
+  "#7c3aed", "#10b981", "#f59e0b", "#ef4444", "#3b82f6",
   "#06b6d4", "#84cc16", "#f97316", "#ec4899", "#6366f1",
 ];
 
@@ -36,30 +67,69 @@ function getPresetDates(preset: Preset, customFrom: string, customTo: string) {
   return { from: customFrom, to: customTo };
 }
 
-function StatCard({ label, value, sub, color }: { label: string; value: string | number; sub?: string; color?: string }) {
-  return (
-    <div className="bg-white dark:bg-gray-800 rounded-lg shadow-sm border border-gray-200 dark:border-gray-700 p-5">
-      <p className="text-sm text-gray-500 dark:text-gray-400">{label}</p>
-      <p className={`text-2xl font-bold mt-1 ${color ?? "text-gray-900 dark:text-white"}`}>{value}</p>
-      {sub && <p className="text-xs text-gray-400 dark:text-gray-500 mt-0.5">{sub}</p>}
-    </div>
-  );
-}
-
 const RADIAN = Math.PI / 180;
-const renderCustomLabel = ({ cx, cy, midAngle, innerRadius, outerRadius, percent }: {
-  cx: number; cy: number; midAngle: number; innerRadius: number; outerRadius: number; percent: number;
+const renderCustomLabel = ({
+  cx = 0,
+  cy = 0,
+  midAngle = 0,
+  innerRadius = 0,
+  outerRadius = 0,
+  percent = 0,
+}: {
+  cx?: number;
+  cy?: number;
+  midAngle?: number;
+  innerRadius?: number;
+  outerRadius?: number;
+  percent?: number;
 }) => {
   if (percent < 0.05) return null;
   const radius = innerRadius + (outerRadius - innerRadius) * 0.5;
   const x = cx + radius * Math.cos(-midAngle * RADIAN);
   const y = cy + radius * Math.sin(-midAngle * RADIAN);
   return (
-    <text x={x} y={y} fill="white" textAnchor="middle" dominantBaseline="central" fontSize={12} fontWeight={600}>
+    <text
+      x={x}
+      y={y}
+      fill="white"
+      textAnchor="middle"
+      dominantBaseline="central"
+      fontSize={11}
+      fontWeight={600}
+    >
       {`${(percent * 100).toFixed(0)}%`}
     </text>
   );
 };
+
+function StatCard({
+  label,
+  value,
+  sub,
+  icon,
+  accent,
+}: {
+  label: string;
+  value: string | number;
+  sub?: string;
+  icon: React.ReactNode;
+  accent?: string;
+}) {
+  return (
+    <Card>
+      <CardContent className="pt-5">
+        <div className="flex items-center justify-between mb-3">
+          <p className="text-sm text-muted-foreground">{label}</p>
+          <div className={`flex h-8 w-8 items-center justify-center rounded-lg ${accent ?? "bg-primary/10"}`}>
+            {icon}
+          </div>
+        </div>
+        <p className="text-2xl font-bold">{value}</p>
+        {sub && <p className="text-xs text-muted-foreground mt-0.5">{sub}</p>}
+      </CardContent>
+    </Card>
+  );
+}
 
 export default function BidderDashboard() {
   const [stats, setStats] = useState<MyStatsResponse | null>(null);
@@ -95,234 +165,346 @@ export default function BidderDashboard() {
     loadData(from, to);
   }, []);
 
-  const dailyData = stats?.daily.map((d) => ({
-    date: d.date.slice(5),
-    count: d.count,
-  })) ?? [];
-
+  const dailyData =
+    stats?.daily.map((d) => ({ date: d.date.slice(5), count: d.count })) ?? [];
   const profileData: MyProfileStat[] = stats?.profiles ?? [];
   const stackData: MyStackStat[] = stats?.stacks ?? [];
-
-  const handleApplyRange = () => loadData(from, to);
+  const callData =
+    stats?.daily_calls?.map((d) => ({ date: d.date.slice(5), count: d.count })) ?? [];
 
   if (loading) return <LoadingSpinner message="Loading dashboard..." />;
 
   return (
-    <div>
-      <div className="flex items-center justify-between mb-6">
-        <h1 className="text-2xl font-bold text-gray-900 dark:text-white">Dashboard</h1>
+    <div className="space-y-8">
+      <div className="flex items-center justify-between">
+        <div>
+          <h1 className="text-2xl font-bold">Dashboard</h1>
+          <p className="text-muted-foreground text-sm mt-0.5">
+            Your application activity at a glance
+          </p>
+        </div>
         <div className="flex gap-2">
-          <Link
-            to="/generate"
-            className="px-4 py-2 text-sm font-medium text-white bg-blue-600 rounded-md hover:bg-blue-700"
-          >
-            + New Application
-          </Link>
-          <Link
-            to="/history"
-            className="px-4 py-2 text-sm font-medium text-gray-600 dark:text-gray-300 bg-gray-100 dark:bg-gray-700 rounded-md hover:bg-gray-200 dark:hover:bg-gray-600"
-          >
-            View History
-          </Link>
+          <Button asChild>
+            <Link to="/generate">
+              <Wand2 className="h-4 w-4" />
+              New Application
+            </Link>
+          </Button>
+          <Button variant="outline" asChild>
+            <Link to="/history">
+              <History className="h-4 w-4" />
+              History
+            </Link>
+          </Button>
         </div>
       </div>
 
       {error && (
-        <div className="mb-4 p-3 bg-red-50 dark:bg-red-900/30 border border-red-200 dark:border-red-800 text-red-700 dark:text-red-400 rounded-md text-sm">
-          {error}
-        </div>
+        <Alert variant="destructive">
+          <AlertCircle className="h-4 w-4" />
+          <AlertDescription>{error}</AlertDescription>
+        </Alert>
       )}
 
       {/* Summary cards */}
       {stats && (
-        <div className="grid grid-cols-2 md:grid-cols-5 gap-4 mb-8">
-          <StatCard label="Today" value={stats.summary.today_count} sub="applications" color="text-blue-600 dark:text-blue-400" />
-          <StatCard label="This Week" value={stats.summary.week_count} sub="last 7 days" color="text-indigo-600 dark:text-indigo-400" />
-          <StatCard label="This Month" value={stats.summary.month_count} sub="last 30 days" color="text-purple-600 dark:text-purple-400" />
-          <StatCard label="Month Cost" value={`$${stats.summary.month_cost.toFixed(4)}`} sub="last 30 days" color="text-green-600 dark:text-green-400" />
-          <StatCard label="Calls Scheduled" value={stats.summary.calls_scheduled} sub="all time" color={stats.summary.calls_scheduled > 0 ? "text-emerald-600 dark:text-emerald-400" : "text-gray-900 dark:text-white"} />
+        <div className="grid grid-cols-2 md:grid-cols-5 gap-4">
+          <StatCard
+            label="Today"
+            value={stats.summary.today_count}
+            sub="applications"
+            icon={<TrendingUp className="h-4 w-4 text-primary" />}
+            accent="bg-primary/10"
+          />
+          <StatCard
+            label="This Week"
+            value={stats.summary.week_count}
+            sub="last 7 days"
+            icon={<Calendar className="h-4 w-4 text-violet-600" />}
+            accent="bg-violet-100 dark:bg-violet-900/30"
+          />
+          <StatCard
+            label="This Month"
+            value={stats.summary.month_count}
+            sub="last 30 days"
+            icon={<Calendar className="h-4 w-4 text-blue-600" />}
+            accent="bg-blue-100 dark:bg-blue-900/30"
+          />
+          <StatCard
+            label="Month Cost"
+            value={`$${stats.summary.month_cost.toFixed(4)}`}
+            sub="last 30 days"
+            icon={<DollarSign className="h-4 w-4 text-emerald-600" />}
+            accent="bg-emerald-100 dark:bg-emerald-900/30"
+          />
+          <StatCard
+            label="Calls Scheduled"
+            value={stats.summary.calls_scheduled}
+            sub="all time"
+            icon={<Phone className="h-4 w-4 text-amber-600" />}
+            accent="bg-amber-100 dark:bg-amber-900/30"
+          />
         </div>
       )}
 
       {/* Date range selector */}
-      <div className="flex flex-wrap items-center gap-2 mb-8 p-4 bg-white dark:bg-gray-800 rounded-lg border border-gray-200 dark:border-gray-700">
-        <span className="text-sm font-medium text-gray-600 dark:text-gray-400">Range:</span>
-        {(["7d", "30d", "90d", "custom"] as Preset[]).map((p) => (
-          <button
-            key={p}
-            onClick={() => setPreset(p)}
-            className={`px-3 py-1.5 rounded-full text-sm font-medium transition-colors ${
-              preset === p
-                ? "bg-blue-600 text-white"
-                : "bg-gray-100 dark:bg-gray-700 text-gray-700 dark:text-gray-300 hover:bg-gray-200 dark:hover:bg-gray-600"
-            }`}
-          >
-            {p === "7d" ? "7 days" : p === "30d" ? "30 days" : p === "90d" ? "90 days" : "Custom"}
-          </button>
-        ))}
-        {preset === "custom" && (
-          <>
-            <input
-              type="date"
-              value={customFrom}
-              onChange={(e) => setCustomFrom(e.target.value)}
-              className="px-3 py-1.5 border border-gray-300 dark:border-gray-600 rounded-md text-sm bg-white dark:bg-gray-700 dark:text-white"
-            />
-            <span className="text-gray-400">→</span>
-            <input
-              type="date"
-              value={customTo}
-              onChange={(e) => setCustomTo(e.target.value)}
-              className="px-3 py-1.5 border border-gray-300 dark:border-gray-600 rounded-md text-sm bg-white dark:bg-gray-700 dark:text-white"
-            />
-          </>
-        )}
-        <button
-          onClick={handleApplyRange}
-          className="px-4 py-1.5 bg-blue-600 text-white rounded-md text-sm font-medium hover:bg-blue-700"
-        >
-          Apply
-        </button>
-      </div>
+      <Card>
+        <CardContent className="pt-4">
+          <div className="flex flex-wrap items-center gap-2">
+            <span className="text-sm font-medium text-muted-foreground">
+              Range:
+            </span>
+            {(["7d", "30d", "90d", "custom"] as Preset[]).map((p) => (
+              <button
+                key={p}
+                onClick={() => setPreset(p)}
+                className={`px-3 py-1.5 rounded-full text-sm font-medium transition-colors ${
+                  preset === p
+                    ? "bg-primary text-primary-foreground"
+                    : "bg-muted text-muted-foreground hover:text-foreground"
+                }`}
+              >
+                {p === "7d"
+                  ? "7 days"
+                  : p === "30d"
+                    ? "30 days"
+                    : p === "90d"
+                      ? "90 days"
+                      : "Custom"}
+              </button>
+            ))}
+            {preset === "custom" && (
+              <>
+                <Input
+                  type="date"
+                  value={customFrom}
+                  onChange={(e) => setCustomFrom(e.target.value)}
+                  className="w-auto h-8 text-sm"
+                />
+                <span className="text-muted-foreground">→</span>
+                <Input
+                  type="date"
+                  value={customTo}
+                  onChange={(e) => setCustomTo(e.target.value)}
+                  className="w-auto h-8 text-sm"
+                />
+              </>
+            )}
+            <Button
+              size="sm"
+              onClick={() => loadData(from, to)}
+            >
+              Apply
+            </Button>
+          </div>
+        </CardContent>
+      </Card>
 
-      <div className="space-y-8">
+      <div className="space-y-6">
         {/* Daily Applications */}
-        <div className="bg-white dark:bg-gray-800 rounded-lg shadow-sm border border-gray-200 dark:border-gray-700 p-6">
-          <h2 className="text-base font-semibold text-gray-800 dark:text-gray-200 mb-4">Daily Applications</h2>
-          {dailyData.length === 0 ? (
-            <p className="text-gray-400 dark:text-gray-500 text-sm text-center py-8">No applications in this period.</p>
-          ) : (
-            <ResponsiveContainer width="100%" height={240}>
-              <BarChart data={dailyData} margin={{ top: 4, right: 16, left: 0, bottom: 0 }}>
-                <CartesianGrid strokeDasharray="3 3" stroke="#e5e7eb" />
-                <XAxis dataKey="date" tick={{ fontSize: 11 }} />
-                <YAxis tick={{ fontSize: 11 }} allowDecimals={false} />
-                <Tooltip />
-                <Bar dataKey="count" name="Applications" fill="#3b82f6" radius={[3, 3, 0, 0]} />
-              </BarChart>
-            </ResponsiveContainer>
-          )}
-        </div>
-
-        <div className="grid grid-cols-1 md:grid-cols-2 gap-8">
-          {/* By Profile */}
-          <div className="bg-white dark:bg-gray-800 rounded-lg shadow-sm border border-gray-200 dark:border-gray-700 p-6">
-            <h2 className="text-base font-semibold text-gray-800 dark:text-gray-200 mb-4">By Profile</h2>
-            {profileData.length === 0 ? (
-              <p className="text-gray-400 dark:text-gray-500 text-sm text-center py-8">No data.</p>
+        <Card>
+          <CardHeader>
+            <CardTitle className="text-base">Daily Applications</CardTitle>
+          </CardHeader>
+          <CardContent>
+            {dailyData.length === 0 ? (
+              <p className="text-muted-foreground text-sm text-center py-8">
+                No applications in this period.
+              </p>
             ) : (
-              <ResponsiveContainer width="100%" height={220}>
-                <BarChart data={profileData.map((p) => ({ name: p.name.length > 16 ? p.name.slice(0, 14) + "…" : p.name, count: p.count }))} layout="vertical" margin={{ top: 4, right: 16, left: 8, bottom: 0 }}>
-                  <CartesianGrid strokeDasharray="3 3" stroke="#e5e7eb" />
-                  <XAxis type="number" tick={{ fontSize: 11 }} allowDecimals={false} />
-                  <YAxis type="category" dataKey="name" tick={{ fontSize: 11 }} width={100} />
-                  <Tooltip />
-                  <Bar dataKey="count" name="Applications" radius={[0, 3, 3, 0]}>
-                    {profileData.map((_, i) => (
-                      <Cell key={i} fill={CHART_COLORS[i % CHART_COLORS.length]} />
-                    ))}
-                  </Bar>
-                </BarChart>
-              </ResponsiveContainer>
-            )}
-          </div>
-
-          {/* By Tech Stack */}
-          <div className="bg-white dark:bg-gray-800 rounded-lg shadow-sm border border-gray-200 dark:border-gray-700 p-6">
-            <h2 className="text-base font-semibold text-gray-800 dark:text-gray-200 mb-4">By Tech Stack</h2>
-            {stackData.length === 0 ? (
-              <p className="text-gray-400 dark:text-gray-500 text-sm text-center py-8">No data.</p>
-            ) : (
-              <ResponsiveContainer width="100%" height={220}>
-                <PieChart>
-                  <Pie
-                    data={stackData.map((s) => ({ name: s.stack_name, value: s.count }))}
-                    cx="50%"
-                    cy="50%"
-                    outerRadius={85}
-                    dataKey="value"
-                    labelLine={false}
-                    label={renderCustomLabel}
-                  >
-                    {stackData.map((_, i) => (
-                      <Cell key={i} fill={CHART_COLORS[i % CHART_COLORS.length]} />
-                    ))}
-                  </Pie>
-                  <Tooltip formatter={(v: number, n: string) => [v, n]} />
-                  <Legend wrapperStyle={{ fontSize: 12 }} />
-                </PieChart>
-              </ResponsiveContainer>
-            )}
-          </div>
-        </div>
-
-        {/* Daily Calls Scheduled */}
-        {(() => {
-          const callData = stats?.daily_calls?.map((d) => ({ date: d.date.slice(5), count: d.count })) ?? [];
-          return callData.length > 0 ? (
-            <div className="bg-white dark:bg-gray-800 rounded-lg shadow-sm border border-gray-200 dark:border-gray-700 p-6">
-              <h2 className="text-base font-semibold text-gray-800 dark:text-gray-200 mb-4">Daily Calls Scheduled</h2>
-              <ResponsiveContainer width="100%" height={200}>
-                <BarChart data={callData} margin={{ top: 4, right: 16, left: 0, bottom: 0 }}>
-                  <CartesianGrid strokeDasharray="3 3" stroke="#e5e7eb" />
+              <ResponsiveContainer width="100%" height={240}>
+                <BarChart
+                  data={dailyData}
+                  margin={{ top: 4, right: 16, left: 0, bottom: 0 }}
+                >
+                  <CartesianGrid strokeDasharray="3 3" className="stroke-border" />
                   <XAxis dataKey="date" tick={{ fontSize: 11 }} />
                   <YAxis tick={{ fontSize: 11 }} allowDecimals={false} />
                   <Tooltip />
-                  <Bar dataKey="count" name="Calls Scheduled" fill="#10b981" radius={[3, 3, 0, 0]} />
+                  <Bar
+                    dataKey="count"
+                    name="Applications"
+                    fill={CHART_COLORS[0]}
+                    radius={[3, 3, 0, 0]}
+                  />
                 </BarChart>
               </ResponsiveContainer>
-            </div>
-          ) : null;
-        })()}
+            )}
+          </CardContent>
+        </Card>
+
+        <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
+          <Card>
+            <CardHeader>
+              <CardTitle className="text-base">By Profile</CardTitle>
+            </CardHeader>
+            <CardContent>
+              {profileData.length === 0 ? (
+                <p className="text-muted-foreground text-sm text-center py-8">
+                  No data.
+                </p>
+              ) : (
+                <ResponsiveContainer width="100%" height={220}>
+                  <BarChart
+                    data={profileData.map((p) => ({
+                      name:
+                        p.name.length > 16 ? p.name.slice(0, 14) + "…" : p.name,
+                      count: p.count,
+                    }))}
+                    layout="vertical"
+                    margin={{ top: 4, right: 16, left: 8, bottom: 0 }}
+                  >
+                    <CartesianGrid strokeDasharray="3 3" className="stroke-border" />
+                    <XAxis type="number" tick={{ fontSize: 11 }} allowDecimals={false} />
+                    <YAxis
+                      type="category"
+                      dataKey="name"
+                      tick={{ fontSize: 11 }}
+                      width={100}
+                    />
+                    <Tooltip />
+                    <Bar dataKey="count" name="Applications" radius={[0, 3, 3, 0]}>
+                      {profileData.map((_, i) => (
+                        <Cell key={i} fill={CHART_COLORS[i % CHART_COLORS.length]} />
+                      ))}
+                    </Bar>
+                  </BarChart>
+                </ResponsiveContainer>
+              )}
+            </CardContent>
+          </Card>
+
+          <Card>
+            <CardHeader>
+              <CardTitle className="text-base">By Tech Stack</CardTitle>
+            </CardHeader>
+            <CardContent>
+              {stackData.length === 0 ? (
+                <p className="text-muted-foreground text-sm text-center py-8">
+                  No data.
+                </p>
+              ) : (
+                <ResponsiveContainer width="100%" height={220}>
+                  <PieChart>
+                    <Pie
+                      data={stackData.map((s) => ({
+                        name: s.stack_name,
+                        value: s.count,
+                      }))}
+                      cx="50%"
+                      cy="50%"
+                      outerRadius={85}
+                      dataKey="value"
+                      labelLine={false}
+                      label={renderCustomLabel}
+                    >
+                      {stackData.map((_, i) => (
+                        <Cell
+                          key={i}
+                          fill={CHART_COLORS[i % CHART_COLORS.length]}
+                        />
+                      ))}
+                    </Pie>
+                    <Tooltip />
+                    <Legend wrapperStyle={{ fontSize: 12 }} />
+                  </PieChart>
+                </ResponsiveContainer>
+              )}
+            </CardContent>
+          </Card>
+        </div>
+
+        {callData.length > 0 && (
+          <Card>
+            <CardHeader>
+              <CardTitle className="text-base">Daily Calls Scheduled</CardTitle>
+            </CardHeader>
+            <CardContent>
+              <ResponsiveContainer width="100%" height={200}>
+                <BarChart
+                  data={callData}
+                  margin={{ top: 4, right: 16, left: 0, bottom: 0 }}
+                >
+                  <CartesianGrid strokeDasharray="3 3" className="stroke-border" />
+                  <XAxis dataKey="date" tick={{ fontSize: 11 }} />
+                  <YAxis tick={{ fontSize: 11 }} allowDecimals={false} />
+                  <Tooltip />
+                  <Bar
+                    dataKey="count"
+                    name="Calls Scheduled"
+                    fill="#10b981"
+                    radius={[3, 3, 0, 0]}
+                  />
+                </BarChart>
+              </ResponsiveContainer>
+            </CardContent>
+          </Card>
+        )}
 
         {/* Recent Applications */}
-        <div className="bg-white dark:bg-gray-800 rounded-lg shadow-sm border border-gray-200 dark:border-gray-700 overflow-hidden">
-          <div className="px-6 py-4 border-b border-gray-200 dark:border-gray-700 flex items-center justify-between">
-            <h2 className="text-base font-semibold text-gray-800 dark:text-gray-200">Recent Applications</h2>
-            <Link to="/history" className="text-sm text-blue-600 dark:text-blue-400 hover:underline">
-              View all →
+        <Card>
+          <CardHeader className="flex flex-row items-center justify-between">
+            <CardTitle className="text-base">Recent Applications</CardTitle>
+            <Link
+              to="/history"
+              className="text-sm text-primary hover:underline flex items-center gap-1"
+            >
+              View all
+              <ArrowRight className="h-3.5 w-3.5" />
             </Link>
-          </div>
-          <div className="overflow-x-auto">
-            <table className="w-full text-sm">
-              <thead className="bg-gray-50 dark:bg-gray-700/50">
-                <tr>
-                  <th className="text-left px-4 py-3 font-medium text-gray-600 dark:text-gray-400">Job Title</th>
-                  <th className="text-left px-4 py-3 font-medium text-gray-600 dark:text-gray-400">Company</th>
-                  <th className="text-left px-4 py-3 font-medium text-gray-600 dark:text-gray-400">Date</th>
-                  <th className="text-left px-4 py-3 font-medium text-gray-600 dark:text-gray-400">Cost</th>
-                </tr>
-              </thead>
-              <tbody>
+          </CardHeader>
+          <CardContent className="p-0">
+            <Table>
+              <TableHeader>
+                <TableRow>
+                  <TableHead>Job Title</TableHead>
+                  <TableHead>Company</TableHead>
+                  <TableHead>Date</TableHead>
+                  <TableHead>Cost</TableHead>
+                </TableRow>
+              </TableHeader>
+              <TableBody>
                 {recentApps.length === 0 ? (
-                  <tr>
-                    <td colSpan={4} className="px-4 py-8 text-center text-gray-400 dark:text-gray-500">
+                  <TableRow>
+                    <TableCell
+                      colSpan={4}
+                      className="text-center text-muted-foreground py-8"
+                    >
                       No applications yet.{" "}
-                      <Link to="/generate" className="text-blue-600 dark:text-blue-400 hover:underline">Create one!</Link>
-                    </td>
-                  </tr>
+                      <Link to="/generate" className="text-primary hover:underline">
+                        Create one!
+                      </Link>
+                    </TableCell>
+                  </TableRow>
                 ) : (
                   recentApps.map((app) => (
-                    <tr key={app.id} className="border-t border-gray-100 dark:border-gray-700 hover:bg-gray-50 dark:hover:bg-gray-700/30">
-                      <td className="px-4 py-3 text-gray-900 dark:text-white">
-                        <Link to={`/preview/${app.id}`} className="hover:text-blue-600 dark:hover:text-blue-400">
+                    <TableRow key={app.id}>
+                      <TableCell className="font-medium">
+                        <Link
+                          to={`/preview/${app.id}`}
+                          className="hover:text-primary transition-colors"
+                        >
                           {app.job_title ?? "—"}
                         </Link>
-                      </td>
-                      <td className="px-4 py-3 text-gray-600 dark:text-gray-400">{app.company_name ?? "—"}</td>
-                      <td className="px-4 py-3 text-gray-500 dark:text-gray-400">
+                      </TableCell>
+                      <TableCell className="text-muted-foreground">
+                        {app.company ?? "—"}
+                      </TableCell>
+                      <TableCell className="text-muted-foreground text-xs">
                         {new Date(app.created_at).toLocaleDateString()}
-                      </td>
-                      <td className="px-4 py-3 text-gray-600 dark:text-gray-400">
-                        {app.total_cost != null ? `$${app.total_cost.toFixed(4)}` : "—"}
-                      </td>
-                    </tr>
+                      </TableCell>
+                      <TableCell className="text-muted-foreground text-xs">
+                        {app.total_cost != null
+                          ? `$${app.total_cost.toFixed(4)}`
+                          : "—"}
+                      </TableCell>
+                    </TableRow>
                   ))
                 )}
-              </tbody>
-            </table>
-          </div>
-        </div>
+              </TableBody>
+            </Table>
+          </CardContent>
+        </Card>
       </div>
     </div>
   );

@@ -1,9 +1,40 @@
+import {
+  AlertTriangle,
+  ChevronDown,
+  Layers,
+  Plus,
+  Trash2,
+  User,
+  Wand2,
+} from "lucide-react";
 import { useEffect, useState } from "react";
 import { useLocation, useNavigate } from "react-router-dom";
-import { checkCompanies, generateApplication } from "../api/generate";
 import { submitBatchJob } from "../api/batch_jobs";
+import { checkCompanies, generateApplication } from "../api/generate";
 import { getProfiles } from "../api/profile";
 import LoadingSpinner from "../components/LoadingSpinner";
+import { Alert, AlertDescription } from "../components/ui/alert";
+import { Button } from "../components/ui/button";
+import { Card, CardContent, CardHeader, CardTitle } from "../components/ui/card";
+import {
+  Dialog,
+  DialogContent,
+  DialogDescription,
+  DialogFooter,
+  DialogHeader,
+  DialogTitle,
+} from "../components/ui/dialog";
+import { Input } from "../components/ui/input";
+import { Label } from "../components/ui/label";
+import {
+  Select,
+  SelectContent,
+  SelectItem,
+  SelectTrigger,
+  SelectValue,
+} from "../components/ui/select";
+import { Switch } from "../components/ui/switch";
+import { Textarea } from "../components/ui/textarea";
 import type { ExistingApplicationInfo, JobDescriptionEntry, Profile } from "../types";
 
 interface JobMatch {
@@ -20,17 +51,23 @@ const emptyJob: JobDescriptionEntry = {
   job_description: "",
 };
 
+const BATCH_LIMIT = 10;
+
 function jobTitleWarning(value: string): string | null {
   if (!value) return null;
-  if (value.includes("\n")) return "Job titles don't have line breaks — did you paste the job description here by mistake?";
-  if (value.length > 150) return "This looks too long for a job title — double-check you're filling in the right field.";
+  if (value.includes("\n"))
+    return "Job titles don't have line breaks — did you paste the job description here by mistake?";
+  if (value.length > 150)
+    return "This looks too long for a job title — double-check you're filling in the right field.";
   return null;
 }
 
 function companyWarning(value: string): string | null {
   if (!value) return null;
-  if (value.includes("\n")) return "Company names don't have line breaks — check this field.";
-  if (value.length > 100) return "This looks too long for a company name — check this field.";
+  if (value.includes("\n"))
+    return "Company names don't have line breaks — check this field.";
+  if (value.length > 100)
+    return "This looks too long for a company name — check this field.";
   return null;
 }
 
@@ -38,9 +75,7 @@ function FieldWarning({ msg }: { msg: string | null }) {
   if (!msg) return null;
   return (
     <p className="mt-1 text-xs text-amber-600 dark:text-amber-400 flex items-center gap-1">
-      <svg className="w-3 h-3 shrink-0" fill="currentColor" viewBox="0 0 20 20">
-        <path fillRule="evenodd" d="M8.485 2.495c.673-1.167 2.357-1.167 3.03 0l6.28 10.875c.673 1.167-.17 2.625-1.516 2.625H3.72c-1.347 0-2.189-1.458-1.515-2.625L8.485 2.495zM10 5a.75.75 0 01.75.75v3.5a.75.75 0 01-1.5 0v-3.5A.75.75 0 0110 5zm0 9a1 1 0 100-2 1 1 0 000 2z" clipRule="evenodd" />
-      </svg>
+      <AlertTriangle className="h-3 w-3 shrink-0" />
       {msg}
     </p>
   );
@@ -68,8 +103,12 @@ export default function JobInput() {
     company: string;
   } | null>(null);
   const [pendingMatches, setPendingMatches] = useState<JobMatch[]>([]);
-  const [markedForRemoval, setMarkedForRemoval] = useState<Set<number>>(new Set());
-  const [expandedMatches, setExpandedMatches] = useState<Set<number>>(new Set());
+  const [markedForRemoval, setMarkedForRemoval] = useState<Set<number>>(
+    new Set()
+  );
+  const [expandedMatches, setExpandedMatches] = useState<Set<number>>(
+    new Set()
+  );
 
   useEffect(() => {
     getProfiles(true)
@@ -87,13 +126,10 @@ export default function JobInput() {
     index: number,
     field: keyof JobDescriptionEntry,
     value: string
-  ) => {
+  ) =>
     setJobs((prev) =>
       prev.map((j, i) => (i === index ? { ...j, [field]: value } : j))
     );
-  };
-
-const BATCH_LIMIT = 10;
 
   const addJob = () => {
     if (jobs.length >= BATCH_LIMIT) return;
@@ -105,17 +141,36 @@ const BATCH_LIMIT = 10;
 
   const detectWorkMode = (text: string): string | null => {
     const lower = text.toLowerCase();
-    const hybridPatterns = [/\bhybrid\b/, /\bin[- ]office\s+\d/, /\d\s+days?\s+in[- ]office/, /\d\s+days?\s+on[- ]?site/];
-    const onsitePatterns = [/\bon[- ]?site\b/, /\bin[- ]office\b/, /\bin[- ]person\b/, /\breturn to office\b/, /\bno remote\b/, /\bnot remote\b/, /\boffice[- ]based\b/, /\bwork from office\b/, /\bmust be located\b/, /\brelocation required\b/];
-    for (const p of hybridPatterns) { if (p.test(lower)) return "hybrid"; }
-    for (const p of onsitePatterns) { if (p.test(lower)) return "onsite"; }
+    const hybridPatterns = [
+      /\bhybrid\b/,
+      /\bin[- ]office\s+\d/,
+      /\d\s+days?\s+in[- ]office/,
+      /\d\s+days?\s+on[- ]?site/,
+    ];
+    const onsitePatterns = [
+      /\bon[- ]?site\b/,
+      /\bin[- ]office\b/,
+      /\bin[- ]person\b/,
+      /\breturn to office\b/,
+      /\bno remote\b/,
+      /\bnot remote\b/,
+      /\boffice[- ]based\b/,
+      /\bwork from office\b/,
+      /\bmust be located\b/,
+      /\brelocation required\b/,
+    ];
+    for (const p of hybridPatterns) {
+      if (p.test(lower)) return "hybrid";
+    }
+    for (const p of onsitePatterns) {
+      if (p.test(lower)) return "onsite";
+    }
     return null;
   };
 
   const doGenerate = async (activeJobs: JobDescriptionEntry[]) => {
     setLoading(true);
     setError(null);
-
     try {
       if (batchMode && activeJobs.length > 1) {
         const res = await submitBatchJob({
@@ -137,20 +192,20 @@ const BATCH_LIMIT = 10;
           job_url: job.job_url || undefined,
           job_description: job.job_description,
         });
-        navigate(`/preview/${res.data.application_id}`, {
-          state: res.data,
-        });
+        navigate(`/preview/${res.data.application_id}`, { state: res.data });
       }
     } catch (err: unknown) {
-      const message =
-        err instanceof Error ? err.message : "Failed to generate application";
-      setError(message);
+      setError(
+        err instanceof Error ? err.message : "Failed to generate application"
+      );
     } finally {
       setLoading(false);
     }
   };
 
-  const runCompanyCheckThenGenerate = async (activeJobs: JobDescriptionEntry[]) => {
+  const runCompanyCheckThenGenerate = async (
+    activeJobs: JobDescriptionEntry[]
+  ) => {
     const companies = activeJobs
       .map((j) => j.company?.trim())
       .filter((c): c is string => !!c);
@@ -160,7 +215,10 @@ const BATCH_LIMIT = 10;
         const res = await checkCompanies(selectedProfileId, companies);
         if (res.data.matches.length > 0) {
           const matchByCompany = new Map(
-            res.data.matches.map((m) => [m.company.toLowerCase().trim(), m])
+            res.data.matches.map((m) => [
+              m.company.toLowerCase().trim(),
+              m,
+            ])
           );
           const jobMatches: JobMatch[] = [];
           activeJobs.forEach((job, idx) => {
@@ -183,10 +241,9 @@ const BATCH_LIMIT = 10;
           }
         }
       } catch {
-        // If the check call fails, proceed silently — don't block generation
+        // proceed silently if check fails
       }
     }
-
     await doGenerate(activeJobs);
   };
 
@@ -205,38 +262,20 @@ const BATCH_LIMIT = 10;
     setExpandedMatches(new Set());
   };
 
-  const toggleRemoval = (jobIndex: number) => {
-    setMarkedForRemoval((prev) => {
-      const next = new Set(prev);
-      if (next.has(jobIndex)) next.delete(jobIndex);
-      else next.add(jobIndex);
-      return next;
-    });
-  };
-
-  const toggleExpanded = (jobIndex: number) => {
-    setExpandedMatches((prev) => {
-      const next = new Set(prev);
-      if (next.has(jobIndex)) next.delete(jobIndex);
-      else next.add(jobIndex);
-      return next;
-    });
-  };
-
   const handleSubmit = async (e: React.FormEvent<HTMLFormElement>) => {
     e.preventDefault();
     if (!selectedProfileId) {
       setError("Please select a profile");
       return;
     }
-
-    // Check each job individually so we can point to the exact offender
     for (let i = 0; i < jobs.length; i++) {
       const workMode = detectWorkMode(jobs[i].job_description);
       if (workMode) {
-        const label = workMode === "hybrid" ? "hybrid (partially in-office)" : "onsite (in-office)";
         setWorkModeWarning({
-          label,
+          label:
+            workMode === "hybrid"
+              ? "hybrid (partially in-office)"
+              : "onsite (in-office)",
           jobIndex: i,
           jobTitle: jobs[i].job_title || `Job #${i + 1}`,
           company: jobs[i].company || "",
@@ -244,112 +283,120 @@ const BATCH_LIMIT = 10;
         return;
       }
     }
-
     await runCompanyCheckThenGenerate(jobs);
   };
 
-  if (profilesLoading)
-    return <LoadingSpinner message="Loading profiles..." />;
-
+  if (profilesLoading) return <LoadingSpinner message="Loading profiles..." />;
   if (loading) {
     return (
       <LoadingSpinner
         message={
           batchMode && jobs.length > 1
             ? "Submitting batch job..."
-            : "Tailoring your resume and generating cover letter... This may take 10-15 seconds."
+            : "Tailoring your resume and generating cover letter… This may take 10–15 seconds."
         }
       />
     );
   }
 
   return (
-    <div>
-      <h1 className="text-2xl font-bold text-gray-900 dark:text-white mb-6">
-        Generate Application
-      </h1>
+    <div className="max-w-3xl mx-auto space-y-6">
+      <div>
+        <h1 className="text-2xl font-bold">Generate Application</h1>
+        <p className="text-muted-foreground text-sm mt-0.5">
+          Tailor your resume and generate a cover letter for a job
+        </p>
+      </div>
 
       {error && (
-        <div className="mb-4 p-3 bg-red-50 dark:bg-red-900/30 border border-red-200 dark:border-red-800 text-red-700 dark:text-red-400 rounded-md text-sm">
-          {error}
-        </div>
+        <Alert variant="destructive">
+          <AlertTriangle className="h-4 w-4" />
+          <AlertDescription>{error}</AlertDescription>
+        </Alert>
       )}
 
       {profiles.length === 0 ? (
-        <div className="text-center py-12 bg-white dark:bg-gray-800 rounded-lg shadow-sm border border-gray-200 dark:border-gray-700">
-          <p className="text-gray-500 dark:text-gray-400 mb-4">
-            You need a profile before generating applications.
-          </p>
-          <button
-            onClick={() => navigate("/profiles/new")}
-            className="px-4 py-2 bg-blue-600 text-white rounded-md text-sm hover:bg-blue-700"
-          >
-            Create a Profile
-          </button>
-        </div>
+        <Card className="text-center py-10">
+          <CardContent>
+            <User className="h-12 w-12 text-muted-foreground mx-auto mb-3" />
+            <p className="text-muted-foreground mb-4">
+              You need a profile before generating applications.
+            </p>
+            <Button onClick={() => navigate("/profiles/new")}>
+              <Plus className="h-4 w-4" />
+              Create a Profile
+            </Button>
+          </CardContent>
+        </Card>
       ) : (
         <form onSubmit={handleSubmit} className="space-y-6">
-          {/* Profile selector */}
-          <div className="bg-white dark:bg-gray-800 rounded-lg shadow-sm border border-gray-200 dark:border-gray-700 p-6">
-            <div className="flex items-center justify-between mb-3">
-              <label className="block text-sm font-medium text-gray-700 dark:text-gray-300">
-                Select Profile *
-              </label>
-              <label className="flex items-center gap-2 text-sm text-gray-600 dark:text-gray-400">
-                <input
-                  type="checkbox"
-                  checked={batchMode}
-                  onChange={(e) => {
-                    setBatchMode(e.target.checked);
-                    if (!e.target.checked && jobs.length > 1) {
-                      setJobs([jobs[0]]);
-                    }
-                  }}
-                  className="rounded border-gray-300 dark:border-gray-600 text-blue-600 focus:ring-blue-500"
-                />
-                Batch Mode
-              </label>
-            </div>
-            <select
-              value={selectedProfileId}
-              onChange={(e) => setSelectedProfileId(e.target.value)}
-              className="w-full px-3 py-2 border border-gray-300 dark:border-gray-600 rounded-md text-sm focus:ring-2 focus:ring-blue-500 focus:border-blue-500 bg-white dark:bg-gray-700 dark:text-white"
-              required
-            >
-              <option value="" disabled>
-                -- Choose a profile --
-              </option>
-              {profiles.map((p) => (
-                <option key={p.id} value={p.id}>
-                  {p.name}
-                  {p.is_shared ? " (shared)" : ""}
-                  {p.email ? ` - ${p.email}` : ""}
-                </option>
-              ))}
-            </select>
-          </div>
+          {/* Profile + Batch toggle */}
+          <Card>
+            <CardContent className="pt-5">
+              <div className="flex items-center justify-between mb-3">
+                <Label className="text-sm font-medium">Profile *</Label>
+                <div className="flex items-center gap-2">
+                  <Label
+                    htmlFor="batch-mode"
+                    className="text-sm text-muted-foreground cursor-pointer flex items-center gap-1.5"
+                  >
+                    <Layers className="h-3.5 w-3.5" />
+                    Batch Mode
+                  </Label>
+                  <Switch
+                    id="batch-mode"
+                    checked={batchMode}
+                    onCheckedChange={(checked) => {
+                      setBatchMode(checked);
+                      if (!checked && jobs.length > 1) setJobs([jobs[0]]);
+                    }}
+                  />
+                </div>
+              </div>
+              <Select
+                value={selectedProfileId}
+                onValueChange={setSelectedProfileId}
+                required
+              >
+                <SelectTrigger>
+                  <SelectValue placeholder="Choose a profile…" />
+                </SelectTrigger>
+                <SelectContent>
+                  {profiles.map((p) => (
+                    <SelectItem key={p.id} value={p.id}>
+                      {p.name}
+                      {p.is_shared ? " (shared)" : ""}
+                      {p.email ? ` — ${p.email}` : ""}
+                    </SelectItem>
+                  ))}
+                </SelectContent>
+              </Select>
+            </CardContent>
+          </Card>
 
-          {/* Job descriptions */}
+          {/* Batch job cards or single form */}
           {batchMode ? (
             <div className="space-y-4">
               <div className="flex items-center justify-between">
-                <h2 className="text-lg font-semibold text-gray-800 dark:text-gray-200">
+                <h2 className="text-sm font-semibold text-muted-foreground uppercase tracking-wide">
                   Job Descriptions ({jobs.length})
                 </h2>
                 <div className="flex items-center gap-2">
                   {jobs.length >= BATCH_LIMIT && (
                     <span className="text-xs text-amber-600 dark:text-amber-400 font-medium">
-                      Max {BATCH_LIMIT} applications per batch
+                      Max {BATCH_LIMIT} per batch
                     </span>
                   )}
-                  <button
+                  <Button
                     type="button"
+                    variant="outline"
+                    size="sm"
                     onClick={addJob}
                     disabled={jobs.length >= BATCH_LIMIT}
-                    className="text-sm px-3 py-1.5 bg-blue-50 dark:bg-blue-900/30 text-blue-600 dark:text-blue-400 rounded-md hover:bg-blue-100 dark:hover:bg-blue-900/50 disabled:opacity-40 disabled:cursor-not-allowed"
                   >
-                    + Add Job
-                  </button>
+                    <Plus className="h-3.5 w-3.5" />
+                    Add Job
+                  </Button>
                 </div>
               </div>
 
@@ -357,361 +404,354 @@ const BATCH_LIMIT = 10;
                 const titleWarn = jobTitleWarning(job.job_title);
                 const compWarn = companyWarning(job.company || "");
                 return (
-                <div
-                  key={index}
-                  className="bg-white dark:bg-gray-800 rounded-lg shadow-sm border border-gray-200 dark:border-gray-700 p-5"
-                >
-                  <div className="flex items-center justify-between mb-3">
-                    <span className="text-sm font-medium text-gray-500 dark:text-gray-400">
-                      Job #{index + 1}
-                    </span>
-                    <button
-                      type="button"
-                      onClick={() => removeJob(index)}
-                      disabled={jobs.length === 1}
-                      className="text-sm text-red-500 hover:text-red-700 dark:text-red-400 dark:hover:text-red-300 disabled:opacity-30 disabled:cursor-not-allowed"
-                    >
-                      Remove
-                    </button>
-                  </div>
-                  <div className="space-y-3">
-                    <div className="grid grid-cols-1 md:grid-cols-3 gap-3">
-                      <div>
-                        <input
-                          type="text"
-                          placeholder="Job Title *"
-                          value={job.job_title}
-                          onChange={(e) =>
-                            updateJob(index, "job_title", e.target.value)
-                          }
-                          maxLength={300}
-                          className={`w-full px-3 py-2 border rounded-md text-sm focus:ring-2 focus:ring-blue-500 focus:border-blue-500 bg-white dark:bg-gray-700 dark:text-white ${titleWarn ? "border-amber-400 dark:border-amber-500" : "border-gray-300 dark:border-gray-600"}`}
-                          required
-                        />
-                        <FieldWarning msg={titleWarn} />
+                  <Card key={index}>
+                    <CardHeader className="pb-3">
+                      <div className="flex items-center justify-between">
+                        <CardTitle className="text-sm text-muted-foreground">
+                          Job #{index + 1}
+                        </CardTitle>
+                        <Button
+                          type="button"
+                          variant="ghost"
+                          size="icon"
+                          className="h-7 w-7 text-muted-foreground hover:text-destructive"
+                          onClick={() => removeJob(index)}
+                          disabled={jobs.length === 1}
+                        >
+                          <Trash2 className="h-3.5 w-3.5" />
+                        </Button>
                       </div>
-                      <div>
-                        <input
-                          type="text"
-                          placeholder="Company (optional)"
-                          value={job.company || ""}
+                    </CardHeader>
+                    <CardContent className="space-y-3">
+                      <div className="grid grid-cols-1 md:grid-cols-3 gap-3">
+                        <div>
+                          <Input
+                            placeholder="Job Title *"
+                            value={job.job_title}
+                            onChange={(e) =>
+                              updateJob(index, "job_title", e.target.value)
+                            }
+                            maxLength={300}
+                            required
+                            className={titleWarn ? "border-amber-400" : ""}
+                          />
+                          <FieldWarning msg={titleWarn} />
+                        </div>
+                        <div>
+                          <Input
+                            placeholder="Company (optional)"
+                            value={job.company || ""}
+                            onChange={(e) =>
+                              updateJob(index, "company", e.target.value)
+                            }
+                            maxLength={300}
+                            className={compWarn ? "border-amber-400" : ""}
+                          />
+                          <FieldWarning msg={compWarn} />
+                        </div>
+                        <Input
+                          type="url"
+                          placeholder="Job URL (optional)"
+                          value={job.job_url || ""}
                           onChange={(e) =>
-                            updateJob(index, "company", e.target.value)
+                            updateJob(index, "job_url", e.target.value)
                           }
-                          maxLength={300}
-                          className={`w-full px-3 py-2 border rounded-md text-sm focus:ring-2 focus:ring-blue-500 focus:border-blue-500 bg-white dark:bg-gray-700 dark:text-white ${compWarn ? "border-amber-400 dark:border-amber-500" : "border-gray-300 dark:border-gray-600"}`}
                         />
-                        <FieldWarning msg={compWarn} />
                       </div>
-                      <input
-                        type="url"
-                        placeholder="Job URL (optional)"
-                        value={job.job_url || ""}
+                      <Textarea
+                        placeholder="Paste the full job description here..."
+                        value={job.job_description}
                         onChange={(e) =>
-                          updateJob(index, "job_url", e.target.value)
+                          updateJob(index, "job_description", e.target.value)
                         }
-                        className="w-full px-3 py-2 border border-gray-300 dark:border-gray-600 rounded-md text-sm focus:ring-2 focus:ring-blue-500 focus:border-blue-500 bg-white dark:bg-gray-700 dark:text-white"
+                        rows={6}
+                        required
                       />
-                    </div>
-                    <textarea
-                      placeholder="Paste the full job description here..."
-                      value={job.job_description}
-                      onChange={(e) =>
-                        updateJob(index, "job_description", e.target.value)
-                      }
-                      rows={6}
-                      className="w-full px-3 py-2 border border-gray-300 dark:border-gray-600 rounded-md text-sm focus:ring-2 focus:ring-blue-500 focus:border-blue-500 bg-white dark:bg-gray-700 dark:text-white"
-                      required
-                    />
-                  </div>
-                </div>
-              );
-            })}
+                    </CardContent>
+                  </Card>
+                );
+              })}
             </div>
           ) : (
-            <div className="bg-white dark:bg-gray-800 rounded-lg shadow-sm border border-gray-200 dark:border-gray-700 p-6 space-y-4">
-              <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-                <div>
-                  <label className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-1">
-                    Job Title *
-                  </label>
-                  <input
-                    type="text"
-                    value={jobs[0].job_title}
+            <Card>
+              <CardHeader>
+                <CardTitle className="text-base flex items-center gap-2">
+                  <Wand2 className="h-4 w-4 text-primary" />
+                  Job Details
+                </CardTitle>
+              </CardHeader>
+              <CardContent className="space-y-4">
+                <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                  <div className="space-y-1.5">
+                    <Label>Job Title *</Label>
+                    <Input
+                      value={jobs[0].job_title}
+                      onChange={(e) => updateJob(0, "job_title", e.target.value)}
+                      placeholder="Senior Software Engineer"
+                      maxLength={300}
+                      required
+                      className={
+                        jobTitleWarning(jobs[0].job_title)
+                          ? "border-amber-400"
+                          : ""
+                      }
+                    />
+                    <FieldWarning msg={jobTitleWarning(jobs[0].job_title)} />
+                  </div>
+                  <div className="space-y-1.5">
+                    <Label>Company (optional)</Label>
+                    <Input
+                      value={jobs[0].company || ""}
+                      onChange={(e) => updateJob(0, "company", e.target.value)}
+                      placeholder="Acme Corp"
+                      maxLength={300}
+                      className={
+                        companyWarning(jobs[0].company || "")
+                          ? "border-amber-400"
+                          : ""
+                      }
+                    />
+                    <FieldWarning msg={companyWarning(jobs[0].company || "")} />
+                  </div>
+                </div>
+                <div className="space-y-1.5">
+                  <Label>Job URL (optional)</Label>
+                  <Input
+                    type="url"
+                    value={jobs[0].job_url || ""}
+                    onChange={(e) => updateJob(0, "job_url", e.target.value)}
+                    placeholder="https://..."
+                  />
+                </div>
+                <div className="space-y-1.5">
+                  <Label>Job Description *</Label>
+                  <Textarea
+                    value={jobs[0].job_description}
                     onChange={(e) =>
-                      updateJob(0, "job_title", e.target.value)
+                      updateJob(0, "job_description", e.target.value)
                     }
-                    placeholder="e.g., Senior Software Engineer"
-                    maxLength={300}
-                    className={`w-full px-3 py-2 border rounded-md text-sm focus:ring-2 focus:ring-blue-500 focus:border-blue-500 bg-white dark:bg-gray-700 dark:text-white ${jobTitleWarning(jobs[0].job_title) ? "border-amber-400 dark:border-amber-500" : "border-gray-300 dark:border-gray-600"}`}
+                    rows={12}
+                    placeholder="Paste the full job description here..."
                     required
                   />
-                  <FieldWarning msg={jobTitleWarning(jobs[0].job_title)} />
                 </div>
-                <div>
-                  <label className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-1">
-                    Company (optional)
-                  </label>
-                  <input
-                    type="text"
-                    value={jobs[0].company || ""}
-                    onChange={(e) =>
-                      updateJob(0, "company", e.target.value)
-                    }
-                    placeholder="e.g., Acme Corp"
-                    maxLength={300}
-                    className={`w-full px-3 py-2 border rounded-md text-sm focus:ring-2 focus:ring-blue-500 focus:border-blue-500 bg-white dark:bg-gray-700 dark:text-white ${companyWarning(jobs[0].company || "") ? "border-amber-400 dark:border-amber-500" : "border-gray-300 dark:border-gray-600"}`}
-                  />
-                  <FieldWarning msg={companyWarning(jobs[0].company || "")} />
-                </div>
-              </div>
-              <div>
-                <label className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-1">
-                  Job URL (optional)
-                </label>
-                <input
-                  type="url"
-                  value={jobs[0].job_url || ""}
-                  onChange={(e) =>
-                    updateJob(0, "job_url", e.target.value)
-                  }
-                  placeholder="https://..."
-                  className="w-full px-3 py-2 border border-gray-300 dark:border-gray-600 rounded-md text-sm focus:ring-2 focus:ring-blue-500 focus:border-blue-500 bg-white dark:bg-gray-700 dark:text-white"
-                />
-              </div>
-              <div>
-                <label className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-1">
-                  Job Description *
-                </label>
-                <textarea
-                  value={jobs[0].job_description}
-                  onChange={(e) =>
-                    updateJob(0, "job_description", e.target.value)
-                  }
-                  rows={12}
-                  placeholder="Paste the full job description here..."
-                  className="w-full px-3 py-2 border border-gray-300 dark:border-gray-600 rounded-md text-sm focus:ring-2 focus:ring-blue-500 focus:border-blue-500 bg-white dark:bg-gray-700 dark:text-white"
-                  required
-                />
-              </div>
-            </div>
+              </CardContent>
+            </Card>
           )}
 
           <div className="flex justify-end">
-            <button
-              type="submit"
-              className="px-6 py-2.5 bg-blue-600 text-white rounded-md font-medium text-sm hover:bg-blue-700 transition-colors"
-            >
+            <Button type="submit" size="lg">
+              <Wand2 className="h-4 w-4" />
               {batchMode && jobs.length > 1
                 ? `Generate ${jobs.length} Applications`
                 : "Generate Resume & Cover Letter"}
-            </button>
+            </Button>
           </div>
         </form>
       )}
 
-      {/* Work mode warning modal */}
-      {workModeWarning && (
-        <div className="fixed inset-0 z-50 flex items-center justify-center">
-          <div
-            className="absolute inset-0 bg-black/50"
-            onClick={() => setWorkModeWarning(null)}
-          />
-          <div className="relative bg-white dark:bg-gray-800 rounded-lg shadow-xl border border-gray-200 dark:border-gray-700 max-w-md w-full mx-4 p-6">
-            <div className="flex items-start gap-3 mb-4">
-              <div className="flex-shrink-0 w-10 h-10 rounded-full bg-yellow-100 dark:bg-yellow-900/40 flex items-center justify-center">
-                <svg className="w-5 h-5 text-yellow-600 dark:text-yellow-400" fill="none" viewBox="0 0 24 24" strokeWidth={2} stroke="currentColor">
-                  <path strokeLinecap="round" strokeLinejoin="round" d="M12 9v3.75m-9.303 3.376c-.866 1.5.217 3.374 1.948 3.374h14.71c1.73 0 2.813-1.874 1.948-3.374L13.949 3.378c-.866-1.5-3.032-1.5-3.898 0L2.697 16.126ZM12 15.75h.007v.008H12v-.008Z" />
-                </svg>
-              </div>
-              <div className="flex-1 min-w-0">
-                <h3 className="text-lg font-semibold text-gray-900 dark:text-white">
-                  Work Mode Warning
-                </h3>
-                <div className="mt-2 px-3 py-2 bg-yellow-50 dark:bg-yellow-900/20 border border-yellow-200 dark:border-yellow-800 rounded-md">
-                  <p className="text-sm font-medium text-gray-900 dark:text-white truncate">
-                    {workModeWarning.jobTitle}
-                    {workModeWarning.company && (
-                      <span className="text-gray-500 dark:text-gray-400 font-normal"> @ {workModeWarning.company}</span>
-                    )}
-                  </p>
-                  <p className="text-xs text-yellow-700 dark:text-yellow-400 mt-0.5">
-                    Detected as <span className="font-medium">{workModeWarning.label}</span>
-                  </p>
-                </div>
-                <p className="mt-2 text-sm text-gray-600 dark:text-gray-400">
-                  Are you sure you want to generate a resume for this position?
-                </p>
-              </div>
-            </div>
-            <div className="flex justify-end gap-2">
-              <button
-                onClick={() => setWorkModeWarning(null)}
-                className="px-4 py-2 text-sm font-medium text-gray-700 dark:text-gray-300 bg-gray-100 dark:bg-gray-700 rounded-md hover:bg-gray-200 dark:hover:bg-gray-600 transition-colors"
+      {/* Work mode warning dialog */}
+      <Dialog
+        open={!!workModeWarning}
+        onOpenChange={(o) => !o && setWorkModeWarning(null)}
+      >
+        <DialogContent>
+          <DialogHeader>
+            <DialogTitle className="flex items-center gap-2 text-amber-600 dark:text-amber-400">
+              <AlertTriangle className="h-5 w-5" />
+              Work Mode Warning
+            </DialogTitle>
+            <DialogDescription>
+              This job posting appears to require in-person attendance.
+            </DialogDescription>
+          </DialogHeader>
+          {workModeWarning && (
+            <Alert variant="warning">
+              <AlertTriangle className="h-4 w-4" />
+              <AlertDescription>
+                <span className="font-medium">{workModeWarning.jobTitle}</span>
+                {workModeWarning.company && (
+                  <span className="text-muted-foreground">
+                    {" "}
+                    @ {workModeWarning.company}
+                  </span>
+                )}{" "}
+                — detected as{" "}
+                <span className="font-semibold">{workModeWarning.label}</span>
+              </AlertDescription>
+            </Alert>
+          )}
+          <DialogFooter>
+            <Button
+              variant="outline"
+              onClick={() => setWorkModeWarning(null)}
+            >
+              Cancel
+            </Button>
+            {batchMode && jobs.length > 1 && workModeWarning && (
+              <Button
+                variant="destructive"
+                onClick={() => {
+                  removeJob(workModeWarning.jobIndex);
+                  setWorkModeWarning(null);
+                }}
               >
-                Cancel
-              </button>
-              {batchMode && jobs.length > 1 && (
-                <button
-                  onClick={() => {
-                    removeJob(workModeWarning.jobIndex);
-                    setWorkModeWarning(null);
-                  }}
-                  className="px-4 py-2 text-sm font-medium text-white bg-red-600 rounded-md hover:bg-red-700 transition-colors"
-                >
-                  Remove Job
-                </button>
-              )}
-              <button
+                Remove Job
+              </Button>
+            )}
+            {workModeWarning && (
+              <Button
+                variant="warning"
                 onClick={() => {
                   setWorkModeWarning(null);
                   runCompanyCheckThenGenerate(jobs);
                 }}
-                className="px-4 py-2 text-sm font-medium text-white bg-yellow-600 rounded-md hover:bg-yellow-700 transition-colors"
               >
                 Proceed Anyway
-              </button>
-            </div>
-          </div>
-        </div>
-      )}
+              </Button>
+            )}
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
 
-      {/* Already-applied company alert */}
-      {pendingMatches.length > 0 && (
-        <div className="fixed inset-0 z-50 flex items-center justify-center">
-          <div
-            className="absolute inset-0 bg-black/50"
-            onClick={dismissMatchModal}
-          />
-          <div className="relative bg-white dark:bg-gray-800 rounded-lg shadow-xl border border-gray-200 dark:border-gray-700 max-w-lg w-full mx-4 p-6">
-            <div className="flex items-start gap-3 mb-4">
-              <div className="flex-shrink-0 w-10 h-10 rounded-full bg-orange-100 dark:bg-orange-900/40 flex items-center justify-center">
-                <svg className="w-5 h-5 text-orange-600 dark:text-orange-400" fill="none" viewBox="0 0 24 24" strokeWidth={2} stroke="currentColor">
-                  <path strokeLinecap="round" strokeLinejoin="round" d="M12 9v3.75m-9.303 3.376c-.866 1.5.217 3.374 1.948 3.374h14.71c1.73 0 2.813-1.874 1.948-3.374L13.949 3.378c-.866-1.5-3.032-1.5-3.898 0L2.697 16.126ZM12 15.75h.007v.008H12v-.008Z" />
-                </svg>
-              </div>
-              <div>
-                <h3 className="text-lg font-semibold text-gray-900 dark:text-white">
-                  Already Applied to {pendingMatches.length === 1 ? "This Company" : "These Companies"}
-                </h3>
-                <p className="mt-1 text-sm text-gray-600 dark:text-gray-400">
-                  {pendingMatches.length === 1
-                    ? "This profile has a previous application for this company."
-                    : `This profile has previous applications for ${pendingMatches.length} of the selected companies.`}
-                  {" "}Click a row to expand. You can remove jobs or continue anyway.
-                </p>
-              </div>
-            </div>
+      {/* Already-applied company dialog */}
+      <Dialog
+        open={pendingMatches.length > 0}
+        onOpenChange={(o) => !o && dismissMatchModal()}
+      >
+        <DialogContent className="max-w-lg">
+          <DialogHeader>
+            <DialogTitle className="flex items-center gap-2 text-amber-600 dark:text-amber-400">
+              <AlertTriangle className="h-5 w-5" />
+              Already Applied to{" "}
+              {pendingMatches.length === 1
+                ? "This Company"
+                : "These Companies"}
+            </DialogTitle>
+            <DialogDescription>
+              {pendingMatches.length === 1
+                ? "This profile has a previous application for this company."
+                : `This profile has previous applications for ${pendingMatches.length} companies.`}{" "}
+              Click a row to expand details.
+            </DialogDescription>
+          </DialogHeader>
 
-            <div className="space-y-2 max-h-96 overflow-y-auto mb-5">
-              {pendingMatches.map((match) => {
-                const removing = markedForRemoval.has(match.jobIndex);
-                const expanded = expandedMatches.has(match.jobIndex);
-                const mostRecent = match.existingApplications[0];
-                const jobData = jobs[match.jobIndex];
-                return (
-                  <div
-                    key={match.jobIndex}
-                    className={`rounded-lg border transition-opacity ${
-                      removing
-                        ? "opacity-40 border-gray-200 dark:border-gray-600 bg-gray-50 dark:bg-gray-700/30"
-                        : "border-orange-200 dark:border-orange-800 bg-orange-50 dark:bg-orange-900/20"
-                    }`}
+          <div className="space-y-2 max-h-80 overflow-y-auto">
+            {pendingMatches.map((match) => {
+              const removing = markedForRemoval.has(match.jobIndex);
+              const expanded = expandedMatches.has(match.jobIndex);
+              const mostRecent = match.existingApplications[0];
+              const jobData = jobs[match.jobIndex];
+              return (
+                <div
+                  key={match.jobIndex}
+                  className={`rounded-lg border transition-opacity ${
+                    removing
+                      ? "opacity-40 border-border bg-muted/30"
+                      : "border-amber-200 dark:border-amber-800 bg-amber-50 dark:bg-amber-950/20"
+                  }`}
+                >
+                  <button
+                    type="button"
+                    onClick={() => {
+                      const next = new Set(expandedMatches);
+                      if (next.has(match.jobIndex)) next.delete(match.jobIndex);
+                      else next.add(match.jobIndex);
+                      setExpandedMatches(next);
+                    }}
+                    className="w-full flex items-start justify-between gap-3 p-3 text-left"
                   >
-                    {/* Collapsed header — always visible, click to toggle */}
-                    <button
-                      type="button"
-                      onClick={() => toggleExpanded(match.jobIndex)}
-                      className="w-full flex items-start justify-between gap-3 p-3 text-left"
-                    >
-                      <div className="min-w-0 flex-1">
-                        <p className="text-sm font-medium text-gray-900 dark:text-white truncate">
-                          {match.jobTitle || "Untitled"}{" "}
-                          <span className="text-gray-500 dark:text-gray-400 font-normal">@ {mostRecent.company}</span>
-                        </p>
-                        <p className="text-xs text-gray-500 dark:text-gray-400 mt-0.5">
-                          Previously applied for{" "}
-                          <span className="font-medium text-gray-700 dark:text-gray-300">{mostRecent.job_title}</span>
-                          {" "}· {new Date(mostRecent.created_at).toLocaleDateString()}
-                          {match.existingApplications.length > 1 && (
-                            <span className="ml-1 text-orange-600 dark:text-orange-400">
-                              (+{match.existingApplications.length - 1} more)
-                            </span>
-                          )}
-                        </p>
-                      </div>
-                      <svg
-                        className={`shrink-0 w-4 h-4 mt-0.5 text-gray-400 transition-transform duration-150 ${expanded ? "rotate-180" : ""}`}
-                        fill="none" viewBox="0 0 24 24" strokeWidth={2} stroke="currentColor"
-                      >
-                        <path strokeLinecap="round" strokeLinejoin="round" d="m19.5 8.25-7.5 7.5-7.5-7.5" />
-                      </svg>
-                    </button>
-
-                    {/* Expanded detail */}
-                    {expanded && (
-                      <div className="px-3 pb-3 space-y-2 border-t border-orange-200 dark:border-orange-800/60 pt-2">
-                        {jobData?.job_url && (
-                          <div>
-                            <p className="text-xs font-medium text-gray-500 dark:text-gray-400 uppercase tracking-wide mb-0.5">Job URL</p>
-                            <a
-                              href={jobData.job_url}
-                              target="_blank"
-                              rel="noopener noreferrer"
-                              onClick={(e) => e.stopPropagation()}
-                              className="text-xs text-blue-600 dark:text-blue-400 hover:underline break-all"
-                            >
-                              {jobData.job_url}
-                            </a>
-                          </div>
+                    <div className="min-w-0 flex-1">
+                      <p className="text-sm font-medium truncate">
+                        {match.jobTitle || "Untitled"}{" "}
+                        <span className="font-normal text-muted-foreground">
+                          @ {mostRecent.company}
+                        </span>
+                      </p>
+                      <p className="text-xs text-muted-foreground mt-0.5">
+                        Previously:{" "}
+                        <span className="font-medium text-foreground">
+                          {mostRecent.job_title}
+                        </span>{" "}
+                        · {new Date(mostRecent.created_at).toLocaleDateString()}
+                        {match.existingApplications.length > 1 && (
+                          <span className="text-amber-600 dark:text-amber-400 ml-1">
+                            (+{match.existingApplications.length - 1} more)
+                          </span>
                         )}
+                      </p>
+                    </div>
+                    <ChevronDown
+                      className={`shrink-0 h-4 w-4 mt-0.5 text-muted-foreground transition-transform ${
+                        expanded ? "rotate-180" : ""
+                      }`}
+                    />
+                  </button>
+
+                  {expanded && (
+                    <div className="px-3 pb-3 space-y-2 border-t border-amber-200 dark:border-amber-800/60 pt-2">
+                      {jobData?.job_url && (
                         <div>
-                          <p className="text-xs font-medium text-gray-500 dark:text-gray-400 uppercase tracking-wide mb-0.5">Job Description</p>
-                          <p className="text-xs text-gray-700 dark:text-gray-300 whitespace-pre-line max-h-36 overflow-y-auto leading-relaxed">
-                            {jobData?.job_description || "—"}
+                          <p className="text-xs font-semibold text-muted-foreground uppercase mb-0.5">
+                            Job URL
                           </p>
+                          <a
+                            href={jobData.job_url}
+                            target="_blank"
+                            rel="noopener noreferrer"
+                            onClick={(e) => e.stopPropagation()}
+                            className="text-xs text-primary hover:underline break-all"
+                          >
+                            {jobData.job_url}
+                          </a>
                         </div>
+                      )}
+                      <div>
+                        <p className="text-xs font-semibold text-muted-foreground uppercase mb-0.5">
+                          Job Description
+                        </p>
+                        <p className="text-xs text-foreground/80 whitespace-pre-line max-h-32 overflow-y-auto leading-relaxed">
+                          {jobData?.job_description || "—"}
+                        </p>
                       </div>
-                    )}
+                    </div>
+                  )}
 
-                    {/* Remove/Undo button — batch only */}
-                    {batchMode && jobs.length > 1 && (
-                      <div className="px-3 pb-3 flex justify-end">
-                        <button
-                          type="button"
-                          onClick={(e) => { e.stopPropagation(); toggleRemoval(match.jobIndex); }}
-                          className={`text-xs font-medium px-2.5 py-1 rounded-md transition-colors ${
-                            removing
-                              ? "bg-gray-200 dark:bg-gray-600 text-gray-700 dark:text-gray-300 hover:bg-gray-300 dark:hover:bg-gray-500"
-                              : "bg-red-100 dark:bg-red-900/40 text-red-700 dark:text-red-400 hover:bg-red-200 dark:hover:bg-red-900/60"
-                          }`}
-                        >
-                          {removing ? "Undo" : "Remove"}
-                        </button>
-                      </div>
-                    )}
-                  </div>
-                );
-              })}
-            </div>
-
-            <div className="flex justify-end gap-3">
-              <button
-                onClick={dismissMatchModal}
-                className="px-4 py-2 text-sm font-medium text-gray-700 dark:text-gray-300 bg-gray-100 dark:bg-gray-700 rounded-md hover:bg-gray-200 dark:hover:bg-gray-600 transition-colors"
-              >
-                Cancel
-              </button>
-              <button
-                onClick={handleContinueDespiteMatches}
-                className="px-4 py-2 text-sm font-medium text-white bg-orange-600 rounded-md hover:bg-orange-700 transition-colors"
-              >
-                Continue
-              </button>
-            </div>
+                  {batchMode && jobs.length > 1 && (
+                    <div className="px-3 pb-3 flex justify-end">
+                      <Button
+                        type="button"
+                        variant={removing ? "outline" : "destructive"}
+                        size="sm"
+                        className="h-6 text-xs"
+                        onClick={(e) => {
+                          e.stopPropagation();
+                          const next = new Set(markedForRemoval);
+                          if (next.has(match.jobIndex))
+                            next.delete(match.jobIndex);
+                          else next.add(match.jobIndex);
+                          setMarkedForRemoval(next);
+                        }}
+                      >
+                        {removing ? "Undo" : "Remove"}
+                      </Button>
+                    </div>
+                  )}
+                </div>
+              );
+            })}
           </div>
-        </div>
-      )}
+
+          <DialogFooter>
+            <Button variant="outline" onClick={dismissMatchModal}>
+              Cancel
+            </Button>
+            <Button variant="warning" onClick={handleContinueDespiteMatches}>
+              Continue Anyway
+            </Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
     </div>
   );
 }

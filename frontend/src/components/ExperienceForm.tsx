@@ -1,4 +1,9 @@
+import { Briefcase, Plus, Trash2 } from "lucide-react";
 import type { Experience } from "../types";
+import { Button } from "./ui/button";
+import { Input } from "./ui/input";
+import { Label } from "./ui/label";
+import { Textarea } from "./ui/textarea";
 
 interface Props {
   experiences: Experience[];
@@ -15,111 +20,128 @@ const emptyExperience: Experience = {
   end_date: "",
 };
 
-export default function ExperienceForm({ experiences, onChange, readOnly }: Props) {
+export default function ExperienceForm({
+  experiences,
+  onChange,
+  readOnly,
+}: Props) {
   const add = () => onChange([...experiences, { ...emptyExperience }]);
-
   const remove = (index: number) =>
     onChange(experiences.filter((_, i) => i !== index));
-
-  const update = (index: number, field: keyof Experience, value: string) => {
-    const updated = experiences.map((exp, i) =>
-      i === index ? { ...exp, [field]: value } : exp
+  const update = (index: number, field: keyof Experience, value: string) =>
+    onChange(
+      experiences.map((exp, i) => (i === index ? { ...exp, [field]: value } : exp))
     );
-    onChange(updated);
-  };
 
   return (
     <div className="space-y-4">
       <div className="flex items-center justify-between">
-        <h3 className="text-lg font-semibold text-gray-800 dark:text-gray-200">Experience</h3>
+        <div className="flex items-center gap-2">
+          <Briefcase className="h-5 w-5 text-primary" />
+          <h3 className="text-base font-semibold">Experience</h3>
+        </div>
         {!readOnly && (
-          <button
-            type="button"
-            onClick={add}
-            className="text-sm px-3 py-1.5 bg-blue-50 dark:bg-blue-900/30 text-blue-600 dark:text-blue-400 rounded-md hover:bg-blue-100 dark:hover:bg-blue-900/50 transition-colors"
-          >
-            + Add Experience
-          </button>
+          <Button type="button" variant="outline" size="sm" onClick={add}>
+            <Plus className="h-3.5 w-3.5" />
+            Add Experience
+          </Button>
         )}
       </div>
+
+      {experiences.length === 0 && (
+        <p className="text-sm text-muted-foreground text-center py-6 border border-dashed rounded-lg">
+          No experience entries yet.
+        </p>
+      )}
 
       {experiences.map((exp, index) => (
         <div
           key={index}
-          className="border border-gray-200 dark:border-gray-600 rounded-lg p-4 space-y-3 bg-gray-50 dark:bg-gray-700/50"
+          className="rounded-lg border bg-muted/30 p-4 space-y-3"
         >
-          <div className="flex justify-between items-start">
-            <span className="text-sm font-medium text-gray-500 dark:text-gray-400">
-              #{index + 1}
+          <div className="flex items-center justify-between">
+            <span className="text-xs font-medium text-muted-foreground uppercase tracking-wide">
+              Experience {index + 1}
             </span>
             {!readOnly && (
-              <button
+              <Button
                 type="button"
+                variant="ghost"
+                size="icon"
+                className="h-7 w-7 text-muted-foreground hover:text-destructive"
                 onClick={() => remove(index)}
-                className="text-sm text-red-500 hover:text-red-700 dark:text-red-400 dark:hover:text-red-300"
               >
-                Remove
-              </button>
+                <Trash2 className="h-3.5 w-3.5" />
+              </Button>
             )}
           </div>
 
           <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
-            <input
-              type="text"
-              placeholder="Company"
-              value={exp.company}
-              onChange={(e) => update(index, "company", e.target.value)}
-              className="w-full px-3 py-2 border border-gray-300 dark:border-gray-600 rounded-md text-sm focus:ring-2 focus:ring-blue-500 focus:border-blue-500 bg-white dark:bg-gray-700 dark:text-white"
-              required
-            />
-            <input
-              type="text"
-              placeholder="Location (e.g., New York, NY)"
-              value={exp.location || ""}
-              onChange={(e) => update(index, "location", e.target.value)}
-              className="w-full px-3 py-2 border border-gray-300 dark:border-gray-600 rounded-md text-sm focus:ring-2 focus:ring-blue-500 focus:border-blue-500 bg-white dark:bg-gray-700 dark:text-white"
-            />
-            <input
-              type="text"
-              placeholder="Job Title"
-              value={exp.title}
-              onChange={(e) => update(index, "title", e.target.value)}
-              className="w-full px-3 py-2 border border-gray-300 dark:border-gray-600 rounded-md text-sm focus:ring-2 focus:ring-blue-500 focus:border-blue-500 bg-white dark:bg-gray-700 dark:text-white"
-              required
-            />
-            <input
-              type="text"
-              placeholder="Start Date (YYYY-MM)"
-              value={exp.start_date}
-              onChange={(e) => update(index, "start_date", e.target.value)}
-              className="w-full px-3 py-2 border border-gray-300 dark:border-gray-600 rounded-md text-sm focus:ring-2 focus:ring-blue-500 focus:border-blue-500 bg-white dark:bg-gray-700 dark:text-white"
-              required
-            />
-            <input
-              type="text"
-              placeholder="End Date (YYYY-MM or leave empty for Present)"
-              value={exp.end_date || ""}
-              onChange={(e) => update(index, "end_date", e.target.value)}
-              className="w-full px-3 py-2 border border-gray-300 dark:border-gray-600 rounded-md text-sm focus:ring-2 focus:ring-blue-500 focus:border-blue-500 bg-white dark:bg-gray-700 dark:text-white"
-            />
+            <div className="space-y-1.5">
+              <Label className="text-xs">Company *</Label>
+              <Input
+                placeholder="Company name"
+                value={exp.company}
+                onChange={(e) => update(index, "company", e.target.value)}
+                readOnly={readOnly}
+                required
+              />
+            </div>
+            <div className="space-y-1.5">
+              <Label className="text-xs">Location</Label>
+              <Input
+                placeholder="New York, NY"
+                value={exp.location || ""}
+                onChange={(e) => update(index, "location", e.target.value)}
+                readOnly={readOnly}
+              />
+            </div>
+            <div className="space-y-1.5">
+              <Label className="text-xs">Job Title *</Label>
+              <Input
+                placeholder="Software Engineer"
+                value={exp.title}
+                onChange={(e) => update(index, "title", e.target.value)}
+                readOnly={readOnly}
+                required
+              />
+            </div>
+            <div className="space-y-1.5 grid grid-cols-2 gap-2">
+              <div className="space-y-1.5">
+                <Label className="text-xs">Start Date *</Label>
+                <Input
+                  placeholder="YYYY-MM"
+                  value={exp.start_date}
+                  onChange={(e) => update(index, "start_date", e.target.value)}
+                  readOnly={readOnly}
+                  required
+                />
+              </div>
+              <div className="space-y-1.5">
+                <Label className="text-xs">End Date</Label>
+                <Input
+                  placeholder="YYYY-MM or Present"
+                  value={exp.end_date || ""}
+                  onChange={(e) => update(index, "end_date", e.target.value)}
+                  readOnly={readOnly}
+                />
+              </div>
+            </div>
           </div>
 
-          <textarea
-            placeholder="Description (one bullet point per line)&#10;- Built microservices handling 10K req/sec&#10;- Led migration to event-driven architecture"
-            value={exp.description}
-            onChange={(e) => update(index, "description", e.target.value)}
-            rows={4}
-            className="w-full px-3 py-2 border border-gray-300 dark:border-gray-600 rounded-md text-sm focus:ring-2 focus:ring-blue-500 focus:border-blue-500 bg-white dark:bg-gray-700 dark:text-white"
-            required
-          />
+          <div className="space-y-1.5">
+            <Label className="text-xs">Description *</Label>
+            <Textarea
+              placeholder={"- Built microservices handling 10K req/sec\n- Led migration to event-driven architecture"}
+              value={exp.description}
+              onChange={(e) => update(index, "description", e.target.value)}
+              rows={4}
+              readOnly={readOnly}
+              required
+            />
+          </div>
         </div>
       ))}
-
-      {experiences.length === 0 && (
-        <p className="text-sm text-gray-400 dark:text-gray-500 text-center py-4">
-          No experience entries yet. Click "+ Add Experience" to add one.
-        </p>
-      )}
     </div>
   );
 }

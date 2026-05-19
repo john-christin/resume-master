@@ -1,3 +1,13 @@
+import { ChevronLeft, ChevronRight } from "lucide-react";
+import { Button } from "./ui/button";
+import {
+  Select,
+  SelectContent,
+  SelectItem,
+  SelectTrigger,
+  SelectValue,
+} from "./ui/select";
+
 interface Props {
   page: number;
   totalPages: number;
@@ -44,57 +54,68 @@ export default function Pagination({
 
   return (
     <div className="flex items-center justify-between flex-wrap gap-3 mt-4">
-      <div className="flex items-center gap-3 text-sm text-gray-600 dark:text-gray-400">
+      <div className="flex items-center gap-3 text-sm text-muted-foreground">
         <span>
-          {start}-{end} of {total}
+          {start}–{end} of {total}
         </span>
-        <select
-          value={pageSize}
-          onChange={(e) => onPageSizeChange(Number(e.target.value))}
-          className="px-2 py-1 border border-gray-300 dark:border-gray-600 rounded text-sm bg-white dark:bg-gray-700 dark:text-gray-200"
+        <Select
+          value={String(pageSize)}
+          onValueChange={(v) => onPageSizeChange(Number(v))}
         >
-          {PAGE_SIZES.map((s) => (
-            <option key={s} value={s}>
-              {s} / page
-            </option>
-          ))}
-        </select>
+          <SelectTrigger className="h-8 w-[110px] text-xs">
+            <SelectValue />
+          </SelectTrigger>
+          <SelectContent>
+            {PAGE_SIZES.map((s) => (
+              <SelectItem key={s} value={String(s)}>
+                {s} / page
+              </SelectItem>
+            ))}
+          </SelectContent>
+        </Select>
       </div>
 
       <div className="flex items-center gap-1">
-        <button
+        <Button
+          variant="outline"
+          size="icon"
+          className="h-8 w-8"
           onClick={() => onPageChange(page - 1)}
           disabled={page <= 1}
-          className="px-2 py-1 border border-gray-300 dark:border-gray-600 rounded text-sm hover:bg-gray-50 dark:hover:bg-gray-700 disabled:opacity-40 disabled:cursor-not-allowed dark:text-gray-300"
         >
-          Prev
-        </button>
+          <ChevronLeft className="h-4 w-4" />
+        </Button>
+
         {getPageNumbers().map((p, i) =>
           p === "..." ? (
-            <span key={`ellipsis-${i}`} className="px-2 py-1 text-sm text-gray-400 dark:text-gray-500">
-              ...
+            <span
+              key={`ellipsis-${i}`}
+              className="px-2 py-1 text-sm text-muted-foreground"
+            >
+              …
             </span>
           ) : (
-            <button
+            <Button
               key={p}
-              onClick={() => onPageChange(p)}
-              className={`px-3 py-1 border rounded text-sm ${
-                p === page
-                  ? "bg-blue-600 text-white border-blue-600"
-                  : "border-gray-300 dark:border-gray-600 hover:bg-gray-50 dark:hover:bg-gray-700 dark:text-gray-300"
-              }`}
+              variant={p === page ? "default" : "outline"}
+              size="icon"
+              className="h-8 w-8 text-xs"
+              onClick={() => onPageChange(p as number)}
             >
               {p}
-            </button>
+            </Button>
           )
         )}
-        <button
+
+        <Button
+          variant="outline"
+          size="icon"
+          className="h-8 w-8"
           onClick={() => onPageChange(page + 1)}
           disabled={page >= totalPages}
-          className="px-2 py-1 border border-gray-300 dark:border-gray-600 rounded text-sm hover:bg-gray-50 dark:hover:bg-gray-700 disabled:opacity-40 disabled:cursor-not-allowed dark:text-gray-300"
         >
-          Next
-        </button>
+          <ChevronRight className="h-4 w-4" />
+        </Button>
       </div>
     </div>
   );

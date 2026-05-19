@@ -1,49 +1,77 @@
+import {
+  AlertCircle,
+  Building2,
+  ChevronLeft,
+  Download,
+  FileText,
+  History,
+  Loader2,
+  Trash2,
+  Wand2,
+} from "lucide-react";
 import { useState } from "react";
 import { useLocation, useNavigate } from "react-router-dom";
 import { deleteApplication } from "../api/applications";
 import { getUserRole } from "../auth";
+import { Alert, AlertDescription } from "../components/ui/alert";
+import { Badge } from "../components/ui/badge";
+import { Button } from "../components/ui/button";
+import { Card, CardContent, CardHeader, CardTitle } from "../components/ui/card";
+import { Separator } from "../components/ui/separator";
+import { Tabs, TabsContent, TabsList, TabsTrigger } from "../components/ui/tabs";
 import type { GenerateResponse } from "../types";
 
 export default function Preview() {
   const location = useLocation();
   const navigate = useNavigate();
   const data = location.state as GenerateResponse | null;
-  const [activeTab, setActiveTab] = useState<"resume" | "cover_letter">("resume");
   const [confirmDelete, setConfirmDelete] = useState(false);
   const [deleting, setDeleting] = useState(false);
 
   if (!data) {
     return (
-      <div className="text-center py-12">
-        <p className="text-gray-600 dark:text-gray-400 mb-4">No preview data available.</p>
-        <button
-          onClick={() => navigate("/generate")}
-          className="px-4 py-2 bg-blue-600 text-white rounded-md text-sm hover:bg-blue-700"
-        >
+      <div className="flex flex-col items-center justify-center py-16 gap-4">
+        <p className="text-muted-foreground">No preview data available.</p>
+        <Button onClick={() => navigate("/generate")}>
+          <Wand2 className="h-4 w-4" />
           Generate New Application
-        </button>
+        </Button>
       </div>
     );
   }
 
-  const { preview, resume_url, cover_letter_url, profile_name, job_title, company } = data;
+  const {
+    preview,
+    resume_url,
+    cover_letter_url,
+    profile_name,
+    job_title,
+    company,
+  } = data;
   const safeName = (profile_name ?? "Resume").trim().replace(/\s+/g, "_");
-  const withName = (url: string, label: string) => `${url}?name=${safeName}_${label}`;
+  const withName = (url: string, label: string) =>
+    `${url}?name=${safeName}_${label}`;
 
   return (
-    <div>
-      <div className="flex items-center justify-between mb-6">
+    <div className="space-y-6 max-w-4xl mx-auto">
+      {/* Header */}
+      <div className="flex items-start justify-between gap-4">
         <div>
-          <h1 className="text-2xl font-bold text-gray-900 dark:text-white">Preview</h1>
-          <p className="text-sm text-gray-500 dark:text-gray-400 mt-0.5">
-            {job_title}{company ? ` · ${company}` : ""}
-          </p>
+          <h1 className="text-2xl font-bold">{job_title}</h1>
+          {company && (
+            <p className="text-muted-foreground flex items-center gap-1.5 mt-0.5">
+              <Building2 className="h-3.5 w-3.5" />
+              {company}
+            </p>
+          )}
         </div>
-        <div className="flex items-center gap-2">
+        <div className="flex items-center gap-2 shrink-0">
           {confirmDelete ? (
-            <div className="flex items-center gap-2 px-3 py-1.5 bg-red-50 dark:bg-red-900/30 border border-red-200 dark:border-red-800 rounded-md">
-              <span className="text-sm text-red-700 dark:text-red-400">Remove this application?</span>
-              <button
+            <div className="flex items-center gap-2 p-2 rounded-lg border border-destructive/30 bg-destructive/5">
+              <span className="text-sm text-destructive">Remove application?</span>
+              <Button
+                size="sm"
+                variant="destructive"
                 disabled={deleting}
                 onClick={async () => {
                   setDeleting(true);
@@ -55,196 +83,218 @@ export default function Preview() {
                     setConfirmDelete(false);
                   }
                 }}
-                className="text-sm font-medium text-white bg-red-600 hover:bg-red-700 px-2.5 py-1 rounded disabled:opacity-60"
               >
-                {deleting ? "Removing…" : "Yes, remove"}
-              </button>
-              <button
+                {deleting ? (
+                  <Loader2 className="h-3.5 w-3.5 animate-spin" />
+                ) : null}
+                {deleting ? "Removing…" : "Confirm"}
+              </Button>
+              <Button
+                size="sm"
+                variant="ghost"
                 onClick={() => setConfirmDelete(false)}
-                className="text-sm text-gray-500 dark:text-gray-400 hover:text-gray-700 dark:hover:text-gray-300 px-1"
               >
                 Cancel
-              </button>
+              </Button>
             </div>
           ) : (
-            <button
+            <Button
+              variant="outline"
+              size="sm"
+              className="text-destructive border-destructive/30 hover:bg-destructive/10"
               onClick={() => setConfirmDelete(true)}
-              className="px-4 py-2 border border-red-200 dark:border-red-800 text-red-600 dark:text-red-400 rounded-md text-sm hover:bg-red-50 dark:hover:bg-red-900/30"
             >
+              <Trash2 className="h-4 w-4" />
               Remove
-            </button>
+            </Button>
           )}
-          <button
+          <Button
+            variant="outline"
+            size="sm"
             onClick={() => navigate("/generate")}
-            className="px-4 py-2 border border-gray-300 dark:border-gray-600 text-gray-700 dark:text-gray-300 rounded-md text-sm hover:bg-gray-50 dark:hover:bg-gray-700"
           >
+            <Wand2 className="h-4 w-4" />
             Generate Another
-          </button>
-          <button
+          </Button>
+          <Button
+            variant="outline"
+            size="sm"
             onClick={() => navigate("/history")}
-            className="px-4 py-2 border border-gray-300 dark:border-gray-600 text-gray-700 dark:text-gray-300 rounded-md text-sm hover:bg-gray-50 dark:hover:bg-gray-700"
           >
-            View History
-          </button>
+            <History className="h-4 w-4" />
+            History
+          </Button>
         </div>
       </div>
 
       {/* Cost info - admin only */}
       {getUserRole() === "admin" &&
         (data.prompt_tokens > 0 || data.completion_tokens > 0) && (
-          <div className="bg-blue-50 dark:bg-blue-900/30 border border-blue-200 dark:border-blue-800 rounded-lg p-4 mb-6">
-            <h2 className="text-sm font-medium text-blue-800 dark:text-blue-300 mb-2">
-              Generation Cost
-            </h2>
-            <div className="flex flex-wrap gap-4 text-sm text-blue-700 dark:text-blue-400">
+          <Alert variant="info">
+            <AlertCircle className="h-4 w-4" />
+            <AlertDescription className="flex flex-wrap gap-4">
               <span>Prompt tokens: {data.prompt_tokens.toLocaleString()}</span>
               <span>
                 Completion tokens: {data.completion_tokens.toLocaleString()}
               </span>
-              <span className="font-medium">Cost: ${data.cost.toFixed(4)}</span>
-            </div>
-          </div>
+              <span className="font-semibold">
+                Cost: ${data.cost.toFixed(4)}
+              </span>
+            </AlertDescription>
+          </Alert>
         )}
 
-      {/* Download buttons */}
-      <div className="bg-white dark:bg-gray-800 rounded-lg shadow-sm border border-gray-200 dark:border-gray-700 p-4 mb-6">
-        <h2 className="text-sm font-medium text-gray-700 dark:text-gray-300 mb-3">
-          Download Documents
-        </h2>
-        <div className="flex flex-wrap gap-2">
-          <a
-            href={withName(resume_url, "Resume.pdf")}
-            className="px-4 py-2 bg-green-600 text-white rounded-md text-sm hover:bg-green-700 transition-colors"
-          >
-            Resume PDF
+      {/* Downloads */}
+      <Card>
+        <CardHeader className="pb-3">
+          <CardTitle className="text-sm flex items-center gap-2">
+            <Download className="h-4 w-4 text-primary" />
+            Download Documents
+          </CardTitle>
+        </CardHeader>
+        <CardContent className="flex flex-wrap gap-2">
+          <a href={withName(resume_url, "Resume.pdf")}>
+            <Button variant="success" size="sm">
+              <FileText className="h-4 w-4" />
+              Resume PDF
+            </Button>
           </a>
           <a
-            href={withName(resume_url.replace(".pdf", ".docx"), "Resume.docx")}
-            className="px-4 py-2 bg-green-50 dark:bg-green-900/30 text-green-700 dark:text-green-400 border border-green-200 dark:border-green-800 rounded-md text-sm hover:bg-green-100 dark:hover:bg-green-900/50 transition-colors"
-          >
-            Resume DOCX
-          </a>
-          <a
-            href={withName(cover_letter_url, "Cover_Letter.pdf")}
-            className="px-4 py-2 bg-purple-600 text-white rounded-md text-sm hover:bg-purple-700 transition-colors"
-          >
-            Cover Letter PDF
-          </a>
-          <a
-            href={withName(cover_letter_url.replace(".pdf", ".docx"), "Cover_Letter.docx")}
-            className="px-4 py-2 bg-purple-50 dark:bg-purple-900/30 text-purple-700 dark:text-purple-400 border border-purple-200 dark:border-purple-800 rounded-md text-sm hover:bg-purple-100 dark:hover:bg-purple-900/50 transition-colors"
-          >
-            Cover Letter DOCX
-          </a>
-        </div>
-      </div>
-
-      {/* Tab navigation */}
-      <div className="border-b border-gray-200 dark:border-gray-700 mb-4">
-        <div className="flex space-x-4">
-          <button
-            onClick={() => setActiveTab("resume")}
-            className={`pb-3 px-1 text-sm font-medium border-b-2 transition-colors ${
-              activeTab === "resume"
-                ? "border-blue-600 text-blue-600 dark:text-blue-400"
-                : "border-transparent text-gray-500 hover:text-gray-700 dark:text-gray-400 dark:hover:text-gray-300"
-            }`}
-          >
-            Resume Preview
-          </button>
-          <button
-            onClick={() => setActiveTab("cover_letter")}
-            className={`pb-3 px-1 text-sm font-medium border-b-2 transition-colors ${
-              activeTab === "cover_letter"
-                ? "border-blue-600 text-blue-600 dark:text-blue-400"
-                : "border-transparent text-gray-500 hover:text-gray-700 dark:text-gray-400 dark:hover:text-gray-300"
-            }`}
-          >
-            Cover Letter Preview
-          </button>
-        </div>
-      </div>
-
-      {/* Content */}
-      <div className="bg-white dark:bg-gray-800 rounded-lg shadow-sm border border-gray-200 dark:border-gray-700 p-6">
-        {activeTab === "resume" ? (
-          <div className="space-y-6">
-            {/* Summary */}
-            {preview.summary && (
-              <div>
-                <h2 className="text-sm font-bold text-gray-900 dark:text-white uppercase tracking-wide border-b border-gray-300 dark:border-gray-600 pb-1 mb-2">
-                  Summary
-                </h2>
-                <p className="text-sm text-gray-700 dark:text-gray-300">
-                  {preview.summary}
-                </p>
-              </div>
+            href={withName(
+              resume_url.replace(".pdf", ".docx"),
+              "Resume.docx"
             )}
+          >
+            <Button variant="outline" size="sm" className="text-emerald-600 border-emerald-200 hover:bg-emerald-50 dark:text-emerald-400 dark:border-emerald-800">
+              <Download className="h-4 w-4" />
+              Resume DOCX
+            </Button>
+          </a>
+          <a href={withName(cover_letter_url, "Cover_Letter.pdf")}>
+            <Button size="sm" className="bg-violet-600 hover:bg-violet-700 text-white">
+              <FileText className="h-4 w-4" />
+              Cover Letter PDF
+            </Button>
+          </a>
+          <a
+            href={withName(
+              cover_letter_url.replace(".pdf", ".docx"),
+              "Cover_Letter.docx"
+            )}
+          >
+            <Button variant="outline" size="sm" className="text-violet-600 border-violet-200 hover:bg-violet-50 dark:text-violet-400 dark:border-violet-800">
+              <Download className="h-4 w-4" />
+              Cover Letter DOCX
+            </Button>
+          </a>
+        </CardContent>
+      </Card>
 
-            {/* Technical Skills */}
-            {preview.skills && preview.skills.length > 0 && (
+      {/* Preview tabs */}
+      <Tabs defaultValue="resume">
+        <TabsList>
+          <TabsTrigger value="resume">Resume Preview</TabsTrigger>
+          <TabsTrigger value="cover_letter">Cover Letter</TabsTrigger>
+        </TabsList>
+
+        <TabsContent value="resume">
+          <Card>
+            <CardContent className="p-6 space-y-6">
+              {preview.summary && (
+                <div>
+                  <h2 className="text-xs font-bold uppercase tracking-widest text-muted-foreground mb-2">
+                    Summary
+                  </h2>
+                  <Separator className="mb-3" />
+                  <p className="text-sm leading-relaxed">{preview.summary}</p>
+                </div>
+              )}
+
+              {preview.skills && preview.skills.length > 0 && (
+                <div>
+                  <h2 className="text-xs font-bold uppercase tracking-widest text-muted-foreground mb-2">
+                    Technical Skills
+                  </h2>
+                  <Separator className="mb-3" />
+                  <div className="space-y-1.5">
+                    {preview.skills.map((cat, index) => (
+                      <p key={index} className="text-sm">
+                        <span className="font-semibold">{cat.category}: </span>
+                        <span className="text-muted-foreground">
+                          {cat.skills.join(", ")}
+                        </span>
+                      </p>
+                    ))}
+                  </div>
+                </div>
+              )}
+
               <div>
-                <h2 className="text-sm font-bold text-gray-900 dark:text-white uppercase tracking-wide border-b border-gray-300 dark:border-gray-600 pb-1 mb-2">
-                  Technical Skills
+                <h2 className="text-xs font-bold uppercase tracking-widest text-muted-foreground mb-2">
+                  Professional Experience
                 </h2>
-                <div className="space-y-1">
-                  {preview.skills.map((cat, index) => (
-                    <p key={index} className="text-sm text-gray-700 dark:text-gray-300">
-                      <span className="font-semibold">{cat.category}: </span>
-                      {cat.skills.join(", ")}
-                    </p>
+                <Separator className="mb-3" />
+                <div className="space-y-6">
+                  {preview.tailored_experiences.map((exp, index) => (
+                    <div key={index}>
+                      <div className="flex justify-between items-start">
+                        <div className="font-semibold text-sm">
+                          {exp.company}
+                          {exp.location && (
+                            <span className="text-muted-foreground font-normal">
+                              , {exp.location}
+                            </span>
+                          )}
+                        </div>
+                        <Badge variant="secondary" className="text-xs shrink-0 ml-2">
+                          {exp.start_date} – {exp.end_date || "Present"}
+                        </Badge>
+                      </div>
+                      <p className="text-sm italic text-muted-foreground mt-0.5">
+                        {exp.title}
+                      </p>
+                      <ul className="mt-2 space-y-1">
+                        {exp.bullets.map((bullet, bi) => (
+                          <li
+                            key={bi}
+                            className="text-sm pl-4 relative before:content-['•'] before:absolute before:left-0 before:text-muted-foreground"
+                          >
+                            {bullet}
+                          </li>
+                        ))}
+                      </ul>
+                    </div>
                   ))}
                 </div>
               </div>
-            )}
+            </CardContent>
+          </Card>
+        </TabsContent>
 
-            {/* Professional Experience */}
-            <div>
-              <h2 className="text-sm font-bold text-gray-900 dark:text-white uppercase tracking-wide border-b border-gray-300 dark:border-gray-600 pb-1 mb-3">
-                Professional Experience
-              </h2>
-              <div className="space-y-5">
-                {preview.tailored_experiences.map((exp, index) => (
-                  <div key={index}>
-                    <div className="flex justify-between items-start">
-                      <div className="font-semibold text-gray-900 dark:text-white text-sm">
-                        {exp.company}
-                        {exp.location && (
-                          <span className="text-gray-600 dark:text-gray-400">, {exp.location}</span>
-                        )}
-                      </div>
-                    </div>
-                    <div className="flex justify-between items-start">
-                      <p className="text-sm italic text-gray-700 dark:text-gray-300">{exp.title}</p>
-                      <span className="text-sm text-gray-500 dark:text-gray-400 whitespace-nowrap ml-4">
-                        {exp.start_date} - {exp.end_date || "Present"}
-                      </span>
-                    </div>
-                    <ul className="mt-1.5 space-y-1">
-                      {exp.bullets.map((bullet, bi) => (
-                        <li
-                          key={bi}
-                          className="text-sm text-gray-700 dark:text-gray-300 pl-4 relative before:content-['•'] before:absolute before:left-0 before:text-gray-400 dark:before:text-gray-500"
-                        >
-                          {bullet}
-                        </li>
-                      ))}
-                    </ul>
-                  </div>
+        <TabsContent value="cover_letter">
+          <Card>
+            <CardContent className="p-6">
+              <div className="space-y-4 max-w-2xl">
+                {preview.cover_letter.split("\n\n").map((para, index) => (
+                  <p key={index} className="text-sm leading-relaxed">
+                    {para}
+                  </p>
                 ))}
               </div>
-            </div>
-          </div>
-        ) : (
-          <div className="prose prose-sm max-w-none">
-            {preview.cover_letter.split("\n\n").map((para, index) => (
-              <p key={index} className="text-sm text-gray-700 dark:text-gray-300 mb-4">
-                {para}
-              </p>
-            ))}
-          </div>
-        )}
-      </div>
+            </CardContent>
+          </Card>
+        </TabsContent>
+      </Tabs>
+
+      <Button
+        variant="ghost"
+        size="sm"
+        className="text-muted-foreground"
+        onClick={() => navigate("/generate")}
+      >
+        <ChevronLeft className="h-4 w-4" />
+        Back to Generate
+      </Button>
     </div>
   );
 }

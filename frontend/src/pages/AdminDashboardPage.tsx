@@ -1,3 +1,11 @@
+import {
+  AlertCircle,
+  Calendar,
+  DollarSign,
+  Phone,
+  TrendingUp,
+  Users,
+} from "lucide-react";
 import { useEffect, useMemo, useState } from "react";
 import { Link } from "react-router-dom";
 import {
@@ -28,9 +36,26 @@ import type {
   UserDailyPoint,
 } from "../api/admin";
 import LoadingSpinner from "../components/LoadingSpinner";
+import { Alert, AlertDescription } from "../components/ui/alert";
+import { Button } from "../components/ui/button";
+import {
+  Card,
+  CardContent,
+  CardHeader,
+  CardTitle,
+} from "../components/ui/card";
+import { Input } from "../components/ui/input";
+import {
+  Table,
+  TableBody,
+  TableCell,
+  TableHead,
+  TableHeader,
+  TableRow,
+} from "../components/ui/table";
 
 const CHART_COLORS = [
-  "#3b82f6", "#10b981", "#f59e0b", "#ef4444", "#8b5cf6",
+  "#7c3aed", "#10b981", "#f59e0b", "#ef4444", "#3b82f6",
   "#06b6d4", "#84cc16", "#f97316", "#ec4899", "#6366f1",
 ];
 
@@ -46,13 +71,32 @@ function getPresetDates(preset: Preset, customFrom: string, customTo: string) {
   return { from: customFrom, to: customTo };
 }
 
-function StatCard({ label, value, sub, color }: { label: string; value: string | number; sub?: string; color?: string }) {
+function StatCard({
+  label,
+  value,
+  sub,
+  icon,
+  accent,
+}: {
+  label: string;
+  value: string | number;
+  sub?: string;
+  icon: React.ReactNode;
+  accent?: string;
+}) {
   return (
-    <div className="bg-white dark:bg-gray-800 rounded-lg shadow-sm border border-gray-200 dark:border-gray-700 p-5">
-      <p className="text-sm text-gray-500 dark:text-gray-400">{label}</p>
-      <p className={`text-2xl font-bold mt-1 ${color ?? "text-gray-900 dark:text-white"}`}>{value}</p>
-      {sub && <p className="text-xs text-gray-400 dark:text-gray-500 mt-0.5">{sub}</p>}
-    </div>
+    <Card>
+      <CardContent className="pt-5">
+        <div className="flex items-center justify-between mb-3">
+          <p className="text-sm text-muted-foreground">{label}</p>
+          <div className={`flex h-8 w-8 items-center justify-center rounded-lg ${accent ?? "bg-primary/10"}`}>
+            {icon}
+          </div>
+        </div>
+        <p className="text-2xl font-bold">{value}</p>
+        {sub && <p className="text-xs text-muted-foreground mt-0.5">{sub}</p>}
+      </CardContent>
+    </Card>
   );
 }
 
@@ -108,7 +152,6 @@ export default function AdminDashboardPage() {
     loadAll(from, to);
   }, []);
 
-  // Build stacked bar data for per-user daily chart
   const usernames = useMemo(() => {
     const s = new Set(perUserDaily.map((r) => r.username));
     return Array.from(s).sort();
@@ -158,337 +201,368 @@ export default function AdminDashboardPage() {
   }, [perUserDailyCalls, selectedCallUser]);
 
   const dailyCallsChartData = dailyCalls.map((d) => ({ date: d.date.slice(5), count: d.count }));
-
   const profileChartData = perProfile.slice(0, 15).map((p) => ({
     name: p.name.length > 18 ? p.name.slice(0, 16) + "…" : p.name,
     count: p.count,
   }));
-
-  const dailyCostData = daily.map((d) => ({
-    date: d.date.slice(5),
-    cost: parseFloat(d.cost.toFixed(4)),
-  }));
-
-  const dailyCountData = daily.map((d) => ({
-    date: d.date.slice(5),
-    count: d.count,
-  }));
-
-  const handleApplyRange = () => loadAll(from, to);
+  const dailyCostData = daily.map((d) => ({ date: d.date.slice(5), cost: parseFloat(d.cost.toFixed(4)) }));
+  const dailyCountData = daily.map((d) => ({ date: d.date.slice(5), count: d.count }));
 
   if (loading) return <LoadingSpinner message="Loading dashboard..." />;
 
   return (
-    <div>
-      <div className="flex items-center justify-between mb-6">
-        <h1 className="text-2xl font-bold text-gray-900 dark:text-white">Admin Dashboard</h1>
-        <Link
-          to="/admin/settings"
-          className="px-4 py-2 text-sm font-medium text-gray-600 dark:text-gray-300 bg-gray-100 dark:bg-gray-700 rounded-md hover:bg-gray-200 dark:hover:bg-gray-600"
-        >
-          Settings →
-        </Link>
+    <div className="space-y-8">
+      <div className="flex items-center justify-between">
+        <div>
+          <h1 className="text-2xl font-bold">Admin Dashboard</h1>
+          <p className="text-muted-foreground text-sm mt-0.5">Platform-wide analytics</p>
+        </div>
+        <Button variant="outline" asChild>
+          <Link to="/admin/settings">Settings →</Link>
+        </Button>
       </div>
 
       {error && (
-        <div className="mb-4 p-3 bg-red-50 dark:bg-red-900/30 border border-red-200 dark:border-red-800 text-red-700 dark:text-red-400 rounded-md text-sm">
-          {error}
-        </div>
+        <Alert variant="destructive">
+          <AlertCircle className="h-4 w-4" />
+          <AlertDescription>{error}</AlertDescription>
+        </Alert>
       )}
 
-      {/* Overview cards */}
       {overview && (
-        <div className="grid grid-cols-2 md:grid-cols-5 gap-4 mb-8">
-          <StatCard label="Today's Applications" value={overview.today_count} color="text-blue-600 dark:text-blue-400" />
-          <StatCard label="Today's Cost" value={`$${overview.today_cost.toFixed(4)}`} color="text-green-600 dark:text-green-400" />
-          <StatCard label="Active Users" value={overview.active_users} color="text-gray-900 dark:text-white" />
+        <div className="grid grid-cols-2 md:grid-cols-5 gap-4">
+          <StatCard
+            label="Today's Applications"
+            value={overview.today_count}
+            icon={<TrendingUp className="h-4 w-4 text-primary" />}
+            accent="bg-primary/10"
+          />
+          <StatCard
+            label="Today's Cost"
+            value={`$${overview.today_cost.toFixed(4)}`}
+            icon={<DollarSign className="h-4 w-4 text-emerald-600" />}
+            accent="bg-emerald-100 dark:bg-emerald-900/30"
+          />
+          <StatCard
+            label="Active Users"
+            value={overview.active_users}
+            icon={<Users className="h-4 w-4 text-blue-600" />}
+            accent="bg-blue-100 dark:bg-blue-900/30"
+          />
           <StatCard
             label="Pending Approvals"
             value={overview.pending_users}
-            color={overview.pending_users > 0 ? "text-yellow-600 dark:text-yellow-400" : "text-gray-900 dark:text-white"}
-            sub={overview.pending_users > 0 ? "→ Settings to review" : undefined}
+            sub={overview.pending_users > 0 ? "Settings → review" : undefined}
+            icon={<Calendar className="h-4 w-4 text-amber-600" />}
+            accent="bg-amber-100 dark:bg-amber-900/30"
           />
           <StatCard
             label="Calls Scheduled"
             value={overview.calls_scheduled}
             sub="all users · all time"
-            color={overview.calls_scheduled > 0 ? "text-emerald-600 dark:text-emerald-400" : "text-gray-900 dark:text-white"}
+            icon={<Phone className="h-4 w-4 text-violet-600" />}
+            accent="bg-violet-100 dark:bg-violet-900/30"
           />
         </div>
       )}
 
       {/* Date range selector */}
-      <div className="flex flex-wrap items-center gap-2 mb-8 p-4 bg-white dark:bg-gray-800 rounded-lg border border-gray-200 dark:border-gray-700">
-        <span className="text-sm font-medium text-gray-600 dark:text-gray-400">Range:</span>
-        {(["7d", "30d", "90d", "custom"] as Preset[]).map((p) => (
-          <button
-            key={p}
-            onClick={() => setPreset(p)}
-            className={`px-3 py-1.5 rounded-full text-sm font-medium transition-colors ${
-              preset === p
-                ? "bg-blue-600 text-white"
-                : "bg-gray-100 dark:bg-gray-700 text-gray-700 dark:text-gray-300 hover:bg-gray-200 dark:hover:bg-gray-600"
-            }`}
-          >
-            {p === "7d" ? "7 days" : p === "30d" ? "30 days" : p === "90d" ? "90 days" : "Custom"}
-          </button>
-        ))}
-        {preset === "custom" && (
-          <>
-            <input
-              type="date"
-              value={customFrom}
-              onChange={(e) => setCustomFrom(e.target.value)}
-              className="px-3 py-1.5 border border-gray-300 dark:border-gray-600 rounded-md text-sm bg-white dark:bg-gray-700 dark:text-white"
-            />
-            <span className="text-gray-400">→</span>
-            <input
-              type="date"
-              value={customTo}
-              onChange={(e) => setCustomTo(e.target.value)}
-              className="px-3 py-1.5 border border-gray-300 dark:border-gray-600 rounded-md text-sm bg-white dark:bg-gray-700 dark:text-white"
-            />
-          </>
-        )}
-        <button
-          onClick={handleApplyRange}
-          className="px-4 py-1.5 bg-blue-600 text-white rounded-md text-sm font-medium hover:bg-blue-700"
-        >
-          Apply
-        </button>
-      </div>
+      <Card>
+        <CardContent className="pt-4">
+          <div className="flex flex-wrap items-center gap-2">
+            <span className="text-sm font-medium text-muted-foreground">Range:</span>
+            {(["7d", "30d", "90d", "custom"] as Preset[]).map((p) => (
+              <button
+                key={p}
+                onClick={() => setPreset(p)}
+                className={`px-3 py-1.5 rounded-full text-sm font-medium transition-colors ${
+                  preset === p
+                    ? "bg-primary text-primary-foreground"
+                    : "bg-muted text-muted-foreground hover:text-foreground"
+                }`}
+              >
+                {p === "7d" ? "7 days" : p === "30d" ? "30 days" : p === "90d" ? "90 days" : "Custom"}
+              </button>
+            ))}
+            {preset === "custom" && (
+              <>
+                <Input
+                  type="date"
+                  value={customFrom}
+                  onChange={(e) => setCustomFrom(e.target.value)}
+                  className="w-auto h-8 text-sm"
+                />
+                <span className="text-muted-foreground">→</span>
+                <Input
+                  type="date"
+                  value={customTo}
+                  onChange={(e) => setCustomTo(e.target.value)}
+                  className="w-auto h-8 text-sm"
+                />
+              </>
+            )}
+            <Button size="sm" onClick={() => loadAll(from, to)}>Apply</Button>
+          </div>
+        </CardContent>
+      </Card>
 
-      {/* Charts grid */}
-      <div className="space-y-8">
+      <div className="space-y-6">
         {/* Daily Applications */}
-        <div className="bg-white dark:bg-gray-800 rounded-lg shadow-sm border border-gray-200 dark:border-gray-700 p-6">
-          <h2 className="text-base font-semibold text-gray-800 dark:text-gray-200 mb-4">Daily Applications</h2>
-          {dailyCountData.length === 0 ? (
-            <p className="text-gray-400 dark:text-gray-500 text-sm text-center py-8">No data for this period.</p>
-          ) : (
-            <ResponsiveContainer width="100%" height={260}>
-              <BarChart data={dailyCountData} margin={{ top: 4, right: 16, left: 0, bottom: 0 }}>
-                <CartesianGrid strokeDasharray="3 3" stroke="#e5e7eb" />
-                <XAxis dataKey="date" tick={{ fontSize: 11 }} />
-                <YAxis tick={{ fontSize: 11 }} allowDecimals={false} />
-                <Tooltip />
-                <Bar dataKey="count" name="Applications" fill="#3b82f6" radius={[3, 3, 0, 0]} />
-              </BarChart>
-            </ResponsiveContainer>
-          )}
-        </div>
+        <Card>
+          <CardHeader>
+            <CardTitle className="text-base">Daily Applications</CardTitle>
+          </CardHeader>
+          <CardContent>
+            {dailyCountData.length === 0 ? (
+              <p className="text-muted-foreground text-sm text-center py-8">No data for this period.</p>
+            ) : (
+              <ResponsiveContainer width="100%" height={260}>
+                <BarChart data={dailyCountData} margin={{ top: 4, right: 16, left: 0, bottom: 0 }}>
+                  <CartesianGrid strokeDasharray="3 3" className="stroke-border" />
+                  <XAxis dataKey="date" tick={{ fontSize: 11 }} />
+                  <YAxis tick={{ fontSize: 11 }} allowDecimals={false} />
+                  <Tooltip />
+                  <Bar dataKey="count" name="Applications" fill={CHART_COLORS[0]} radius={[3, 3, 0, 0]} />
+                </BarChart>
+              </ResponsiveContainer>
+            )}
+          </CardContent>
+        </Card>
 
         {/* Per-User Daily */}
         {usernames.length > 0 && (
-          <div className="bg-white dark:bg-gray-800 rounded-lg shadow-sm border border-gray-200 dark:border-gray-700 p-6">
-            <div className="flex flex-wrap items-center justify-between gap-3 mb-4">
-              <h2 className="text-base font-semibold text-gray-800 dark:text-gray-200">Applications by User (Daily)</h2>
-              <div className="flex flex-wrap gap-1.5">
-                <button
-                  onClick={() => setSelectedUser(null)}
-                  className={`px-3 py-1 rounded-full text-xs font-medium transition-colors ${
-                    selectedUser === null
-                      ? "bg-blue-600 text-white"
-                      : "bg-gray-100 dark:bg-gray-700 text-gray-600 dark:text-gray-300 hover:bg-gray-200 dark:hover:bg-gray-600"
-                  }`}
-                >
-                  All
-                </button>
-                {usernames.map((u, i) => (
+          <Card>
+            <CardHeader>
+              <div className="flex flex-wrap items-center justify-between gap-3">
+                <CardTitle className="text-base">Applications by User (Daily)</CardTitle>
+                <div className="flex flex-wrap gap-1.5">
                   <button
-                    key={u}
-                    onClick={() => setSelectedUser(u === selectedUser ? null : u)}
+                    onClick={() => setSelectedUser(null)}
                     className={`px-3 py-1 rounded-full text-xs font-medium transition-colors ${
-                      selectedUser === u
-                        ? "text-white"
-                        : "bg-gray-100 dark:bg-gray-700 text-gray-600 dark:text-gray-300 hover:bg-gray-200 dark:hover:bg-gray-600"
+                      selectedUser === null
+                        ? "bg-primary text-primary-foreground"
+                        : "bg-muted text-muted-foreground hover:text-foreground"
                     }`}
-                    style={selectedUser === u ? { backgroundColor: CHART_COLORS[i % CHART_COLORS.length] } : undefined}
                   >
-                    {u}
+                    All
                   </button>
-                ))}
-              </div>
-            </div>
-            <ResponsiveContainer width="100%" height={260}>
-              {selectedUser ? (
-                <BarChart data={singleUserChartData} margin={{ top: 4, right: 16, left: 0, bottom: 0 }}>
-                  <CartesianGrid strokeDasharray="3 3" stroke="#e5e7eb" />
-                  <XAxis dataKey="date" tick={{ fontSize: 11 }} />
-                  <YAxis tick={{ fontSize: 11 }} allowDecimals={false} />
-                  <Tooltip />
-                  <Bar
-                    dataKey="count"
-                    name={selectedUser}
-                    fill={CHART_COLORS[usernames.indexOf(selectedUser) % CHART_COLORS.length]}
-                    radius={[3, 3, 0, 0]}
-                  />
-                </BarChart>
-              ) : (
-                <BarChart data={perUserChartData} margin={{ top: 4, right: 16, left: 0, bottom: 0 }}>
-                  <CartesianGrid strokeDasharray="3 3" stroke="#e5e7eb" />
-                  <XAxis dataKey="date" tick={{ fontSize: 11 }} />
-                  <YAxis tick={{ fontSize: 11 }} allowDecimals={false} />
-                  <Tooltip />
-                  <Legend wrapperStyle={{ fontSize: 12 }} />
                   {usernames.map((u, i) => (
-                    <Bar key={u} dataKey={u} stackId="a" fill={CHART_COLORS[i % CHART_COLORS.length]} radius={i === usernames.length - 1 ? [3, 3, 0, 0] : [0, 0, 0, 0]} />
+                    <button
+                      key={u}
+                      onClick={() => setSelectedUser(u === selectedUser ? null : u)}
+                      className="px-3 py-1 rounded-full text-xs font-medium transition-colors text-white"
+                      style={{ backgroundColor: selectedUser === u ? CHART_COLORS[i % CHART_COLORS.length] : undefined }}
+                    >
+                      <span
+                        className={selectedUser === u ? "" : "text-muted-foreground hover:text-foreground"}
+                        style={selectedUser !== u ? { backgroundColor: "var(--muted)", color: "var(--muted-foreground)", padding: "4px 12px", borderRadius: "9999px" } : undefined}
+                      >
+                        {u}
+                      </span>
+                    </button>
                   ))}
-                </BarChart>
-              )}
-            </ResponsiveContainer>
-          </div>
+                </div>
+              </div>
+            </CardHeader>
+            <CardContent>
+              <ResponsiveContainer width="100%" height={260}>
+                {selectedUser ? (
+                  <BarChart data={singleUserChartData} margin={{ top: 4, right: 16, left: 0, bottom: 0 }}>
+                    <CartesianGrid strokeDasharray="3 3" className="stroke-border" />
+                    <XAxis dataKey="date" tick={{ fontSize: 11 }} />
+                    <YAxis tick={{ fontSize: 11 }} allowDecimals={false} />
+                    <Tooltip />
+                    <Bar
+                      dataKey="count"
+                      name={selectedUser}
+                      fill={CHART_COLORS[usernames.indexOf(selectedUser) % CHART_COLORS.length]}
+                      radius={[3, 3, 0, 0]}
+                    />
+                  </BarChart>
+                ) : (
+                  <BarChart data={perUserChartData} margin={{ top: 4, right: 16, left: 0, bottom: 0 }}>
+                    <CartesianGrid strokeDasharray="3 3" className="stroke-border" />
+                    <XAxis dataKey="date" tick={{ fontSize: 11 }} />
+                    <YAxis tick={{ fontSize: 11 }} allowDecimals={false} />
+                    <Tooltip />
+                    <Legend wrapperStyle={{ fontSize: 12 }} />
+                    {usernames.map((u, i) => (
+                      <Bar
+                        key={u}
+                        dataKey={u}
+                        stackId="a"
+                        fill={CHART_COLORS[i % CHART_COLORS.length]}
+                        radius={i === usernames.length - 1 ? [3, 3, 0, 0] : [0, 0, 0, 0]}
+                      />
+                    ))}
+                  </BarChart>
+                )}
+              </ResponsiveContainer>
+            </CardContent>
+          </Card>
         )}
 
-        {/* Daily Calls Scheduled */}
-        <div className="bg-white dark:bg-gray-800 rounded-lg shadow-sm border border-gray-200 dark:border-gray-700 p-6">
-          <div className="flex flex-wrap items-center justify-between gap-3 mb-4">
-            <h2 className="text-base font-semibold text-gray-800 dark:text-gray-200">Daily Calls Scheduled</h2>
-            {callUsernames.length > 0 && (
-              <div className="flex flex-wrap gap-1.5">
-                <button
-                  onClick={() => setSelectedCallUser(null)}
-                  className={`px-3 py-1 rounded-full text-xs font-medium transition-colors ${
-                    selectedCallUser === null
-                      ? "bg-emerald-600 text-white"
-                      : "bg-gray-100 dark:bg-gray-700 text-gray-600 dark:text-gray-300 hover:bg-gray-200 dark:hover:bg-gray-600"
-                  }`}
-                >
-                  All
-                </button>
-                {callUsernames.map((u, i) => (
+        {/* Daily Calls */}
+        <Card>
+          <CardHeader>
+            <div className="flex flex-wrap items-center justify-between gap-3">
+              <CardTitle className="text-base">Daily Calls Scheduled</CardTitle>
+              {callUsernames.length > 0 && (
+                <div className="flex flex-wrap gap-1.5">
                   <button
-                    key={u}
-                    onClick={() => setSelectedCallUser(u === selectedCallUser ? null : u)}
+                    onClick={() => setSelectedCallUser(null)}
                     className={`px-3 py-1 rounded-full text-xs font-medium transition-colors ${
-                      selectedCallUser === u ? "text-white" : "bg-gray-100 dark:bg-gray-700 text-gray-600 dark:text-gray-300 hover:bg-gray-200 dark:hover:bg-gray-600"
+                      selectedCallUser === null
+                        ? "bg-emerald-600 text-white"
+                        : "bg-muted text-muted-foreground hover:text-foreground"
                     }`}
-                    style={selectedCallUser === u ? { backgroundColor: CHART_COLORS[i % CHART_COLORS.length] } : undefined}
                   >
-                    {u}
+                    All
                   </button>
-                ))}
-              </div>
-            )}
-          </div>
-          {(selectedCallUser ? singleCallUserChartData : callUsernames.length > 1 ? perUserCallChartData : dailyCallsChartData).length === 0 ? (
-            <p className="text-gray-400 dark:text-gray-500 text-sm text-center py-8">No calls scheduled in this period.</p>
-          ) : (
-            <ResponsiveContainer width="100%" height={260}>
-              {selectedCallUser ? (
-                <BarChart data={singleCallUserChartData} margin={{ top: 4, right: 16, left: 0, bottom: 0 }}>
-                  <CartesianGrid strokeDasharray="3 3" stroke="#e5e7eb" />
-                  <XAxis dataKey="date" tick={{ fontSize: 11 }} />
-                  <YAxis tick={{ fontSize: 11 }} allowDecimals={false} />
-                  <Tooltip />
-                  <Bar dataKey="count" name={selectedCallUser} fill={CHART_COLORS[callUsernames.indexOf(selectedCallUser) % CHART_COLORS.length]} radius={[3, 3, 0, 0]} />
-                </BarChart>
-              ) : callUsernames.length > 1 ? (
-                <BarChart data={perUserCallChartData} margin={{ top: 4, right: 16, left: 0, bottom: 0 }}>
-                  <CartesianGrid strokeDasharray="3 3" stroke="#e5e7eb" />
-                  <XAxis dataKey="date" tick={{ fontSize: 11 }} />
-                  <YAxis tick={{ fontSize: 11 }} allowDecimals={false} />
-                  <Tooltip />
-                  <Legend wrapperStyle={{ fontSize: 12 }} />
                   {callUsernames.map((u, i) => (
-                    <Bar key={u} dataKey={u} stackId="c" fill={CHART_COLORS[i % CHART_COLORS.length]} radius={i === callUsernames.length - 1 ? [3, 3, 0, 0] : [0, 0, 0, 0]} />
+                    <button
+                      key={u}
+                      onClick={() => setSelectedCallUser(u === selectedCallUser ? null : u)}
+                      className={`px-3 py-1 rounded-full text-xs font-medium transition-colors ${
+                        selectedCallUser === u ? "text-white" : "bg-muted text-muted-foreground hover:text-foreground"
+                      }`}
+                      style={selectedCallUser === u ? { backgroundColor: CHART_COLORS[i % CHART_COLORS.length] } : undefined}
+                    >
+                      {u}
+                    </button>
                   ))}
-                </BarChart>
-              ) : (
-                <BarChart data={dailyCallsChartData} margin={{ top: 4, right: 16, left: 0, bottom: 0 }}>
-                  <CartesianGrid strokeDasharray="3 3" stroke="#e5e7eb" />
-                  <XAxis dataKey="date" tick={{ fontSize: 11 }} />
-                  <YAxis tick={{ fontSize: 11 }} allowDecimals={false} />
-                  <Tooltip />
-                  <Bar dataKey="count" name="Calls Scheduled" fill="#10b981" radius={[3, 3, 0, 0]} />
-                </BarChart>
+                </div>
               )}
-            </ResponsiveContainer>
-          )}
-        </div>
-
-        <div className="grid grid-cols-1 md:grid-cols-2 gap-8">
-          {/* Daily Cost */}
-          <div className="bg-white dark:bg-gray-800 rounded-lg shadow-sm border border-gray-200 dark:border-gray-700 p-6">
-            <h2 className="text-base font-semibold text-gray-800 dark:text-gray-200 mb-4">Daily Cost ($)</h2>
-            {dailyCostData.length === 0 ? (
-              <p className="text-gray-400 dark:text-gray-500 text-sm text-center py-8">No data.</p>
+            </div>
+          </CardHeader>
+          <CardContent>
+            {(selectedCallUser ? singleCallUserChartData : callUsernames.length > 1 ? perUserCallChartData : dailyCallsChartData).length === 0 ? (
+              <p className="text-muted-foreground text-sm text-center py-8">No calls scheduled in this period.</p>
             ) : (
-              <ResponsiveContainer width="100%" height={220}>
-                <BarChart data={dailyCostData} margin={{ top: 4, right: 16, left: 0, bottom: 0 }}>
-                  <CartesianGrid strokeDasharray="3 3" stroke="#e5e7eb" />
-                  <XAxis dataKey="date" tick={{ fontSize: 11 }} />
-                  <YAxis tick={{ fontSize: 11 }} />
-                  <Tooltip formatter={(v: number) => [`$${v}`, "Cost"]} />
-                  <Bar dataKey="cost" name="Cost ($)" fill="#10b981" radius={[3, 3, 0, 0]} />
-                </BarChart>
+              <ResponsiveContainer width="100%" height={260}>
+                {selectedCallUser ? (
+                  <BarChart data={singleCallUserChartData} margin={{ top: 4, right: 16, left: 0, bottom: 0 }}>
+                    <CartesianGrid strokeDasharray="3 3" className="stroke-border" />
+                    <XAxis dataKey="date" tick={{ fontSize: 11 }} />
+                    <YAxis tick={{ fontSize: 11 }} allowDecimals={false} />
+                    <Tooltip />
+                    <Bar dataKey="count" name={selectedCallUser} fill={CHART_COLORS[callUsernames.indexOf(selectedCallUser) % CHART_COLORS.length]} radius={[3, 3, 0, 0]} />
+                  </BarChart>
+                ) : callUsernames.length > 1 ? (
+                  <BarChart data={perUserCallChartData} margin={{ top: 4, right: 16, left: 0, bottom: 0 }}>
+                    <CartesianGrid strokeDasharray="3 3" className="stroke-border" />
+                    <XAxis dataKey="date" tick={{ fontSize: 11 }} />
+                    <YAxis tick={{ fontSize: 11 }} allowDecimals={false} />
+                    <Tooltip />
+                    <Legend wrapperStyle={{ fontSize: 12 }} />
+                    {callUsernames.map((u, i) => (
+                      <Bar key={u} dataKey={u} stackId="c" fill={CHART_COLORS[i % CHART_COLORS.length]} radius={i === callUsernames.length - 1 ? [3, 3, 0, 0] : [0, 0, 0, 0]} />
+                    ))}
+                  </BarChart>
+                ) : (
+                  <BarChart data={dailyCallsChartData} margin={{ top: 4, right: 16, left: 0, bottom: 0 }}>
+                    <CartesianGrid strokeDasharray="3 3" className="stroke-border" />
+                    <XAxis dataKey="date" tick={{ fontSize: 11 }} />
+                    <YAxis tick={{ fontSize: 11 }} allowDecimals={false} />
+                    <Tooltip />
+                    <Bar dataKey="count" name="Calls Scheduled" fill="#10b981" radius={[3, 3, 0, 0]} />
+                  </BarChart>
+                )}
               </ResponsiveContainer>
             )}
-          </div>
+          </CardContent>
+        </Card>
+
+        <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
+          {/* Daily Cost */}
+          <Card>
+            <CardHeader>
+              <CardTitle className="text-base">Daily Cost ($)</CardTitle>
+            </CardHeader>
+            <CardContent>
+              {dailyCostData.length === 0 ? (
+                <p className="text-muted-foreground text-sm text-center py-8">No data.</p>
+              ) : (
+                <ResponsiveContainer width="100%" height={220}>
+                  <BarChart data={dailyCostData} margin={{ top: 4, right: 16, left: 0, bottom: 0 }}>
+                    <CartesianGrid strokeDasharray="3 3" className="stroke-border" />
+                    <XAxis dataKey="date" tick={{ fontSize: 11 }} />
+                    <YAxis tick={{ fontSize: 11 }} />
+                    <Tooltip formatter={(v) => [`$${v}`, "Cost"]} />
+                    <Bar dataKey="cost" name="Cost ($)" fill="#10b981" radius={[3, 3, 0, 0]} />
+                  </BarChart>
+                </ResponsiveContainer>
+              )}
+            </CardContent>
+          </Card>
 
           {/* Top Profiles */}
-          <div className="bg-white dark:bg-gray-800 rounded-lg shadow-sm border border-gray-200 dark:border-gray-700 p-6">
-            <h2 className="text-base font-semibold text-gray-800 dark:text-gray-200 mb-4">Top Profiles (by Applications)</h2>
-            {profileChartData.length === 0 ? (
-              <p className="text-gray-400 dark:text-gray-500 text-sm text-center py-8">No data.</p>
-            ) : (
-              <ResponsiveContainer width="100%" height={220}>
-                <BarChart data={profileChartData} layout="vertical" margin={{ top: 4, right: 16, left: 8, bottom: 0 }}>
-                  <CartesianGrid strokeDasharray="3 3" stroke="#e5e7eb" />
-                  <XAxis type="number" tick={{ fontSize: 11 }} allowDecimals={false} />
-                  <YAxis type="category" dataKey="name" tick={{ fontSize: 11 }} width={110} />
-                  <Tooltip />
-                  <Bar dataKey="count" name="Applications" radius={[0, 3, 3, 0]}>
-                    {profileChartData.map((_, i) => (
-                      <Cell key={i} fill={CHART_COLORS[i % CHART_COLORS.length]} />
-                    ))}
-                  </Bar>
-                </BarChart>
-              </ResponsiveContainer>
-            )}
-          </div>
+          <Card>
+            <CardHeader>
+              <CardTitle className="text-base">Top Profiles (by Applications)</CardTitle>
+            </CardHeader>
+            <CardContent>
+              {profileChartData.length === 0 ? (
+                <p className="text-muted-foreground text-sm text-center py-8">No data.</p>
+              ) : (
+                <ResponsiveContainer width="100%" height={220}>
+                  <BarChart data={profileChartData} layout="vertical" margin={{ top: 4, right: 16, left: 8, bottom: 0 }}>
+                    <CartesianGrid strokeDasharray="3 3" className="stroke-border" />
+                    <XAxis type="number" tick={{ fontSize: 11 }} allowDecimals={false} />
+                    <YAxis type="category" dataKey="name" tick={{ fontSize: 11 }} width={110} />
+                    <Tooltip />
+                    <Bar dataKey="count" name="Applications" radius={[0, 3, 3, 0]}>
+                      {profileChartData.map((_, i) => (
+                        <Cell key={i} fill={CHART_COLORS[i % CHART_COLORS.length]} />
+                      ))}
+                    </Bar>
+                  </BarChart>
+                </ResponsiveContainer>
+              )}
+            </CardContent>
+          </Card>
         </div>
 
-        {/* Per-User Cost Table */}
-        <div className="bg-white dark:bg-gray-800 rounded-lg shadow-sm border border-gray-200 dark:border-gray-700 overflow-hidden">
-          <div className="px-6 py-4 border-b border-gray-200 dark:border-gray-700">
-            <h2 className="text-base font-semibold text-gray-800 dark:text-gray-200">User Cost Summary</h2>
-          </div>
-          <div className="overflow-x-auto">
-            <table className="w-full text-sm">
-              <thead className="bg-gray-50 dark:bg-gray-700/50">
-                <tr>
-                  <th className="text-left px-4 py-3 font-medium text-gray-600 dark:text-gray-400">User</th>
-                  <th className="text-right px-4 py-3 font-medium text-gray-600 dark:text-gray-400">Today Apps</th>
-                  <th className="text-right px-4 py-3 font-medium text-gray-600 dark:text-gray-400">Today Cost</th>
-                  <th className="text-right px-4 py-3 font-medium text-gray-600 dark:text-gray-400">7d Apps</th>
-                  <th className="text-right px-4 py-3 font-medium text-gray-600 dark:text-gray-400">7d Cost</th>
-                  <th className="text-right px-4 py-3 font-medium text-gray-600 dark:text-gray-400">30d Apps</th>
-                  <th className="text-right px-4 py-3 font-medium text-gray-600 dark:text-gray-400">30d Cost</th>
-                </tr>
-              </thead>
-              <tbody>
+        {/* User Cost Summary */}
+        <Card>
+          <CardHeader>
+            <CardTitle className="text-base">User Cost Summary</CardTitle>
+          </CardHeader>
+          <CardContent className="p-0">
+            <Table>
+              <TableHeader>
+                <TableRow>
+                  <TableHead>User</TableHead>
+                  <TableHead className="text-right">Today Apps</TableHead>
+                  <TableHead className="text-right">Today Cost</TableHead>
+                  <TableHead className="text-right">7d Apps</TableHead>
+                  <TableHead className="text-right">7d Cost</TableHead>
+                  <TableHead className="text-right">30d Apps</TableHead>
+                  <TableHead className="text-right">30d Cost</TableHead>
+                </TableRow>
+              </TableHeader>
+              <TableBody>
                 {userCosts.length === 0 ? (
-                  <tr>
-                    <td colSpan={7} className="px-4 py-8 text-center text-gray-400 dark:text-gray-500">No users.</td>
-                  </tr>
+                  <TableRow>
+                    <TableCell colSpan={7} className="text-center text-muted-foreground py-8">No users.</TableCell>
+                  </TableRow>
                 ) : (
                   userCosts.map((u) => (
-                    <tr key={u.user_id} className="border-t border-gray-100 dark:border-gray-700 hover:bg-gray-50 dark:hover:bg-gray-700/30">
-                      <td className="px-4 py-3 font-medium text-gray-900 dark:text-white">{u.username}</td>
-                      <td className="px-4 py-3 text-right text-gray-700 dark:text-gray-300">{u.today_count}</td>
-                      <td className="px-4 py-3 text-right text-gray-700 dark:text-gray-300">${u.today_cost.toFixed(4)}</td>
-                      <td className="px-4 py-3 text-right text-gray-700 dark:text-gray-300">{u.week_count}</td>
-                      <td className="px-4 py-3 text-right text-gray-700 dark:text-gray-300">${u.week_cost.toFixed(4)}</td>
-                      <td className="px-4 py-3 text-right text-gray-700 dark:text-gray-300">{u.month_count}</td>
-                      <td className="px-4 py-3 text-right font-medium text-gray-900 dark:text-white">${u.month_cost.toFixed(4)}</td>
-                    </tr>
+                    <TableRow key={u.user_id}>
+                      <TableCell className="font-medium">{u.username}</TableCell>
+                      <TableCell className="text-right">{u.today_count}</TableCell>
+                      <TableCell className="text-right">${u.today_cost.toFixed(4)}</TableCell>
+                      <TableCell className="text-right">{u.week_count}</TableCell>
+                      <TableCell className="text-right">${u.week_cost.toFixed(4)}</TableCell>
+                      <TableCell className="text-right">{u.month_count}</TableCell>
+                      <TableCell className="text-right font-medium">${u.month_cost.toFixed(4)}</TableCell>
+                    </TableRow>
                   ))
                 )}
-              </tbody>
-            </table>
-          </div>
-        </div>
+              </TableBody>
+            </Table>
+          </CardContent>
+        </Card>
       </div>
     </div>
   );

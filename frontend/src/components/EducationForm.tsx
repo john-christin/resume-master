@@ -1,4 +1,8 @@
+import { GraduationCap, Plus, Trash2 } from "lucide-react";
 import type { Education } from "../types";
+import { Button } from "./ui/button";
+import { Input } from "./ui/input";
+import { Label } from "./ui/label";
 
 interface Props {
   educations: Education[];
@@ -15,110 +19,122 @@ const emptyEducation: Education = {
   end_date: "",
 };
 
-export default function EducationForm({ educations, onChange, readOnly }: Props) {
+export default function EducationForm({
+  educations,
+  onChange,
+  readOnly,
+}: Props) {
   const add = () => onChange([...educations, { ...emptyEducation }]);
-
   const remove = (index: number) =>
     onChange(educations.filter((_, i) => i !== index));
-
-  const update = (index: number, field: keyof Education, value: string) => {
-    const updated = educations.map((edu, i) =>
-      i === index ? { ...edu, [field]: value } : edu
-    );
-    onChange(updated);
-  };
+  const update = (index: number, field: keyof Education, value: string) =>
+    onChange(educations.map((edu, i) => (i === index ? { ...edu, [field]: value } : edu)));
 
   return (
     <div className="space-y-4">
       <div className="flex items-center justify-between">
-        <h3 className="text-lg font-semibold text-gray-800 dark:text-gray-200">Education</h3>
+        <div className="flex items-center gap-2">
+          <GraduationCap className="h-5 w-5 text-primary" />
+          <h3 className="text-base font-semibold">Education</h3>
+        </div>
         {!readOnly && (
-          <button
-            type="button"
-            onClick={add}
-            className="text-sm px-3 py-1.5 bg-blue-50 dark:bg-blue-900/30 text-blue-600 dark:text-blue-400 rounded-md hover:bg-blue-100 dark:hover:bg-blue-900/50 transition-colors"
-          >
-            + Add Education
-          </button>
+          <Button type="button" variant="outline" size="sm" onClick={add}>
+            <Plus className="h-3.5 w-3.5" />
+            Add Education
+          </Button>
         )}
       </div>
+
+      {educations.length === 0 && (
+        <p className="text-sm text-muted-foreground text-center py-6 border border-dashed rounded-lg">
+          No education entries yet.
+        </p>
+      )}
 
       {educations.map((edu, index) => (
         <div
           key={index}
-          className="border border-gray-200 dark:border-gray-600 rounded-lg p-4 space-y-3 bg-gray-50 dark:bg-gray-700/50"
+          className="rounded-lg border bg-muted/30 p-4 space-y-3"
         >
-          <div className="flex justify-between items-start">
-            <span className="text-sm font-medium text-gray-500 dark:text-gray-400">
-              #{index + 1}
+          <div className="flex items-center justify-between">
+            <span className="text-xs font-medium text-muted-foreground uppercase tracking-wide">
+              Education {index + 1}
             </span>
             {!readOnly && (
-              <button
+              <Button
                 type="button"
+                variant="ghost"
+                size="icon"
+                className="h-7 w-7 text-muted-foreground hover:text-destructive"
                 onClick={() => remove(index)}
-                className="text-sm text-red-500 hover:text-red-700 dark:text-red-400 dark:hover:text-red-300"
               >
-                Remove
-              </button>
+                <Trash2 className="h-3.5 w-3.5" />
+              </Button>
             )}
           </div>
 
           <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
-            <input
-              type="text"
-              placeholder="School"
-              value={edu.school}
-              onChange={(e) => update(index, "school", e.target.value)}
-              className="w-full px-3 py-2 border border-gray-300 dark:border-gray-600 rounded-md text-sm focus:ring-2 focus:ring-blue-500 focus:border-blue-500 bg-white dark:bg-gray-700 dark:text-white"
-              required
-            />
-            <input
-              type="text"
-              placeholder="Degree (e.g., Bachelor of Science)"
-              value={edu.degree}
-              onChange={(e) => update(index, "degree", e.target.value)}
-              className="w-full px-3 py-2 border border-gray-300 dark:border-gray-600 rounded-md text-sm focus:ring-2 focus:ring-blue-500 focus:border-blue-500 bg-white dark:bg-gray-700 dark:text-white"
-              required
-            />
-            <input
-              type="text"
-              placeholder="Field of Study"
-              value={edu.field}
-              onChange={(e) => update(index, "field", e.target.value)}
-              className="w-full px-3 py-2 border border-gray-300 dark:border-gray-600 rounded-md text-sm focus:ring-2 focus:ring-blue-500 focus:border-blue-500 bg-white dark:bg-gray-700 dark:text-white"
-              required
-            />
-            <input
-              type="text"
-              placeholder="GPA (optional)"
-              value={edu.gpa || ""}
-              onChange={(e) => update(index, "gpa", e.target.value)}
-              className="w-full px-3 py-2 border border-gray-300 dark:border-gray-600 rounded-md text-sm focus:ring-2 focus:ring-blue-500 focus:border-blue-500 bg-white dark:bg-gray-700 dark:text-white"
-            />
-            <input
-              type="text"
-              placeholder="Start Date (YYYY-MM)"
-              value={edu.start_date}
-              onChange={(e) => update(index, "start_date", e.target.value)}
-              className="w-full px-3 py-2 border border-gray-300 dark:border-gray-600 rounded-md text-sm focus:ring-2 focus:ring-blue-500 focus:border-blue-500 bg-white dark:bg-gray-700 dark:text-white"
-              required
-            />
-            <input
-              type="text"
-              placeholder="End Date (YYYY-MM or leave empty)"
-              value={edu.end_date || ""}
-              onChange={(e) => update(index, "end_date", e.target.value)}
-              className="w-full px-3 py-2 border border-gray-300 dark:border-gray-600 rounded-md text-sm focus:ring-2 focus:ring-blue-500 focus:border-blue-500 bg-white dark:bg-gray-700 dark:text-white"
-            />
+            <div className="space-y-1.5">
+              <Label className="text-xs">School *</Label>
+              <Input
+                placeholder="University of..."
+                value={edu.school}
+                onChange={(e) => update(index, "school", e.target.value)}
+                readOnly={readOnly}
+                required
+              />
+            </div>
+            <div className="space-y-1.5">
+              <Label className="text-xs">Degree *</Label>
+              <Input
+                placeholder="Bachelor of Science"
+                value={edu.degree}
+                onChange={(e) => update(index, "degree", e.target.value)}
+                readOnly={readOnly}
+                required
+              />
+            </div>
+            <div className="space-y-1.5">
+              <Label className="text-xs">Field of Study *</Label>
+              <Input
+                placeholder="Computer Science"
+                value={edu.field}
+                onChange={(e) => update(index, "field", e.target.value)}
+                readOnly={readOnly}
+                required
+              />
+            </div>
+            <div className="space-y-1.5">
+              <Label className="text-xs">GPA (optional)</Label>
+              <Input
+                placeholder="3.9"
+                value={edu.gpa || ""}
+                onChange={(e) => update(index, "gpa", e.target.value)}
+                readOnly={readOnly}
+              />
+            </div>
+            <div className="space-y-1.5">
+              <Label className="text-xs">Start Date *</Label>
+              <Input
+                placeholder="YYYY-MM"
+                value={edu.start_date}
+                onChange={(e) => update(index, "start_date", e.target.value)}
+                readOnly={readOnly}
+                required
+              />
+            </div>
+            <div className="space-y-1.5">
+              <Label className="text-xs">End Date</Label>
+              <Input
+                placeholder="YYYY-MM (leave empty if current)"
+                value={edu.end_date || ""}
+                onChange={(e) => update(index, "end_date", e.target.value)}
+                readOnly={readOnly}
+              />
+            </div>
           </div>
         </div>
       ))}
-
-      {educations.length === 0 && (
-        <p className="text-sm text-gray-400 dark:text-gray-500 text-center py-4">
-          No education entries yet. Click "+ Add Education" to add one.
-        </p>
-      )}
     </div>
   );
 }

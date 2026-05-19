@@ -1,50 +1,40 @@
+import {
+  AlertCircle,
+  CheckCircle2,
+  ChevronRight,
+  Clock,
+  Loader2,
+  XCircle,
+} from "lucide-react";
 import { useEffect, useRef, useState } from "react";
 import { useNavigate, useParams } from "react-router-dom";
 import { getBatchJob } from "../api/batch_jobs";
 import LoadingSpinner from "../components/LoadingSpinner";
+import { Alert, AlertDescription } from "../components/ui/alert";
+import { Badge } from "../components/ui/badge";
+import { Button } from "../components/ui/button";
+import { Card, CardContent, CardHeader, CardTitle } from "../components/ui/card";
+import { Progress } from "../components/ui/progress";
 import type { BatchJobStatus } from "../types";
 
 const POLL_INTERVAL_MS = 2500;
 const ACTIVE_STATUSES = new Set(["pending", "running"]);
 
 function StatusBadge({ status }: { status: BatchJobStatus["status"] }) {
-  const styles: Record<string, string> = {
-    pending:   "bg-gray-100 dark:bg-gray-700 text-gray-600 dark:text-gray-300",
-    running:   "bg-blue-100 dark:bg-blue-900/40 text-blue-700 dark:text-blue-300",
-    completed: "bg-green-100 dark:bg-green-900/40 text-green-700 dark:text-green-300",
-    partial:   "bg-yellow-100 dark:bg-yellow-900/40 text-yellow-700 dark:text-yellow-300",
-    failed:    "bg-red-100 dark:bg-red-900/40 text-red-700 dark:text-red-300",
-  };
-  const labels: Record<string, string> = {
-    pending: "Queued", running: "Running", completed: "Completed",
-    partial: "Partially Completed", failed: "Failed",
-  };
-  return (
-    <span className={`inline-flex items-center px-2.5 py-1 rounded-full text-xs font-medium ${styles[status]}`}>
-      {status === "running" && (
-        <span className="w-1.5 h-1.5 rounded-full bg-blue-500 dark:bg-blue-400 mr-1.5 animate-pulse" />
-      )}
-      {labels[status]}
-    </span>
-  );
-}
+  const cfg = {
+    pending: { variant: "secondary" as const, label: "Queued", icon: <Clock className="h-3 w-3" /> },
+    running: { variant: "info" as const, label: "Running", icon: <Loader2 className="h-3 w-3 animate-spin" /> },
+    completed: { variant: "success" as const, label: "Completed", icon: <CheckCircle2 className="h-3 w-3" /> },
+    partial: { variant: "warning" as const, label: "Partially Completed", icon: <AlertCircle className="h-3 w-3" /> },
+    failed: { variant: "destructive" as const, label: "Failed", icon: <XCircle className="h-3 w-3" /> },
+  } as const;
 
-function ProgressBar({ completed, failed, total }: { completed: number; failed: number; total: number }) {
-  const successPct = total > 0 ? (completed / total) * 100 : 0;
-  const failedPct  = total > 0 ? (failed  / total) * 100 : 0;
+  const c = cfg[status] ?? cfg.pending;
   return (
-    <div className="w-full bg-gray-200 dark:bg-gray-700 rounded-full h-3 overflow-hidden">
-      <div className="h-full flex">
-        <div
-          className="bg-green-500 dark:bg-green-400 transition-all duration-500"
-          style={{ width: `${successPct}%` }}
-        />
-        <div
-          className="bg-red-400 dark:bg-red-500 transition-all duration-500"
-          style={{ width: `${failedPct}%` }}
-        />
-      </div>
-    </div>
+    <Badge variant={c.variant} className="flex items-center gap-1">
+      {c.icon}
+      {c.label}
+    </Badge>
   );
 }
 
@@ -73,138 +63,168 @@ export default function BatchJobStatusPage() {
   useEffect(() => {
     fetchJob();
     pollRef.current = setInterval(fetchJob, POLL_INTERVAL_MS);
-    return () => { if (pollRef.current) clearInterval(pollRef.current); };
+    return () => {
+      if (pollRef.current) clearInterval(pollRef.current);
+    };
   }, [jobId]);
 
   if (!job && !error) return <LoadingSpinner message="Loading batch job..." />;
 
   if (error) {
     return (
-      <div className="max-w-2xl mx-auto mt-8 p-4 bg-red-50 dark:bg-red-900/30 border border-red-200 dark:border-red-800 text-red-700 dark:text-red-400 rounded-lg text-sm">
-        {error}
-      </div>
+      <Alert variant="destructive" className="max-w-2xl mx-auto mt-8">
+        <AlertCircle className="h-4 w-4" />
+        <AlertDescription>{error}</AlertDescription>
+      </Alert>
     );
   }
 
   const isActive = job && ACTIVE_STATUSES.has(job.status);
   const processed = (job?.completed_jobs ?? 0) + (job?.failed_jobs ?? 0);
+  const progressPct =
+    job && job.total_jobs > 0
+      ? Math.round((processed / job.total_jobs) * 100)
+      : 0;
 
   return (
     <div className="max-w-2xl mx-auto space-y-6">
-      {/* Header */}
       <div className="flex items-center justify-between">
         <div>
-          <h1 className="text-2xl font-bold text-gray-900 dark:text-white">Batch Generation</h1>
+          <h1 className="text-2xl font-bold">Batch Generation</h1>
           {job?.profile_name && (
-            <p className="text-sm text-gray-500 dark:text-gray-400 mt-0.5">
-              Profile: <span className="font-medium">{job.profile_name}</span>
+            <p className="text-sm text-muted-foreground mt-0.5">
+              Profile:{" "}
+              <span className="font-medium text-foreground">
+                {job.profile_name}
+              </span>
             </p>
           )}
         </div>
         {job && <StatusBadge status={job.status} />}
       </div>
 
-      {/* Progress card */}
       {job && (
-        <div className="bg-white dark:bg-gray-800 rounded-lg shadow-sm border border-gray-200 dark:border-gray-700 p-6 space-y-4">
-          {/* Counts */}
-          <div className="flex items-end justify-between">
-            <div>
-              <p className="text-3xl font-bold text-gray-900 dark:text-white">
-                {processed}
-                <span className="text-lg font-normal text-gray-400 dark:text-gray-500">
-                  {" "}/ {job.total_jobs}
+        <Card>
+          <CardHeader>
+            <CardTitle className="text-sm text-muted-foreground">Progress</CardTitle>
+          </CardHeader>
+          <CardContent className="space-y-4">
+            <div className="flex items-end justify-between">
+              <div>
+                <span className="text-3xl font-bold">{processed}</span>
+                <span className="text-lg text-muted-foreground">
+                  {" "}
+                  / {job.total_jobs} jobs
                 </span>
+              </div>
+              <div className="text-right text-sm space-y-0.5">
+                {job.completed_jobs > 0 && (
+                  <p className="text-emerald-600 dark:text-emerald-400 font-medium flex items-center gap-1 justify-end">
+                    <CheckCircle2 className="h-3.5 w-3.5" />
+                    {job.completed_jobs} succeeded
+                  </p>
+                )}
+                {job.failed_jobs > 0 && (
+                  <p className="text-destructive font-medium flex items-center gap-1 justify-end">
+                    <XCircle className="h-3.5 w-3.5" />
+                    {job.failed_jobs} failed
+                  </p>
+                )}
+              </div>
+            </div>
+
+            <Progress value={progressPct} className="h-2.5" />
+
+            {job.status === "pending" && (
+              <p className="text-sm text-muted-foreground">
+                Queued — waiting for the worker to pick this up...
               </p>
-              <p className="text-sm text-gray-500 dark:text-gray-400 mt-0.5">jobs processed</p>
-            </div>
-            <div className="text-right text-sm text-gray-500 dark:text-gray-400 space-y-0.5">
-              {job.completed_jobs > 0 && (
-                <p className="text-green-600 dark:text-green-400 font-medium">
-                  ✓ {job.completed_jobs} succeeded
-                </p>
+            )}
+            {job.status === "running" && (
+              <p className="text-sm text-muted-foreground">
+                Generating resumes and cover letters. This page updates
+                automatically.
+              </p>
+            )}
+
+            <div className="flex flex-wrap gap-4 text-xs text-muted-foreground pt-3 border-t">
+              <span>
+                Submitted {new Date(job.created_at).toLocaleTimeString()}
+              </span>
+              {job.started_at && (
+                <span>
+                  Started {new Date(job.started_at).toLocaleTimeString()}
+                </span>
               )}
-              {job.failed_jobs > 0 && (
-                <p className="text-red-500 dark:text-red-400 font-medium">
-                  ✗ {job.failed_jobs} failed
-                </p>
+              {job.completed_at && (
+                <span>
+                  Finished {new Date(job.completed_at).toLocaleTimeString()}
+                </span>
               )}
             </div>
-          </div>
-
-          <ProgressBar completed={job.completed_jobs} failed={job.failed_jobs} total={job.total_jobs} />
-
-          {/* Status message */}
-          {job.status === "pending" && (
-            <p className="text-sm text-gray-500 dark:text-gray-400">
-              Queued — waiting for the worker to pick this up...
-            </p>
-          )}
-          {job.status === "running" && (
-            <p className="text-sm text-gray-500 dark:text-gray-400">
-              Generating resumes and cover letters. This page updates automatically.
-            </p>
-          )}
-
-          {/* Timing */}
-          <div className="flex gap-6 text-xs text-gray-400 dark:text-gray-500 pt-1 border-t border-gray-100 dark:border-gray-700">
-            <span>Submitted {new Date(job.created_at).toLocaleTimeString()}</span>
-            {job.started_at && <span>Started {new Date(job.started_at).toLocaleTimeString()}</span>}
-            {job.completed_at && <span>Finished {new Date(job.completed_at).toLocaleTimeString()}</span>}
-          </div>
-        </div>
+          </CardContent>
+        </Card>
       )}
 
-      {/* Cost summary — shown once done */}
       {job && !isActive && job.total_cost > 0 && (
-        <div className="bg-white dark:bg-gray-800 rounded-lg shadow-sm border border-gray-200 dark:border-gray-700 p-4">
-          <p className="text-xs font-medium text-gray-500 dark:text-gray-400 uppercase tracking-wide mb-2">
-            Generation Cost
-          </p>
-          <div className="flex gap-6 text-sm text-gray-700 dark:text-gray-300">
-            <span>Total: <span className="font-semibold">${job.total_cost.toFixed(4)}</span></span>
-            <span>{(job.total_prompt_tokens + job.total_completion_tokens).toLocaleString()} tokens</span>
-          </div>
-        </div>
-      )}
-
-      {/* Failed jobs detail */}
-      {job && job.error_details.length > 0 && (
-        <div className="bg-white dark:bg-gray-800 rounded-lg shadow-sm border border-gray-200 dark:border-gray-700 p-4 space-y-3">
-          <p className="text-xs font-medium text-gray-500 dark:text-gray-400 uppercase tracking-wide">
-            Failed Jobs
-          </p>
-          {job.error_details.map((e) => (
-            <div
-              key={e.index}
-              className="p-3 bg-red-50 dark:bg-red-900/20 border border-red-200 dark:border-red-800 rounded-md"
-            >
-              <p className="text-sm font-medium text-gray-900 dark:text-white">
-                #{e.index + 1} — {e.job_title || "Untitled"}
-              </p>
-              <p className="text-xs text-red-600 dark:text-red-400 mt-1 break-words">{e.error}</p>
+        <Card>
+          <CardContent className="pt-4">
+            <p className="text-xs font-semibold text-muted-foreground uppercase tracking-wide mb-2">
+              Generation Cost
+            </p>
+            <div className="flex gap-6 text-sm">
+              <span>
+                Total:{" "}
+                <span className="font-semibold">${job.total_cost.toFixed(4)}</span>
+              </span>
+              <span>
+                {(
+                  job.total_prompt_tokens + job.total_completion_tokens
+                ).toLocaleString()}{" "}
+                tokens
+              </span>
             </div>
-          ))}
-        </div>
+          </CardContent>
+        </Card>
       )}
 
-      {/* Action buttons */}
+      {job && job.error_details.length > 0 && (
+        <Card>
+          <CardHeader className="pb-3">
+            <CardTitle className="text-sm text-destructive flex items-center gap-2">
+              <XCircle className="h-4 w-4" />
+              Failed Jobs ({job.error_details.length})
+            </CardTitle>
+          </CardHeader>
+          <CardContent className="space-y-2">
+            {job.error_details.map((e) => (
+              <div
+                key={e.index}
+                className="p-3 bg-destructive/5 border border-destructive/20 rounded-lg"
+              >
+                <p className="text-sm font-medium">
+                  #{e.index + 1} — {e.job_title || "Untitled"}
+                </p>
+                <p className="text-xs text-destructive mt-1 break-words">
+                  {e.error}
+                </p>
+              </div>
+            ))}
+          </CardContent>
+        </Card>
+      )}
+
       {job && !isActive && (
         <div className="flex gap-3">
           {(job.status === "completed" || job.status === "partial") && (
-            <button
-              onClick={() => navigate("/history")}
-              className="px-5 py-2.5 bg-blue-600 text-white rounded-md text-sm font-medium hover:bg-blue-700 transition-colors"
-            >
+            <Button onClick={() => navigate("/history")}>
+              <ChevronRight className="h-4 w-4" />
               View in History
-            </button>
+            </Button>
           )}
-          <button
-            onClick={() => navigate("/generate")}
-            className="px-5 py-2.5 bg-gray-100 dark:bg-gray-700 text-gray-700 dark:text-gray-300 rounded-md text-sm font-medium hover:bg-gray-200 dark:hover:bg-gray-600 transition-colors"
-          >
+          <Button variant="outline" onClick={() => navigate("/generate")}>
             Generate More
-          </button>
+          </Button>
         </div>
       )}
     </div>
