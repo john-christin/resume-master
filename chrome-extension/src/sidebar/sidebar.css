@@ -1,0 +1,65 @@
+@import "tailwindcss";
+
+/* Reset inherited host-page styles within the shadow DOM.
+   Also pin Tailwind v4 font variables so they don't resolve
+   against the host page's CSS custom properties. */
+:host {
+  all: initial;
+
+  --font-sans: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif;
+  --font-mono: ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, monospace;
+  --default-font-family: var(--font-sans);
+  --default-mono-font-family: var(--font-mono);
+
+  font-family: var(--font-sans);
+  font-size: 16px;
+  line-height: 1.5;
+  -webkit-font-smoothing: antialiased;
+  color-scheme: dark;
+}
+
+/* Smooth scrollbar for the sidebar panel */
+.av-panel {
+  scrollbar-width: thin;
+  scrollbar-color: #334155 transparent;
+}
+
+.av-panel::-webkit-scrollbar {
+  width: 4px;
+}
+
+.av-panel::-webkit-scrollbar-track {
+  background: transparent;
+}
+
+.av-panel::-webkit-scrollbar-thumb {
+  background-color: #334155;
+  border-radius: 2px;
+}
+
+/* Shared form input style used in JobForm and ChatPanel */
+.av-input {
+  width: 100%;
+  padding: 8px 12px;
+  border-radius: 10px;
+  background: #0f172a;
+  border: 1px solid #1e293b;
+  color: #e2e8f0;
+  font-size: 13px;
+  outline: none;
+  transition: border-color 150ms;
+  font-family: inherit;
+  box-sizing: border-box;
+}
+.av-input:focus { border-color: #6366f1; }
+.av-input::placeholder { color: #475569; }
+
+/* Drag indicator pulse */
+@keyframes av-pulse {
+  0%, 100% { opacity: 1; }
+  50% { opacity: 0.5; }
+}
+
+.av-drag-ready {
+  animation: av-pulse 2s ease-in-out infinite;
+}
