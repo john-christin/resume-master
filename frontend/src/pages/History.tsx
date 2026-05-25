@@ -8,6 +8,7 @@ import {
   Download,
   FileText,
   Loader2,
+  MessageSquare,
   Phone,
   Search,
   Trash2,
@@ -24,6 +25,7 @@ import {
 } from "../api/applications";
 import { getTechStacksPublic } from "../api/profile";
 import { getUserRole } from "../auth";
+import ApplicationChatSidebar from "../components/ApplicationChatSidebar";
 import LoadingSpinner from "../components/LoadingSpinner";
 import Pagination from "../components/Pagination";
 import { Alert, AlertDescription } from "../components/ui/alert";
@@ -216,6 +218,7 @@ export default function History() {
   const [callStatus, setCallStatus] = useState<Record<string, boolean>>({});
   const [formatPicker, setFormatPicker] = useState<FormatPicker | null>(null);
   const [toast, setToast] = useState<string | null>(null);
+  const [chatApp, setChatApp] = useState<{ id: string; jobTitle: string; company?: string } | null>(null);
 
   useEffect(() => {
     if (!toast) return;
@@ -573,6 +576,17 @@ export default function History() {
                                 Cover
                               </Button>
                             )}
+                            <Button
+                              variant="ghost"
+                              size="icon"
+                              className="h-6 w-6 text-muted-foreground hover:text-primary"
+                              title="Interview prep chat"
+                              onClick={() =>
+                                setChatApp({ id: app.id, jobTitle: app.job_title, company: app.company })
+                              }
+                            >
+                              <MessageSquare className="h-3 w-3" />
+                            </Button>
                             {!isCaller && (
                               <Button
                                 variant="ghost"
@@ -731,6 +745,16 @@ export default function History() {
           <CheckCircle2 className="h-4 w-4 text-emerald-400 shrink-0" />
           {toast}
         </div>
+      )}
+
+      {/* Interview prep chat sidebar */}
+      {chatApp && (
+        <ApplicationChatSidebar
+          appId={chatApp.id}
+          jobTitle={chatApp.jobTitle}
+          company={chatApp.company}
+          onClose={() => setChatApp(null)}
+        />
       )}
     </div>
   );

@@ -235,6 +235,32 @@ export interface AIModelConfig {
   updated_at?: string;
 }
 
+export interface ActiveModel {
+  id: string;
+  display_name: string;
+  provider: string;
+  model_id: string;
+  role: string | null;
+}
+
+export interface AppChatMessage {
+  id: string;
+  application_id: string;
+  role: "user" | "assistant";
+  content: string;
+  created_at: string;
+}
+
+export interface AppChatHistory {
+  messages: AppChatMessage[];
+}
+
+export interface AppChatSendResponse {
+  message: AppChatMessage;
+  prompt_tokens: number;
+  completion_tokens: number;
+}
+
 export interface ProfileShareUser {
   user_id: string;
   username: string;

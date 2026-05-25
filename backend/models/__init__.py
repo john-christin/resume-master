@@ -9,3 +9,4 @@ from models.token_pricing import TokenPricing
 from models.knowledge_base import KnowledgeBase
 from models.ai_model_config import AIModelConfig
 from models.batch_job import BatchJob
+from models.chat_message import ChatMessage

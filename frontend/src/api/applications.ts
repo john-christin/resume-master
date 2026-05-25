@@ -1,5 +1,5 @@
 import api from "./client";
-import type { ApplicationDetail, PaginatedApplications } from "../types";
+import type { ActiveModel, AppChatHistory, AppChatSendResponse, ApplicationDetail, PaginatedApplications } from "../types";
 
 export const getApplications = (
   page: number = 1,
@@ -30,3 +30,15 @@ export const deleteApplication = (appId: string) =>
 
 export const updateCallStatus = (appId: string, callScheduled: boolean) =>
   api.patch(`/api/applications/${appId}/call-status`, { call_scheduled: callScheduled });
+
+export const getApplicationChat = (appId: string) =>
+  api.get<AppChatHistory>(`/api/applications/${appId}/chat`);
+
+export const sendApplicationChat = (appId: string, content: string, modelConfigId?: string) =>
+  api.post<AppChatSendResponse>(`/api/applications/${appId}/chat`, {
+    content,
+    model_config_id: modelConfigId ?? null,
+  });
+
+export const getActiveModels = () =>
+  api.get<ActiveModel[]>("/api/models/active");
