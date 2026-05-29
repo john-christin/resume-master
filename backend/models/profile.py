@@ -2,7 +2,7 @@ import random
 import uuid
 from datetime import datetime
 
-from sqlalchemy import DateTime, Float, ForeignKey, String
+from sqlalchemy import DateTime, Float, ForeignKey, String, Text
 from sqlalchemy.orm import Mapped, mapped_column, relationship
 
 from database import Base
@@ -32,6 +32,7 @@ class Profile(Base):
     creativity_factor: Mapped[float] = mapped_column(
         Float, default=lambda: random.random(), nullable=False
     )
+    custom_prompt: Mapped[str | None] = mapped_column(Text, nullable=True)
     created_at: Mapped[datetime] = mapped_column(
         DateTime, default=datetime.utcnow
     )

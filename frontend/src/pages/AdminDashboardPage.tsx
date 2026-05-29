@@ -9,9 +9,10 @@ import {
 import { useEffect, useMemo, useState } from "react";
 import { Link } from "react-router-dom";
 import {
+  Area,
+  AreaChart,
   Bar,
   BarChart,
-  CartesianGrid,
   Cell,
   Legend,
   ResponsiveContainer,
@@ -38,12 +39,7 @@ import type {
 import LoadingSpinner from "../components/LoadingSpinner";
 import { Alert, AlertDescription } from "../components/ui/alert";
 import { Button } from "../components/ui/button";
-import {
-  Card,
-  CardContent,
-  CardHeader,
-  CardTitle,
-} from "../components/ui/card";
+import { Card, CardContent, CardHeader, CardTitle } from "../components/ui/card";
 import { Input } from "../components/ui/input";
 import {
   Table,
@@ -54,7 +50,7 @@ import {
   TableRow,
 } from "../components/ui/table";
 
-const CHART_COLORS = [
+const COLORS = [
   "#7c3aed", "#10b981", "#f59e0b", "#ef4444", "#3b82f6",
   "#06b6d4", "#84cc16", "#f97316", "#ec4899", "#6366f1",
 ];
@@ -71,30 +67,50 @@ function getPresetDates(preset: Preset, customFrom: string, customTo: string) {
   return { from: customFrom, to: customTo };
 }
 
+// eslint-disable-next-line @typescript-eslint/no-explicit-any
+const ChartTooltip = ({ active, payload, label }: { active?: boolean; payload?: any[]; label?: string }) => {
+  if (!active || !payload?.length) return null;
+  return (
+    <div className="rounded-xl border bg-background/95 backdrop-blur-sm px-3.5 py-2.5 shadow-xl text-sm">
+      <p className="text-xs text-muted-foreground mb-1.5 font-medium">{label}</p>
+      {/* eslint-disable-next-line @typescript-eslint/no-explicit-any */}
+      {payload.map((p: any, i: number) => (
+        <div key={i} className="flex items-center gap-2">
+          <span className="w-2 h-2 rounded-full shrink-0" style={{ background: p.color }} />
+          <span className="text-muted-foreground text-xs">{p.name}:</span>
+          <span className="font-semibold">
+            {p.name === "Cost ($)" ? `$${p.value}` : p.value}
+          </span>
+        </div>
+      ))}
+    </div>
+  );
+};
+
 function StatCard({
   label,
   value,
   sub,
   icon,
-  accent,
+  colorBg,
+  colorText,
 }: {
   label: string;
   value: string | number;
   sub?: string;
   icon: React.ReactNode;
-  accent?: string;
+  colorBg: string;
+  colorText: string;
 }) {
   return (
-    <Card>
-      <CardContent className="pt-5">
-        <div className="flex items-center justify-between mb-3">
-          <p className="text-sm text-muted-foreground">{label}</p>
-          <div className={`flex h-8 w-8 items-center justify-center rounded-lg ${accent ?? "bg-primary/10"}`}>
-            {icon}
-          </div>
+    <Card className="overflow-hidden border shadow-sm hover:shadow-md transition-shadow">
+      <CardContent className="pt-5 pb-4">
+        <div className={`inline-flex h-10 w-10 items-center justify-center rounded-2xl mb-4 ${colorBg}`}>
+          <span className={colorText}>{icon}</span>
         </div>
-        <p className="text-2xl font-bold">{value}</p>
-        {sub && <p className="text-xs text-muted-foreground mt-0.5">{sub}</p>}
+        <p className="text-2xl font-bold tracking-tight leading-none">{value}</p>
+        <p className="text-sm text-muted-foreground mt-1.5">{label}</p>
+        {sub && <p className="text-xs text-muted-foreground/60 mt-0.5">{sub}</p>}
       </CardContent>
     </Card>
   );
@@ -205,10 +221,25 @@ export default function AdminDashboardPage() {
     name: p.name.length > 18 ? p.name.slice(0, 16) + "…" : p.name,
     count: p.count,
   }));
-  const dailyCostData = daily.map((d) => ({ date: d.date.slice(5), cost: parseFloat(d.cost.toFixed(4)) }));
+  const dailyCostData = daily.map((d) => ({
+    date: d.date.slice(5),
+    cost: parseFloat(d.cost.toFixed(4)),
+  }));
   const dailyCountData = daily.map((d) => ({ date: d.date.slice(5), count: d.count }));
 
   if (loading) return <LoadingSpinner message="Loading dashboard..." />;
+
+  const axisProps = {
+    tick: { fontSize: 11 },
+    axisLine: false as const,
+    tickLine: false as const,
+  };
+
+  const activeCallData = selectedCallUser
+    ? singleCallUserChartData
+    : callUsernames.length > 1
+      ? perUserCallChartData
+      : dailyCallsChartData;
 
   return (
     <div className="space-y-8">
@@ -229,39 +260,45 @@ export default function AdminDashboardPage() {
         </Alert>
       )}
 
+      {/* Overview stat cards */}
       {overview && (
         <div className="grid grid-cols-2 md:grid-cols-5 gap-4">
           <StatCard
             label="Today's Applications"
             value={overview.today_count}
-            icon={<TrendingUp className="h-4 w-4 text-primary" />}
-            accent="bg-primary/10"
+            icon={<TrendingUp className="h-5 w-5" />}
+            colorBg="bg-violet-100 dark:bg-violet-900/40"
+            colorText="text-violet-600 dark:text-violet-400"
           />
           <StatCard
             label="Today's Cost"
             value={`$${overview.today_cost.toFixed(4)}`}
-            icon={<DollarSign className="h-4 w-4 text-emerald-600" />}
-            accent="bg-emerald-100 dark:bg-emerald-900/30"
+            icon={<DollarSign className="h-5 w-5" />}
+            colorBg="bg-emerald-100 dark:bg-emerald-900/40"
+            colorText="text-emerald-600 dark:text-emerald-400"
           />
           <StatCard
             label="Active Users"
             value={overview.active_users}
-            icon={<Users className="h-4 w-4 text-blue-600" />}
-            accent="bg-blue-100 dark:bg-blue-900/30"
+            icon={<Users className="h-5 w-5" />}
+            colorBg="bg-blue-100 dark:bg-blue-900/40"
+            colorText="text-blue-600 dark:text-blue-400"
           />
           <StatCard
             label="Pending Approvals"
             value={overview.pending_users}
             sub={overview.pending_users > 0 ? "Settings → review" : undefined}
-            icon={<Calendar className="h-4 w-4 text-amber-600" />}
-            accent="bg-amber-100 dark:bg-amber-900/30"
+            icon={<Calendar className="h-5 w-5" />}
+            colorBg="bg-amber-100 dark:bg-amber-900/40"
+            colorText="text-amber-600 dark:text-amber-400"
           />
           <StatCard
             label="Calls Scheduled"
             value={overview.calls_scheduled}
             sub="all users · all time"
-            icon={<Phone className="h-4 w-4 text-violet-600" />}
-            accent="bg-violet-100 dark:bg-violet-900/30"
+            icon={<Phone className="h-5 w-5" />}
+            colorBg="bg-pink-100 dark:bg-pink-900/40"
+            colorText="text-pink-600 dark:text-pink-400"
           />
         </div>
       )}
@@ -275,10 +312,10 @@ export default function AdminDashboardPage() {
               <button
                 key={p}
                 onClick={() => setPreset(p)}
-                className={`px-3 py-1.5 rounded-full text-sm font-medium transition-colors ${
+                className={`px-3 py-1.5 rounded-full text-sm font-medium transition-all ${
                   preset === p
-                    ? "bg-primary text-primary-foreground"
-                    : "bg-muted text-muted-foreground hover:text-foreground"
+                    ? "bg-primary text-primary-foreground shadow-sm"
+                    : "bg-muted text-muted-foreground hover:text-foreground hover:bg-muted/80"
                 }`}
               >
                 {p === "7d" ? "7 days" : p === "30d" ? "30 days" : p === "90d" ? "90 days" : "Custom"}
@@ -286,19 +323,9 @@ export default function AdminDashboardPage() {
             ))}
             {preset === "custom" && (
               <>
-                <Input
-                  type="date"
-                  value={customFrom}
-                  onChange={(e) => setCustomFrom(e.target.value)}
-                  className="w-auto h-8 text-sm"
-                />
+                <Input type="date" value={customFrom} onChange={(e) => setCustomFrom(e.target.value)} className="w-auto h-8 text-sm" />
                 <span className="text-muted-foreground">→</span>
-                <Input
-                  type="date"
-                  value={customTo}
-                  onChange={(e) => setCustomTo(e.target.value)}
-                  className="w-auto h-8 text-sm"
-                />
+                <Input type="date" value={customTo} onChange={(e) => setCustomTo(e.target.value)} className="w-auto h-8 text-sm" />
               </>
             )}
             <Button size="sm" onClick={() => loadAll(from, to)}>Apply</Button>
@@ -307,40 +334,58 @@ export default function AdminDashboardPage() {
       </Card>
 
       <div className="space-y-6">
-        {/* Daily Applications */}
+        {/* Daily Applications — Area */}
         <Card>
-          <CardHeader>
-            <CardTitle className="text-base">Daily Applications</CardTitle>
+          <CardHeader className="pb-2">
+            <CardTitle className="text-base font-semibold">Daily Applications</CardTitle>
+            <p className="text-xs text-muted-foreground">Platform-wide submissions per day</p>
           </CardHeader>
           <CardContent>
             {dailyCountData.length === 0 ? (
-              <p className="text-muted-foreground text-sm text-center py-8">No data for this period.</p>
+              <div className="flex items-center justify-center h-48 text-muted-foreground text-sm">No data for this period.</div>
             ) : (
               <ResponsiveContainer width="100%" height={260}>
-                <BarChart data={dailyCountData} margin={{ top: 4, right: 16, left: 0, bottom: 0 }}>
-                  <CartesianGrid strokeDasharray="3 3" className="stroke-border" />
-                  <XAxis dataKey="date" tick={{ fontSize: 11 }} />
-                  <YAxis tick={{ fontSize: 11 }} allowDecimals={false} />
-                  <Tooltip />
-                  <Bar dataKey="count" name="Applications" fill={CHART_COLORS[0]} radius={[3, 3, 0, 0]} />
-                </BarChart>
+                <AreaChart data={dailyCountData} margin={{ top: 10, right: 10, left: 0, bottom: 0 }}>
+                  <defs>
+                    <linearGradient id="adminGradApps" x1="0" y1="0" x2="0" y2="1">
+                      <stop offset="5%" stopColor="#7c3aed" stopOpacity={0.25} />
+                      <stop offset="95%" stopColor="#7c3aed" stopOpacity={0} />
+                    </linearGradient>
+                  </defs>
+                  <XAxis {...axisProps} dataKey="date" dy={4} />
+                  <YAxis {...axisProps} allowDecimals={false} width={36} />
+                  <Tooltip content={<ChartTooltip />} cursor={{ stroke: "#7c3aed", strokeWidth: 1, strokeOpacity: 0.3 }} />
+                  <Area
+                    type="monotone"
+                    dataKey="count"
+                    name="Applications"
+                    stroke="#7c3aed"
+                    strokeWidth={2.5}
+                    fill="url(#adminGradApps)"
+                    dot={false}
+                    activeDot={{ r: 5, fill: "#7c3aed", strokeWidth: 2, stroke: "#fff" }}
+                  />
+                </AreaChart>
               </ResponsiveContainer>
             )}
           </CardContent>
         </Card>
 
-        {/* Per-User Daily */}
+        {/* Per-User Daily — stacked bar or filtered area */}
         {usernames.length > 0 && (
           <Card>
-            <CardHeader>
+            <CardHeader className="pb-2">
               <div className="flex flex-wrap items-center justify-between gap-3">
-                <CardTitle className="text-base">Applications by User (Daily)</CardTitle>
+                <div>
+                  <CardTitle className="text-base font-semibold">Applications by User</CardTitle>
+                  <p className="text-xs text-muted-foreground mt-0.5">Daily breakdown per user</p>
+                </div>
                 <div className="flex flex-wrap gap-1.5">
                   <button
                     onClick={() => setSelectedUser(null)}
-                    className={`px-3 py-1 rounded-full text-xs font-medium transition-colors ${
+                    className={`px-3 py-1 rounded-full text-xs font-medium transition-all ${
                       selectedUser === null
-                        ? "bg-primary text-primary-foreground"
+                        ? "bg-primary text-primary-foreground shadow-sm"
                         : "bg-muted text-muted-foreground hover:text-foreground"
                     }`}
                   >
@@ -350,15 +395,12 @@ export default function AdminDashboardPage() {
                     <button
                       key={u}
                       onClick={() => setSelectedUser(u === selectedUser ? null : u)}
-                      className="px-3 py-1 rounded-full text-xs font-medium transition-colors text-white"
-                      style={{ backgroundColor: selectedUser === u ? CHART_COLORS[i % CHART_COLORS.length] : undefined }}
+                      className={`px-3 py-1 rounded-full text-xs font-medium transition-all ${
+                        selectedUser === u ? "text-white shadow-sm" : "bg-muted text-muted-foreground hover:text-foreground"
+                      }`}
+                      style={selectedUser === u ? { backgroundColor: COLORS[i % COLORS.length] } : undefined}
                     >
-                      <span
-                        className={selectedUser === u ? "" : "text-muted-foreground hover:text-foreground"}
-                        style={selectedUser !== u ? { backgroundColor: "var(--muted)", color: "var(--muted-foreground)", padding: "4px 12px", borderRadius: "9999px" } : undefined}
-                      >
-                        {u}
-                      </span>
+                      {u}
                     </button>
                   ))}
                 </div>
@@ -367,32 +409,41 @@ export default function AdminDashboardPage() {
             <CardContent>
               <ResponsiveContainer width="100%" height={260}>
                 {selectedUser ? (
-                  <BarChart data={singleUserChartData} margin={{ top: 4, right: 16, left: 0, bottom: 0 }}>
-                    <CartesianGrid strokeDasharray="3 3" className="stroke-border" />
-                    <XAxis dataKey="date" tick={{ fontSize: 11 }} />
-                    <YAxis tick={{ fontSize: 11 }} allowDecimals={false} />
-                    <Tooltip />
-                    <Bar
+                  <AreaChart data={singleUserChartData} margin={{ top: 10, right: 10, left: 0, bottom: 0 }}>
+                    <defs>
+                      <linearGradient id="gradSingleUser" x1="0" y1="0" x2="0" y2="1">
+                        <stop offset="5%" stopColor={COLORS[usernames.indexOf(selectedUser) % COLORS.length]} stopOpacity={0.25} />
+                        <stop offset="95%" stopColor={COLORS[usernames.indexOf(selectedUser) % COLORS.length]} stopOpacity={0} />
+                      </linearGradient>
+                    </defs>
+                    <XAxis {...axisProps} dataKey="date" dy={4} />
+                    <YAxis {...axisProps} allowDecimals={false} width={36} />
+                    <Tooltip content={<ChartTooltip />} cursor={{ stroke: COLORS[usernames.indexOf(selectedUser) % COLORS.length], strokeWidth: 1, strokeOpacity: 0.3 }} />
+                    <Area
+                      type="monotone"
                       dataKey="count"
                       name={selectedUser}
-                      fill={CHART_COLORS[usernames.indexOf(selectedUser) % CHART_COLORS.length]}
-                      radius={[3, 3, 0, 0]}
+                      stroke={COLORS[usernames.indexOf(selectedUser) % COLORS.length]}
+                      strokeWidth={2.5}
+                      fill="url(#gradSingleUser)"
+                      dot={false}
+                      activeDot={{ r: 5, strokeWidth: 2, stroke: "#fff" }}
                     />
-                  </BarChart>
+                  </AreaChart>
                 ) : (
-                  <BarChart data={perUserChartData} margin={{ top: 4, right: 16, left: 0, bottom: 0 }}>
-                    <CartesianGrid strokeDasharray="3 3" className="stroke-border" />
-                    <XAxis dataKey="date" tick={{ fontSize: 11 }} />
-                    <YAxis tick={{ fontSize: 11 }} allowDecimals={false} />
-                    <Tooltip />
-                    <Legend wrapperStyle={{ fontSize: 12 }} />
+                  <BarChart data={perUserChartData} margin={{ top: 4, right: 10, left: 0, bottom: 0 }}>
+                    <XAxis {...axisProps} dataKey="date" dy={4} />
+                    <YAxis {...axisProps} allowDecimals={false} width={36} />
+                    <Tooltip content={<ChartTooltip />} cursor={{ fill: "hsl(var(--muted))", opacity: 0.4 }} />
+                    <Legend iconType="circle" iconSize={8} wrapperStyle={{ fontSize: 12 }} />
                     {usernames.map((u, i) => (
                       <Bar
                         key={u}
                         dataKey={u}
                         stackId="a"
-                        fill={CHART_COLORS[i % CHART_COLORS.length]}
-                        radius={i === usernames.length - 1 ? [3, 3, 0, 0] : [0, 0, 0, 0]}
+                        fill={COLORS[i % COLORS.length]}
+                        radius={i === usernames.length - 1 ? [4, 4, 0, 0] : [0, 0, 0, 0]}
+                        maxBarSize={40}
                       />
                     ))}
                   </BarChart>
@@ -402,18 +453,21 @@ export default function AdminDashboardPage() {
           </Card>
         )}
 
-        {/* Daily Calls */}
+        {/* Daily Calls — Area or stacked bar */}
         <Card>
-          <CardHeader>
+          <CardHeader className="pb-2">
             <div className="flex flex-wrap items-center justify-between gap-3">
-              <CardTitle className="text-base">Daily Calls Scheduled</CardTitle>
+              <div>
+                <CardTitle className="text-base font-semibold">Daily Calls Scheduled</CardTitle>
+                <p className="text-xs text-muted-foreground mt-0.5">Call scheduling activity across users</p>
+              </div>
               {callUsernames.length > 0 && (
                 <div className="flex flex-wrap gap-1.5">
                   <button
                     onClick={() => setSelectedCallUser(null)}
-                    className={`px-3 py-1 rounded-full text-xs font-medium transition-colors ${
+                    className={`px-3 py-1 rounded-full text-xs font-medium transition-all ${
                       selectedCallUser === null
-                        ? "bg-emerald-600 text-white"
+                        ? "bg-emerald-600 text-white shadow-sm"
                         : "bg-muted text-muted-foreground hover:text-foreground"
                     }`}
                   >
@@ -423,10 +477,10 @@ export default function AdminDashboardPage() {
                     <button
                       key={u}
                       onClick={() => setSelectedCallUser(u === selectedCallUser ? null : u)}
-                      className={`px-3 py-1 rounded-full text-xs font-medium transition-colors ${
-                        selectedCallUser === u ? "text-white" : "bg-muted text-muted-foreground hover:text-foreground"
+                      className={`px-3 py-1 rounded-full text-xs font-medium transition-all ${
+                        selectedCallUser === u ? "text-white shadow-sm" : "bg-muted text-muted-foreground hover:text-foreground"
                       }`}
-                      style={selectedCallUser === u ? { backgroundColor: CHART_COLORS[i % CHART_COLORS.length] } : undefined}
+                      style={selectedCallUser === u ? { backgroundColor: COLORS[i % COLORS.length] } : undefined}
                     >
                       {u}
                     </button>
@@ -436,36 +490,51 @@ export default function AdminDashboardPage() {
             </div>
           </CardHeader>
           <CardContent>
-            {(selectedCallUser ? singleCallUserChartData : callUsernames.length > 1 ? perUserCallChartData : dailyCallsChartData).length === 0 ? (
-              <p className="text-muted-foreground text-sm text-center py-8">No calls scheduled in this period.</p>
+            {activeCallData.length === 0 ? (
+              <div className="flex items-center justify-center h-48 text-muted-foreground text-sm">No calls scheduled in this period.</div>
             ) : (
               <ResponsiveContainer width="100%" height={260}>
-                {selectedCallUser ? (
-                  <BarChart data={singleCallUserChartData} margin={{ top: 4, right: 16, left: 0, bottom: 0 }}>
-                    <CartesianGrid strokeDasharray="3 3" className="stroke-border" />
-                    <XAxis dataKey="date" tick={{ fontSize: 11 }} />
-                    <YAxis tick={{ fontSize: 11 }} allowDecimals={false} />
-                    <Tooltip />
-                    <Bar dataKey="count" name={selectedCallUser} fill={CHART_COLORS[callUsernames.indexOf(selectedCallUser) % CHART_COLORS.length]} radius={[3, 3, 0, 0]} />
-                  </BarChart>
-                ) : callUsernames.length > 1 ? (
-                  <BarChart data={perUserCallChartData} margin={{ top: 4, right: 16, left: 0, bottom: 0 }}>
-                    <CartesianGrid strokeDasharray="3 3" className="stroke-border" />
-                    <XAxis dataKey="date" tick={{ fontSize: 11 }} />
-                    <YAxis tick={{ fontSize: 11 }} allowDecimals={false} />
-                    <Tooltip />
-                    <Legend wrapperStyle={{ fontSize: 12 }} />
-                    {callUsernames.map((u, i) => (
-                      <Bar key={u} dataKey={u} stackId="c" fill={CHART_COLORS[i % CHART_COLORS.length]} radius={i === callUsernames.length - 1 ? [3, 3, 0, 0] : [0, 0, 0, 0]} />
-                    ))}
-                  </BarChart>
+                {selectedCallUser || callUsernames.length <= 1 ? (
+                  <AreaChart
+                    data={selectedCallUser ? singleCallUserChartData : dailyCallsChartData}
+                    margin={{ top: 10, right: 10, left: 0, bottom: 0 }}
+                  >
+                    <defs>
+                      <linearGradient id="adminGradCalls" x1="0" y1="0" x2="0" y2="1">
+                        <stop offset="5%" stopColor="#10b981" stopOpacity={0.25} />
+                        <stop offset="95%" stopColor="#10b981" stopOpacity={0} />
+                      </linearGradient>
+                    </defs>
+                    <XAxis {...axisProps} dataKey="date" dy={4} />
+                    <YAxis {...axisProps} allowDecimals={false} width={36} />
+                    <Tooltip content={<ChartTooltip />} cursor={{ stroke: "#10b981", strokeWidth: 1, strokeOpacity: 0.3 }} />
+                    <Area
+                      type="monotone"
+                      dataKey="count"
+                      name={selectedCallUser ?? "Calls Scheduled"}
+                      stroke="#10b981"
+                      strokeWidth={2.5}
+                      fill="url(#adminGradCalls)"
+                      dot={false}
+                      activeDot={{ r: 5, fill: "#10b981", strokeWidth: 2, stroke: "#fff" }}
+                    />
+                  </AreaChart>
                 ) : (
-                  <BarChart data={dailyCallsChartData} margin={{ top: 4, right: 16, left: 0, bottom: 0 }}>
-                    <CartesianGrid strokeDasharray="3 3" className="stroke-border" />
-                    <XAxis dataKey="date" tick={{ fontSize: 11 }} />
-                    <YAxis tick={{ fontSize: 11 }} allowDecimals={false} />
-                    <Tooltip />
-                    <Bar dataKey="count" name="Calls Scheduled" fill="#10b981" radius={[3, 3, 0, 0]} />
+                  <BarChart data={perUserCallChartData} margin={{ top: 4, right: 10, left: 0, bottom: 0 }}>
+                    <XAxis {...axisProps} dataKey="date" dy={4} />
+                    <YAxis {...axisProps} allowDecimals={false} width={36} />
+                    <Tooltip content={<ChartTooltip />} cursor={{ fill: "hsl(var(--muted))", opacity: 0.4 }} />
+                    <Legend iconType="circle" iconSize={8} wrapperStyle={{ fontSize: 12 }} />
+                    {callUsernames.map((u, i) => (
+                      <Bar
+                        key={u}
+                        dataKey={u}
+                        stackId="c"
+                        fill={COLORS[i % COLORS.length]}
+                        radius={i === callUsernames.length - 1 ? [4, 4, 0, 0] : [0, 0, 0, 0]}
+                        maxBarSize={40}
+                      />
+                    ))}
                   </BarChart>
                 )}
               </ResponsiveContainer>
@@ -474,46 +543,65 @@ export default function AdminDashboardPage() {
         </Card>
 
         <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
-          {/* Daily Cost */}
+          {/* Daily Cost — Area */}
           <Card>
-            <CardHeader>
-              <CardTitle className="text-base">Daily Cost ($)</CardTitle>
+            <CardHeader className="pb-2">
+              <CardTitle className="text-base font-semibold">Daily Cost</CardTitle>
+              <p className="text-xs text-muted-foreground">AI spend per day</p>
             </CardHeader>
             <CardContent>
               {dailyCostData.length === 0 ? (
-                <p className="text-muted-foreground text-sm text-center py-8">No data.</p>
+                <div className="flex items-center justify-center h-44 text-muted-foreground text-sm">No data.</div>
               ) : (
                 <ResponsiveContainer width="100%" height={220}>
-                  <BarChart data={dailyCostData} margin={{ top: 4, right: 16, left: 0, bottom: 0 }}>
-                    <CartesianGrid strokeDasharray="3 3" className="stroke-border" />
-                    <XAxis dataKey="date" tick={{ fontSize: 11 }} />
-                    <YAxis tick={{ fontSize: 11 }} />
-                    <Tooltip formatter={(v) => [`$${v}`, "Cost"]} />
-                    <Bar dataKey="cost" name="Cost ($)" fill="#10b981" radius={[3, 3, 0, 0]} />
-                  </BarChart>
+                  <AreaChart data={dailyCostData} margin={{ top: 10, right: 10, left: 0, bottom: 0 }}>
+                    <defs>
+                      <linearGradient id="adminGradCost" x1="0" y1="0" x2="0" y2="1">
+                        <stop offset="5%" stopColor="#10b981" stopOpacity={0.25} />
+                        <stop offset="95%" stopColor="#10b981" stopOpacity={0} />
+                      </linearGradient>
+                    </defs>
+                    <XAxis {...axisProps} dataKey="date" dy={4} />
+                    <YAxis {...axisProps} width={52} tickFormatter={(v) => `$${v}`} />
+                    <Tooltip content={<ChartTooltip />} cursor={{ stroke: "#10b981", strokeWidth: 1, strokeOpacity: 0.3 }} />
+                    <Area
+                      type="monotone"
+                      dataKey="cost"
+                      name="Cost ($)"
+                      stroke="#10b981"
+                      strokeWidth={2.5}
+                      fill="url(#adminGradCost)"
+                      dot={false}
+                      activeDot={{ r: 5, fill: "#10b981", strokeWidth: 2, stroke: "#fff" }}
+                    />
+                  </AreaChart>
                 </ResponsiveContainer>
               )}
             </CardContent>
           </Card>
 
-          {/* Top Profiles */}
+          {/* Top Profiles — horizontal bars */}
           <Card>
-            <CardHeader>
-              <CardTitle className="text-base">Top Profiles (by Applications)</CardTitle>
+            <CardHeader className="pb-2">
+              <CardTitle className="text-base font-semibold">Top Profiles</CardTitle>
+              <p className="text-xs text-muted-foreground">By application count</p>
             </CardHeader>
             <CardContent>
               {profileChartData.length === 0 ? (
-                <p className="text-muted-foreground text-sm text-center py-8">No data.</p>
+                <div className="flex items-center justify-center h-44 text-muted-foreground text-sm">No data.</div>
               ) : (
                 <ResponsiveContainer width="100%" height={220}>
-                  <BarChart data={profileChartData} layout="vertical" margin={{ top: 4, right: 16, left: 8, bottom: 0 }}>
-                    <CartesianGrid strokeDasharray="3 3" className="stroke-border" />
-                    <XAxis type="number" tick={{ fontSize: 11 }} allowDecimals={false} />
-                    <YAxis type="category" dataKey="name" tick={{ fontSize: 11 }} width={110} />
-                    <Tooltip />
-                    <Bar dataKey="count" name="Applications" radius={[0, 3, 3, 0]}>
+                  <BarChart
+                    data={profileChartData}
+                    layout="vertical"
+                    margin={{ top: 4, right: 32, left: 8, bottom: 0 }}
+                  >
+                    <XAxis type="number" {...axisProps} allowDecimals={false} />
+                    <YAxis type="category" dataKey="name" {...axisProps} width={110} />
+                    <Tooltip content={<ChartTooltip />} cursor={{ fill: "hsl(var(--muted))", opacity: 0.4 }} />
+                    <Bar dataKey="count" name="Applications" radius={[0, 6, 6, 0]} maxBarSize={28}>
                       {profileChartData.map((_, i) => (
-                        <Cell key={i} fill={CHART_COLORS[i % CHART_COLORS.length]} />
+                        <Cell key={i} fill={COLORS[i % COLORS.length]} />
                       ))}
                     </Bar>
                   </BarChart>
@@ -523,10 +611,11 @@ export default function AdminDashboardPage() {
           </Card>
         </div>
 
-        {/* User Cost Summary */}
+        {/* User Cost Summary table */}
         <Card>
-          <CardHeader>
-            <CardTitle className="text-base">User Cost Summary</CardTitle>
+          <CardHeader className="pb-2">
+            <CardTitle className="text-base font-semibold">User Cost Summary</CardTitle>
+            <p className="text-xs text-muted-foreground">Spend and activity breakdown by user</p>
           </CardHeader>
           <CardContent className="p-0">
             <Table>

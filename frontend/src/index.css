@@ -112,6 +112,13 @@
   border-color: var(--border);
 }
 
+/* Recharts axis tick labels inherit the theme's muted foreground color */
+.recharts-cartesian-axis-tick text,
+.recharts-polar-angle-axis-tick text,
+.recharts-legend-item-text {
+  fill: var(--muted-foreground) !important;
+}
+
 body {
   background-color: var(--background);
   color: var(--foreground);

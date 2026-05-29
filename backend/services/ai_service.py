@@ -630,6 +630,53 @@ def extract_company_name_with_usage(
     return result
 
 
+def extract_jd_info(job_description: str) -> dict:
+    """Extract salary range and required skills from a job description.
+
+    Returns {"salary_range": str|None, "required_skills": list[str], "usage": dict}
+    """
+    from prompts import JD_EXTRACTION
+
+    cache_key = f"jd_info:{_jd_hash(job_description)}"
+    if cache_key in _extraction_cache:
+        return _extraction_cache[cache_key]
+
+    fallback = {"salary_range": None, "required_skills": [], "usage": {"prompt_tokens": 0, "completion_tokens": 0}}
+    try:
+        resp = _call_llm(
+            messages=[
+                {"role": "system", "content": JD_EXTRACTION},
+                {"role": "user", "content": job_description},
+            ],
+            max_tokens=512,
+            temperature=0.0,
+            tier="utility",
+        )
+        import json as _json
+        raw = resp.content.strip()
+        # Strip markdown fences if present
+        if raw.startswith("```"):
+            raw = raw.split("```")[1]
+            if raw.startswith("json"):
+                raw = raw[4:]
+        data = _json.loads(raw)
+        result = {
+            "salary_range": data.get("salary_range") or None,
+            "required_skills": data.get("required_skills") or [],
+            "usage": {"prompt_tokens": resp.prompt_tokens, "completion_tokens": resp.completion_tokens},
+        }
+    except Exception as exc:
+        logger.warning("JD info extraction failed: %s", exc)
+        result = fallback
+
+    _extraction_cache[cache_key] = result
+    if len(_extraction_cache) > _CACHE_MAX_SIZE:
+        keys = list(_extraction_cache.keys())
+        for k in keys[: len(keys) - _CACHE_MAX_SIZE]:
+            _extraction_cache.pop(k, None)
+    return result
+
+
 def generate_summary(
     user_name: str,
     experiences: list[dict],

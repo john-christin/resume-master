@@ -2,7 +2,7 @@ import { UserPlus, X } from "lucide-react";
 import { useEffect, useState } from "react";
 import {
   getProfileShares,
-  searchUsers,
+  listUsers,
   shareProfile,
   unshareProfile,
 } from "../api/profile";
@@ -17,9 +17,15 @@ import {
   DialogHeader,
   DialogTitle,
 } from "./ui/dialog";
-import { Input } from "./ui/input";
 import { Label } from "./ui/label";
 import { ScrollArea } from "./ui/scroll-area";
+import {
+  Select,
+  SelectContent,
+  SelectItem,
+  SelectTrigger,
+  SelectValue,
+} from "./ui/select";
 import { Separator } from "./ui/separator";
 
 interface Props {
@@ -29,39 +35,30 @@ interface Props {
 
 export default function ShareDialog({ profileId, onClose }: Props) {
   const [shares, setShares] = useState<ProfileShareUser[]>([]);
-  const [searchQuery, setSearchQuery] = useState("");
-  const [searchResults, setSearchResults] = useState<UserSearchResult[]>([]);
+  const [allUsers, setAllUsers] = useState<UserSearchResult[]>([]);
+  const [selectedUserId, setSelectedUserId] = useState<string>("");
   const [error, setError] = useState<string | null>(null);
 
   useEffect(() => {
-    getProfileShares(profileId)
-      .then((res) => setShares(res.data))
-      .catch(() => setError("Failed to load shares"));
+    Promise.all([getProfileShares(profileId), listUsers()])
+      .then(([sharesRes, usersRes]) => {
+        setShares(sharesRes.data);
+        setAllUsers(usersRes.data);
+      })
+      .catch(() => setError("Failed to load data"));
   }, [profileId]);
 
-  useEffect(() => {
-    if (searchQuery.length < 2) {
-      setSearchResults([]);
-      return;
-    }
-    const timer = setTimeout(() => {
-      searchUsers(searchQuery)
-        .then((res) => {
-          const sharedIds = new Set(shares.map((s) => s.user_id));
-          setSearchResults(res.data.filter((u) => !sharedIds.has(u.id)));
-        })
-        .catch(() => {});
-    }, 300);
-    return () => clearTimeout(timer);
-  }, [searchQuery, shares]);
+  const availableUsers = allUsers.filter(
+    (u) => !shares.some((s) => s.user_id === u.id)
+  );
 
-  const handleShare = async (userId: string) => {
+  const handleShare = async () => {
+    if (!selectedUserId) return;
     try {
-      await shareProfile(profileId, [userId]);
+      await shareProfile(profileId, [selectedUserId]);
       const res = await getProfileShares(profileId);
       setShares(res.data);
-      setSearchQuery("");
-      setSearchResults([]);
+      setSelectedUserId("");
     } catch {
       setError("Failed to share profile");
     }
@@ -85,7 +82,7 @@ export default function ShareDialog({ profileId, onClose }: Props) {
             Share Profile
           </DialogTitle>
           <DialogDescription>
-            Search for users to share this profile with.
+            Select a user to share this profile with.
           </DialogDescription>
         </DialogHeader>
 
@@ -96,32 +93,40 @@ export default function ShareDialog({ profileId, onClose }: Props) {
         )}
 
         <div className="space-y-1.5">
-          <Label htmlFor="share-search">Search users</Label>
-          <div className="relative">
-            <Input
-              id="share-search"
-              placeholder="Type username..."
-              value={searchQuery}
-              onChange={(e) => setSearchQuery(e.target.value)}
-            />
-            {searchResults.length > 0 && (
-              <div className="absolute top-full mt-1 w-full z-10 rounded-md border bg-popover shadow-md overflow-hidden">
-                {searchResults.map((user) => (
-                  <button
-                    key={user.id}
-                    onClick={() => handleShare(user.id)}
-                    className="w-full text-left px-3 py-2 text-sm hover:bg-accent hover:text-accent-foreground flex items-center gap-2 border-b last:border-0 border-border"
-                  >
-                    <Avatar className="h-6 w-6">
-                      <AvatarFallback className="text-[10px]">
-                        {user.username.slice(0, 2).toUpperCase()}
-                      </AvatarFallback>
-                    </Avatar>
-                    {user.username}
-                  </button>
+          <Label>Add user</Label>
+          <div className="flex gap-2">
+            <Select
+              value={selectedUserId}
+              onValueChange={setSelectedUserId}
+              disabled={availableUsers.length === 0}
+            >
+              <SelectTrigger className="flex-1">
+                <SelectValue
+                  placeholder={
+                    availableUsers.length === 0
+                      ? "No more users to add"
+                      : "Select a user…"
+                  }
+                />
+              </SelectTrigger>
+              <SelectContent>
+                {availableUsers.map((u) => (
+                  <SelectItem key={u.id} value={u.id}>
+                    <div className="flex items-center gap-2">
+                      <Avatar className="h-5 w-5">
+                        <AvatarFallback className="text-[9px]">
+                          {u.username.slice(0, 2).toUpperCase()}
+                        </AvatarFallback>
+                      </Avatar>
+                      {u.username}
+                    </div>
+                  </SelectItem>
                 ))}
-              </div>
-            )}
+              </SelectContent>
+            </Select>
+            <Button onClick={handleShare} disabled={!selectedUserId}>
+              Add
+            </Button>
           </div>
         </div>
 

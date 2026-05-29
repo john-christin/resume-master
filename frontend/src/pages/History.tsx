@@ -5,6 +5,7 @@ import {
   ChevronDown,
   ChevronRight,
   ChevronUp,
+  Copy,
   Download,
   FileText,
   Loader2,
@@ -186,6 +187,21 @@ type FormatPicker = {
   coverFile: string | null;
   profileName: string;
 };
+
+function CopyBtn({ value }: { value: string }) {
+  const [copied, setCopied] = useState(false);
+  return (
+    <button
+      onClick={() => navigator.clipboard.writeText(value).then(() => { setCopied(true); setTimeout(() => setCopied(false), 1500); })}
+      className="ml-1.5 inline-flex items-center text-muted-foreground hover:text-foreground transition-colors"
+      title="Copy"
+    >
+      {copied
+        ? <CheckCircle2 className="h-3 w-3 text-emerald-500" />
+        : <Copy className="h-3 w-3" />}
+    </button>
+  );
+}
 
 export default function History() {
   const navigate = useNavigate();
@@ -651,6 +667,75 @@ export default function History() {
                                     </div>
                                   )}
                                 </div>
+
+                                {expandedDetail.salary_range && (
+                                  <div>
+                                    <p className="text-xs font-semibold text-muted-foreground uppercase mb-1">Salary Range</p>
+                                    <span className="text-sm font-medium text-emerald-600 dark:text-emerald-400">
+                                      {expandedDetail.salary_range}
+                                    </span>
+                                    <CopyBtn value={expandedDetail.salary_range} />
+                                  </div>
+                                )}
+
+                                {(expandedDetail.required_skills?.length ?? 0) > 0 && (
+                                  <div className="w-full">
+                                    <div className="flex items-center gap-2 mb-1.5">
+                                      <p className="text-xs font-semibold text-muted-foreground uppercase">Required Skills</p>
+                                      <CopyBtn value={(expandedDetail.required_skills ?? []).join(", ")} />
+                                    </div>
+                                    <div className="flex flex-wrap gap-1.5">
+                                      {(expandedDetail.required_skills ?? []).map((skill) => (
+                                        <Badge key={skill} variant="secondary" className="text-xs font-medium">
+                                          {skill}
+                                        </Badge>
+                                      ))}
+                                    </div>
+                                  </div>
+                                )}
+
+                                {(expandedDetail.profile_email || expandedDetail.profile_phone || expandedDetail.profile_location || expandedDetail.profile_linkedin || expandedDetail.profile_university) && (
+                                  <div className="w-full rounded-lg border bg-muted/30 px-3 py-2.5 space-y-1.5">
+                                    <p className="text-xs font-semibold text-muted-foreground uppercase mb-2">Profile Info</p>
+                                    {expandedDetail.profile_email && (
+                                      <div className="flex items-center gap-1 text-sm">
+                                        <span className="text-muted-foreground w-20 text-xs shrink-0">Email</span>
+                                        <span>{expandedDetail.profile_email}</span>
+                                        <CopyBtn value={expandedDetail.profile_email} />
+                                      </div>
+                                    )}
+                                    {expandedDetail.profile_phone && (
+                                      <div className="flex items-center gap-1 text-sm">
+                                        <span className="text-muted-foreground w-20 text-xs shrink-0">Phone</span>
+                                        <span>{expandedDetail.profile_phone}</span>
+                                        <CopyBtn value={expandedDetail.profile_phone} />
+                                      </div>
+                                    )}
+                                    {expandedDetail.profile_location && (
+                                      <div className="flex items-center gap-1 text-sm">
+                                        <span className="text-muted-foreground w-20 text-xs shrink-0">Address</span>
+                                        <span>{expandedDetail.profile_location}</span>
+                                        <CopyBtn value={expandedDetail.profile_location} />
+                                      </div>
+                                    )}
+                                    {expandedDetail.profile_linkedin && (
+                                      <div className="flex items-center gap-1 text-sm">
+                                        <span className="text-muted-foreground w-20 text-xs shrink-0">LinkedIn</span>
+                                        <a href={expandedDetail.profile_linkedin} target="_blank" rel="noopener noreferrer" className="text-primary hover:underline truncate max-w-[200px]">
+                                          {expandedDetail.profile_linkedin}
+                                        </a>
+                                        <CopyBtn value={expandedDetail.profile_linkedin} />
+                                      </div>
+                                    )}
+                                    {expandedDetail.profile_university && (
+                                      <div className="flex items-center gap-1 text-sm">
+                                        <span className="text-muted-foreground w-20 text-xs shrink-0">University</span>
+                                        <span>{expandedDetail.profile_university}</span>
+                                        <CopyBtn value={expandedDetail.profile_university} />
+                                      </div>
+                                    )}
+                                  </div>
+                                )}
 
                                 {expandedDetail.job_url && (
                                   <div>

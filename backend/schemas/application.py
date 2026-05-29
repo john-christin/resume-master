@@ -1,6 +1,7 @@
+import json
 from datetime import datetime
 
-from pydantic import BaseModel
+from pydantic import BaseModel, model_validator
 
 
 class ApplicationSummary(BaseModel):
@@ -28,6 +29,35 @@ class ApplicationDetail(ApplicationSummary):
     job_description: str
     tailored_bullets: str | None = None
     cover_letter_text: str | None = None
+    salary_range: str | None = None
+    required_skills: list[str] = []
+    # Profile snapshot fields (populated at query time)
+    profile_email: str | None = None
+    profile_phone: str | None = None
+    profile_location: str | None = None
+    profile_linkedin: str | None = None
+    profile_university: str | None = None
+
+    @model_validator(mode="before")
+    @classmethod
+    def parse_required_skills(cls, data):
+        if hasattr(data, "__dict__"):
+            raw = getattr(data, "required_skills", None)
+            target = data.__dict__
+        elif isinstance(data, dict):
+            raw = data.get("required_skills")
+            target = data
+        else:
+            return data
+
+        if raw is None:
+            target["required_skills"] = []
+        elif isinstance(raw, str):
+            try:
+                target["required_skills"] = json.loads(raw)
+            except (json.JSONDecodeError, ValueError):
+                target["required_skills"] = []
+        return data
 
 
 class PaginatedApplications(BaseModel):

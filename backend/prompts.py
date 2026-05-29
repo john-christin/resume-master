@@ -91,6 +91,27 @@ Use a professional but warm tone -- not generic or robotic.\
 # Utility / extraction prompts
 # ---------------------------------------------------------------------------
 
+JD_EXTRACTION = """\
+Read the entire job description carefully, including any Compensation, Salary, \
+or Pay sections that may appear anywhere in the text. Then respond with ONLY \
+a valid JSON object — no markdown, no explanation.
+
+Required format:
+{
+  "salary_range": "<salary range as stated, e.g. '$80,000 - $100,000', '$80k-$100k/yr', 'Up to $120k', or null if not mentioned>",
+  "required_skills": ["skill1", "skill2", ...]
+}
+
+Rules:
+- salary_range: scan the FULL text for any mention of salary, pay, compensation, \
+or base range. Copy the numeric range verbatim (including currency symbols and \
+any surrounding whitespace). Return null only if truly absent.
+- required_skills: list specific technologies, languages, frameworks, and tools \
+explicitly required or strongly preferred. Each item must be a short label (1-4 words). \
+Omit soft skills and generic terms like "communication" or "teamwork". \
+Return an empty array if none are identifiable.
+"""
+
 DUPLICATE_JOB_CHECK = """\
 You are comparing two job descriptions to determine if they are for the same \
 role (possibly a repost or minor edit). \
@@ -110,6 +131,8 @@ and application questions. Answer concisely (1-4 sentences unless asked for more
 write in first person as the candidate, and use only experience that is listed below. \
 For behavioral questions use a brief STAR format. Don't use symbols in the answers. \
 Please use casual native concise technical sentences.
+If the generated content doesn't mention any experience, but the question includes \
+required experience that is a must-have, you should assume we've used that skill before and explain it in detail. \
 
 ## Candidate: {name}
 

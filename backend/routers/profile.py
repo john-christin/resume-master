@@ -49,6 +49,8 @@ def _profile_to_response(profile: Profile, current_user_id: str) -> dict:
         "linkedin": profile.linkedin,
         "summary": profile.summary,
         "tech_stack_id": profile.tech_stack_id,
+        "creativity_factor": profile.creativity_factor,
+        "custom_prompt": profile.custom_prompt,
         "educations": profile.educations,
         "experiences": profile.experiences,
         "is_owner": profile.owner_id == current_user_id,
@@ -143,6 +145,8 @@ def create_profile(
         linkedin=data.linkedin,
         summary=data.summary,
         tech_stack_id=data.tech_stack_id or None,
+        creativity_factor=data.creativity_factor,
+        custom_prompt=data.custom_prompt or None,
     )
 
     for edu in data.educations:
@@ -188,6 +192,8 @@ def update_profile(
     profile.linkedin = data.linkedin
     profile.summary = data.summary
     profile.tech_stack_id = data.tech_stack_id or None
+    profile.creativity_factor = data.creativity_factor
+    profile.custom_prompt = data.custom_prompt or None
 
     profile.educations.clear()
     for edu in data.educations:
@@ -320,7 +326,20 @@ def list_shares(
     ]
 
 
-# --- User search for sharing UI ---
+# --- User search / listing for sharing UI ---
+
+
+@router.get("/api/users", response_model=list[UserSearchResult])
+def list_users(
+    current_user: User = Depends(_bidder_or_admin),
+    db: Session = Depends(get_db),
+):
+    results = db.scalars(
+        select(User)
+        .where(User.status == "approved", User.id != current_user.id)
+        .order_by(User.username.asc())
+    ).all()
+    return [UserSearchResult(id=u.id, username=u.username) for u in results]
 
 
 @router.get("/api/users/search", response_model=list[UserSearchResult])

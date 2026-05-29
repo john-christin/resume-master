@@ -36,6 +36,8 @@ export interface Profile {
   linkedin?: string;
   summary?: string;
   tech_stack_id?: string | null;
+  creativity_factor?: number;
+  custom_prompt?: string | null;
   educations: Education[];
   experiences: Experience[];
   is_owner: boolean;
@@ -53,6 +55,8 @@ export interface ProfileCreate {
   linkedin?: string;
   summary?: string;
   tech_stack_id?: string | null;
+  creativity_factor?: number;
+  custom_prompt?: string | null;
   educations: Education[];
   experiences: Experience[];
 }
@@ -181,6 +185,13 @@ export interface ApplicationDetail extends ApplicationSummary {
   job_description: string;
   tailored_bullets?: string;
   cover_letter_text?: string;
+  salary_range?: string | null;
+  required_skills?: string[];
+  profile_email?: string | null;
+  profile_phone?: string | null;
+  profile_location?: string | null;
+  profile_linkedin?: string | null;
+  profile_university?: string | null;
 }
 
 export interface PaginatedApplications {

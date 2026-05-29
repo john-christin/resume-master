@@ -203,17 +203,19 @@ async def _generate_single(
     active_kbs = db.scalars(
         select(KnowledgeBase).where(kb_filter)
     ).all()
-    kb_content = (
-        "\n\n".join(f"### {kb.name}\n{kb.content}" for kb in active_kbs)
-        if active_kbs
-        else None
-    )
+    kb_parts = [f"### {kb.name}\n{kb.content}" for kb in active_kbs]
+
+    # Profile-level prompt is always appended last so it takes precedence
+    if profile.custom_prompt:
+        kb_parts.append(f"### Profile Instructions\n{profile.custom_prompt}")
+
+    kb_content = "\n\n".join(kb_parts) if kb_parts else None
 
     creativity_factor = getattr(profile, "creativity_factor", 0.3)
 
-    # Tailor resume + generate summary/skills + generate cover letter concurrently
+    # Tailor resume + generate summary/skills + cover letter + JD extraction concurrently
     try:
-        (tailored, resume_usage), (content_result, content_usage), (cover_letter_text, cl_usage) = await asyncio.gather(
+        (tailored, resume_usage), (content_result, content_usage), (cover_letter_text, cl_usage), jd_info = await asyncio.gather(
             asyncio.to_thread(
                 ai_service.tailor_resume,
                 user_name=profile.name,
@@ -250,6 +252,7 @@ async def _generate_single(
                 knowledge_base=kb_content,
                 creativity_factor=creativity_factor,
             ),
+            asyncio.to_thread(ai_service.extract_jd_info, job_description),
         )
     except Exception as e:
         log_service.log_bg(
@@ -265,8 +268,9 @@ async def _generate_single(
             **log_service.exc_to_log_kwargs(e),
         )
         raise HTTPException(status_code=502, detail=f"AI service error: {e}")
-    total_prompt += resume_usage["prompt_tokens"] + content_usage["prompt_tokens"] + cl_usage["prompt_tokens"]
-    total_completion += resume_usage["completion_tokens"] + content_usage["completion_tokens"] + cl_usage["completion_tokens"]
+    jd_usage = jd_info.get("usage", {})
+    total_prompt += resume_usage["prompt_tokens"] + content_usage["prompt_tokens"] + cl_usage["prompt_tokens"] + jd_usage.get("prompt_tokens", 0)
+    total_completion += resume_usage["completion_tokens"] + content_usage["completion_tokens"] + cl_usage["completion_tokens"] + jd_usage.get("completion_tokens", 0)
     summary_text = content_result["summary"]
     skills_data = content_result.get("skills", [])
 
@@ -288,6 +292,8 @@ async def _generate_single(
         tech_stack_name=tech_stack_name,
         tailored_bullets=json.dumps(tailored),
         cover_letter_text=cover_letter_text,
+        salary_range=jd_info.get("salary_range"),
+        required_skills=json.dumps(jd_info.get("required_skills") or []),
         prompt_tokens=total_prompt,
         completion_tokens=total_completion,
         total_cost=cost,

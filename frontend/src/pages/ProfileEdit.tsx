@@ -1,4 +1,4 @@
-import { AlertCircle, ArrowLeft, Loader2, Save, User } from "lucide-react";
+import { AlertCircle, ArrowLeft, Loader2, Save, SlidersHorizontal, Sparkles, User } from "lucide-react";
 import { useEffect, useState } from "react";
 import { useNavigate, useParams } from "react-router-dom";
 import {
@@ -30,6 +30,7 @@ import {
   SelectValue,
 } from "../components/ui/select";
 import { Separator } from "../components/ui/separator";
+import { Slider } from "../components/ui/slider";
 import { Textarea } from "../components/ui/textarea";
 import type { Education, Experience, ProfileCreate, TechStack } from "../types";
 
@@ -41,6 +42,8 @@ const emptyProfile: ProfileCreate = {
   linkedin: "",
   summary: "",
   tech_stack_id: null,
+  creativity_factor: 0.7,
+  custom_prompt: null,
   educations: [],
   experiences: [],
 };
@@ -76,6 +79,8 @@ export default function ProfileEdit() {
           linkedin: p.linkedin || "",
           summary: p.summary || "",
           tech_stack_id: p.tech_stack_id ?? null,
+          creativity_factor: p.creativity_factor ?? 0.7,
+          custom_prompt: p.custom_prompt ?? null,
           educations: p.educations,
           experiences: p.experiences,
         });
@@ -248,6 +253,73 @@ export default function ProfileEdit() {
                 readOnly={readOnly}
               />
             </div>
+
+            <div className="space-y-3">
+              <div className="flex items-center justify-between">
+                <div>
+                  <Label>Creativity Factor</Label>
+                  <p className="text-xs text-muted-foreground mt-0.5">
+                    Controls how creative and varied the AI-generated resumes will be
+                  </p>
+                </div>
+                <div className="flex items-center gap-1.5 min-w-[4rem] justify-end">
+                  <span className="text-sm font-semibold tabular-nums text-primary">
+                    {Math.round((profile.creativity_factor ?? 0.7) * 100)}
+                  </span>
+                  <span className="text-xs text-muted-foreground">/ 100</span>
+                </div>
+              </div>
+              <div className="flex items-center gap-3">
+                <span className="text-xs text-muted-foreground w-12 text-right">Safe</span>
+                <Slider
+                  min={0}
+                  max={1}
+                  step={0.01}
+                  value={[profile.creativity_factor ?? 0.7]}
+                  onValueChange={([v]) =>
+                    setProfile({ ...profile, creativity_factor: v })
+                  }
+                  disabled={readOnly}
+                  className="flex-1"
+                />
+                <span className="text-xs text-muted-foreground w-14">Creative</span>
+              </div>
+              <div className="flex justify-between text-[10px] text-muted-foreground px-0">
+                <span>Consistent &amp; focused</span>
+                <span>Varied &amp; expressive</span>
+              </div>
+            </div>
+          </CardContent>
+        </Card>
+
+        <Card className="border-primary/20 bg-primary/[0.02]">
+          <CardHeader>
+            <CardTitle className="flex items-center gap-2 text-base">
+              <Sparkles className="h-4 w-4 text-primary" />
+              Profile Prompt Override
+            </CardTitle>
+            <p className="text-xs text-muted-foreground leading-relaxed">
+              Always sent alongside tech-stack and general knowledge-base prompts.
+              Takes precedence over other KB entries for this profile.
+            </p>
+          </CardHeader>
+          <CardContent className="space-y-3">
+            <Textarea
+              value={profile.custom_prompt || ""}
+              onChange={(e) =>
+                setProfile({ ...profile, custom_prompt: e.target.value || null })
+              }
+              rows={6}
+              placeholder="e.g. Always emphasize leadership experience. Avoid passive voice. Focus on measurable outcomes and quantified achievements..."
+              readOnly={readOnly}
+              className="font-mono text-xs resize-y"
+            />
+            {profile.custom_prompt && (
+              <div className="flex items-center gap-1.5 text-xs text-primary">
+                <SlidersHorizontal className="h-3 w-3" />
+                <span>Active — sent with all KB prompts during generation</span>
+              </div>
+            )}
           </CardContent>
         </Card>
 

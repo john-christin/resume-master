@@ -31,6 +31,8 @@ class ProfileCreate(BaseModel):
     linkedin: str | None = None
     summary: str | None = None
     tech_stack_id: str | None = None
+    creativity_factor: float = 0.7
+    custom_prompt: str | None = None
     educations: list[EducationSchema] = []
     experiences: list[ExperienceSchema] = []
 
@@ -45,6 +47,8 @@ class ProfileResponse(BaseModel):
     linkedin: str | None = None
     summary: str | None = None
     tech_stack_id: str | None = None
+    creativity_factor: float = 0.7
+    custom_prompt: str | None = None
     educations: list[EducationSchema] = []
     experiences: list[ExperienceSchema] = []
     is_owner: bool = False

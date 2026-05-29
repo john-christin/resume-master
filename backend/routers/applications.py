@@ -131,7 +131,22 @@ def get_application(
     ):
         raise HTTPException(status_code=404, detail="Application not found")
 
-    return application
+    # Build response dict and attach profile snapshot
+    data = {c.name: getattr(application, c.name) for c in application.__table__.columns}
+    data["user_username"] = application.user.username if application.user else None
+
+    if application.profile_id:
+        from models.profile import Profile
+        profile = db.get(Profile, application.profile_id)
+        if profile:
+            data["profile_email"] = profile.email
+            data["profile_phone"] = profile.phone
+            data["profile_location"] = profile.location
+            data["profile_linkedin"] = profile.linkedin
+            first_edu = sorted(profile.educations, key=lambda e: e.end_date or "", reverse=True)
+            data["profile_university"] = first_edu[0].school if first_edu else None
+
+    return data
 
 
 @router.delete("/{app_id}", status_code=204)

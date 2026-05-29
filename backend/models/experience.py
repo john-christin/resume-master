@@ -19,7 +19,7 @@ class Experience(Base):
     location: Mapped[str | None] = mapped_column(String(200), nullable=True)
     title: Mapped[str] = mapped_column(String(300))
     description: Mapped[str] = mapped_column(Text)
-    start_date: Mapped[str] = mapped_column(String(10))
-    end_date: Mapped[str | None] = mapped_column(String(10), nullable=True)
+    start_date: Mapped[str] = mapped_column(String(50))
+    end_date: Mapped[str | None] = mapped_column(String(50), nullable=True)
 
     profile: Mapped["Profile"] = relationship(back_populates="experiences")

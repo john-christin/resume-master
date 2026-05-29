@@ -31,6 +31,9 @@ export const unshareProfile = (profileId: string, userId: string) =>
 export const getProfileShares = (profileId: string) =>
   api.get<ProfileShareUser[]>(`/api/profiles/${profileId}/shares`);
 
+export const listUsers = () =>
+  api.get<UserSearchResult[]>("/api/users");
+
 export const searchUsers = (q: string) =>
   api.get<UserSearchResult[]>(`/api/users/search?q=${encodeURIComponent(q)}`);
 

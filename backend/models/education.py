@@ -19,7 +19,7 @@ class Education(Base):
     degree: Mapped[str] = mapped_column(String(200))
     field: Mapped[str] = mapped_column(String(200))
     gpa: Mapped[str | None] = mapped_column(String(10), nullable=True)
-    start_date: Mapped[str] = mapped_column(String(10))
-    end_date: Mapped[str | None] = mapped_column(String(10), nullable=True)
+    start_date: Mapped[str] = mapped_column(String(50))
+    end_date: Mapped[str | None] = mapped_column(String(50), nullable=True)
 
     profile: Mapped["Profile"] = relationship(back_populates="educations")

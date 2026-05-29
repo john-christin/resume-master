@@ -1,4 +1,4 @@
-import { Bot, Loader2, SendHorizontal, User, X } from "lucide-react";
+import { Bot, Check, Copy, Loader2, SendHorizontal, User, X } from "lucide-react";
 import { useEffect, useRef, useState } from "react";
 import { getActiveModels, getApplicationChat, sendApplicationChat } from "../api/applications";
 import type { ActiveModel, AppChatMessage } from "../types";
@@ -19,6 +19,56 @@ interface Props {
   onClose: () => void;
 }
 
+function AssistantMessage({ msg }: { msg: AppChatMessage }) {
+  const [copied, setCopied] = useState(false);
+
+  const handleCopy = () => {
+    navigator.clipboard.writeText(msg.content).then(() => {
+      setCopied(true);
+      setTimeout(() => setCopied(false), 1500);
+    });
+  };
+
+  return (
+    <div className={`flex gap-2 ${msg.role === "user" ? "flex-row-reverse" : "flex-row"}`}>
+      <div className="mt-0.5 shrink-0">
+        {msg.role === "user" ? (
+          <div className="flex h-6 w-6 items-center justify-center rounded-full bg-primary text-primary-foreground">
+            <User className="h-3.5 w-3.5" />
+          </div>
+        ) : (
+          <div className="flex h-6 w-6 items-center justify-center rounded-full bg-muted">
+            <Bot className="h-3.5 w-3.5 text-muted-foreground" />
+          </div>
+        )}
+      </div>
+      <div className="group relative max-w-[82%]">
+        <div
+          className={`rounded-2xl px-3.5 py-2.5 text-sm leading-relaxed ${
+            msg.role === "user"
+              ? "bg-primary text-primary-foreground rounded-tr-sm"
+              : "bg-muted text-foreground rounded-tl-sm"
+          }`}
+        >
+          <span className="whitespace-pre-wrap">{msg.content}</span>
+        </div>
+        {msg.role === "assistant" && (
+          <button
+            onClick={handleCopy}
+            title="Copy"
+            className="absolute -bottom-5 right-0 flex items-center justify-center h-5 w-5 rounded opacity-0 group-hover:opacity-100 transition-opacity text-muted-foreground hover:text-foreground"
+          >
+            {copied
+              ? <Check className="h-3 w-3 text-emerald-500" />
+              : <Copy className="h-3 w-3" />
+            }
+          </button>
+        )}
+      </div>
+    </div>
+  );
+}
+
 export default function ApplicationChatSidebar({ appId, jobTitle, company, onClose }: Props) {
   const [messages, setMessages] = useState<AppChatMessage[]>([]);
   const [input, setInput] = useState("");
@@ -27,7 +77,18 @@ export default function ApplicationChatSidebar({ appId, jobTitle, company, onClo
   const [error, setError] = useState<string | null>(null);
   const [models, setModels] = useState<ActiveModel[]>([]);
   const [selectedModelId, setSelectedModelId] = useState<string>("default");
+  const [visible, setVisible] = useState(false);
   const bottomRef = useRef<HTMLDivElement>(null);
+
+  useEffect(() => {
+    const frame = requestAnimationFrame(() => setVisible(true));
+    return () => cancelAnimationFrame(frame);
+  }, []);
+
+  const handleClose = () => {
+    setVisible(false);
+    setTimeout(onClose, 300);
+  };
 
   useEffect(() => {
     Promise.all([
@@ -82,7 +143,19 @@ export default function ApplicationChatSidebar({ appId, jobTitle, company, onClo
   };
 
   return (
-    <div className="fixed inset-y-0 right-0 z-50 flex w-full max-w-md flex-col border-l bg-background shadow-2xl">
+    <div className="fixed inset-0 z-50 flex justify-end">
+      {/* Backdrop */}
+      <div
+        className="absolute inset-0 bg-black/30 backdrop-blur-sm transition-opacity duration-300"
+        style={{ opacity: visible ? 1 : 0 }}
+        onClick={handleClose}
+      />
+
+      {/* Sliding panel */}
+      <div
+        className="relative flex w-full max-w-md flex-col border-l bg-background shadow-2xl transition-transform duration-300 ease-out"
+        style={{ transform: visible ? "translateX(0)" : "translateX(100%)" }}
+      >
       {/* Header */}
       <div className="flex items-start justify-between border-b px-4 py-3">
         <div className="min-w-0">
@@ -98,7 +171,7 @@ export default function ApplicationChatSidebar({ appId, jobTitle, company, onClo
           variant="ghost"
           size="icon"
           className="ml-2 mt-0.5 shrink-0"
-          onClick={onClose}
+          onClick={handleClose}
         >
           <X className="h-4 w-4" />
         </Button>
@@ -145,31 +218,7 @@ export default function ApplicationChatSidebar({ appId, jobTitle, company, onClo
           </div>
         ) : (
           messages.map((msg) => (
-            <div
-              key={msg.id}
-              className={`flex gap-2 ${msg.role === "user" ? "flex-row-reverse" : "flex-row"}`}
-            >
-              <div className="mt-0.5 shrink-0">
-                {msg.role === "user" ? (
-                  <div className="flex h-6 w-6 items-center justify-center rounded-full bg-primary text-primary-foreground">
-                    <User className="h-3.5 w-3.5" />
-                  </div>
-                ) : (
-                  <div className="flex h-6 w-6 items-center justify-center rounded-full bg-muted">
-                    <Bot className="h-3.5 w-3.5 text-muted-foreground" />
-                  </div>
-                )}
-              </div>
-              <div
-                className={`max-w-[82%] rounded-2xl px-3.5 py-2.5 text-sm leading-relaxed ${
-                  msg.role === "user"
-                    ? "bg-primary text-primary-foreground rounded-tr-sm"
-                    : "bg-muted text-foreground rounded-tl-sm"
-                }`}
-              >
-                <span className="whitespace-pre-wrap">{msg.content}</span>
-              </div>
-            </div>
+            <AssistantMessage key={msg.id} msg={msg} />
           ))
         )}
 
@@ -213,6 +262,7 @@ export default function ApplicationChatSidebar({ appId, jobTitle, company, onClo
         <p className="mt-1.5 text-center text-[10px] text-muted-foreground">
           Answers are based on your resume and the job description.
         </p>
+      </div>
       </div>
     </div>
   );
