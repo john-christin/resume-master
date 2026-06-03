@@ -13,13 +13,90 @@ from starlette.requests import Request
 
 from config import settings
 from database import SessionLocal
+from models.doc_style import DocStyle
 from models.token_pricing import TokenPricing
-from routers import admin, applications, auth, batch_jobs, chat, generate, profile, stats, user_settings
+from routers import admin, applications, auth, batch_jobs, chat, doc_styles, generate, profile, stats, user_settings
 from services import log_service
 from services.batch_worker import start_worker
 from utils import get_client_ip
 
 logger = logging.getLogger(__name__)
+
+
+_DEFAULT_DOC_STYLES = [
+    {
+        "name": "Classic",
+        "description": "Traditional centered layout with Calibri font and clean section lines.",
+        "config": {
+            "font_name": "Calibri", "font_size_name": 16, "font_size_section": 10,
+            "font_size_body": 9.5, "font_size_contact": 9,
+            "header_layout": "centered", "accent_color": "000000",
+            "section_separator": "line", "name_bold": True, "name_uppercase": True,
+            "section_caps": False, "margin_top": 0.5, "margin_bottom": 0.5,
+            "margin_left": 0.5, "margin_right": 0.5,
+            "space_before_section": 4, "space_after_section": 3,
+        },
+    },
+    {
+        "name": "Modern",
+        "description": "Left-aligned header with a subtle blue accent color for a contemporary look.",
+        "config": {
+            "font_name": "Calibri", "font_size_name": 18, "font_size_section": 10,
+            "font_size_body": 9.5, "font_size_contact": 9,
+            "header_layout": "left", "accent_color": "2E74B5",
+            "section_separator": "thick_line", "name_bold": True, "name_uppercase": False,
+            "section_caps": True, "margin_top": 0.6, "margin_bottom": 0.6,
+            "margin_left": 0.6, "margin_right": 0.6,
+            "space_before_section": 5, "space_after_section": 3,
+        },
+    },
+    {
+        "name": "Minimal",
+        "description": "Clean and simple with no section borders — lets content breathe.",
+        "config": {
+            "font_name": "Arial", "font_size_name": 15, "font_size_section": 10,
+            "font_size_body": 9.5, "font_size_contact": 9,
+            "header_layout": "centered", "accent_color": "000000",
+            "section_separator": "none", "name_bold": True, "name_uppercase": False,
+            "section_caps": False, "margin_top": 0.75, "margin_bottom": 0.75,
+            "margin_left": 0.75, "margin_right": 0.75,
+            "space_before_section": 6, "space_after_section": 2,
+        },
+    },
+    {
+        "name": "Executive",
+        "description": "Larger name, wider margins, and double-line separators for a senior professional look.",
+        "config": {
+            "font_name": "Garamond", "font_size_name": 20, "font_size_section": 11,
+            "font_size_body": 10, "font_size_contact": 9.5,
+            "header_layout": "centered", "accent_color": "000000",
+            "section_separator": "double_line", "name_bold": True, "name_uppercase": True,
+            "section_caps": True, "margin_top": 0.75, "margin_bottom": 0.75,
+            "margin_left": 0.75, "margin_right": 0.75,
+            "space_before_section": 6, "space_after_section": 4,
+        },
+    },
+]
+
+
+def _seed_default_doc_styles() -> None:
+    """Insert default system DocStyle rows if the table is empty."""
+    import json
+    db = SessionLocal()
+    try:
+        exists = db.scalars(select(DocStyle).limit(1)).first()
+        if not exists:
+            for s in _DEFAULT_DOC_STYLES:
+                db.add(DocStyle(
+                    name=s["name"],
+                    description=s["description"],
+                    is_system=True,
+                    config=json.dumps(s["config"]),
+                ))
+            db.commit()
+            logger.info("Seeded %d default doc styles", len(_DEFAULT_DOC_STYLES))
+    finally:
+        db.close()
 
 
 def _seed_default_pricing() -> None:
@@ -112,6 +189,7 @@ class RequestLoggingMiddleware(BaseHTTPMiddleware):
 
 @asynccontextmanager
 async def lifespan(app: FastAPI):
+    _seed_default_doc_styles()
     _seed_default_pricing()
     removed = log_service.cleanup_old_logs(retention_days=15)
     if removed:
@@ -144,6 +222,7 @@ app.include_router(batch_jobs.router)
 app.include_router(applications.router)
 app.include_router(admin.router)
 app.include_router(stats.router)
+app.include_router(doc_styles.router)
 app.include_router(user_settings.router)
 
 

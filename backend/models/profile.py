@@ -2,7 +2,7 @@ import random
 import uuid
 from datetime import datetime
 
-from sqlalchemy import DateTime, Float, ForeignKey, String, Text
+from sqlalchemy import Boolean, DateTime, Float, ForeignKey, String, Text
 from sqlalchemy.orm import Mapped, mapped_column, relationship
 
 from database import Base
@@ -33,6 +33,13 @@ class Profile(Base):
         Float, default=lambda: random.random(), nullable=False
     )
     custom_prompt: Mapped[str | None] = mapped_column(Text, nullable=True)
+    doc_style_id: Mapped[str | None] = mapped_column(
+        String(36),
+        ForeignKey("doc_styles.id", ondelete="SET NULL"),
+        nullable=True,
+        index=True,
+    )
+    show_skills: Mapped[bool] = mapped_column(Boolean, default=True, nullable=False)
     created_at: Mapped[datetime] = mapped_column(
         DateTime, default=datetime.utcnow
     )
@@ -51,4 +58,7 @@ class Profile(Base):
     )
     shared_with: Mapped[list["User"]] = relationship(
         secondary="profile_shares", back_populates="shared_profiles"
+    )
+    doc_style: Mapped["DocStyle | None"] = relationship(
+        "DocStyle", foreign_keys=[doc_style_id]
     )

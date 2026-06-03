@@ -1,6 +1,7 @@
 import { AlertCircle, ArrowLeft, Loader2, Save, SlidersHorizontal, Sparkles, User } from "lucide-react";
 import { useEffect, useState } from "react";
 import { useNavigate, useParams } from "react-router-dom";
+import { getDocStyles } from "../api/doc_styles";
 import {
   createProfile,
   getProfile,
@@ -31,8 +32,9 @@ import {
 } from "../components/ui/select";
 import { Separator } from "../components/ui/separator";
 import { Slider } from "../components/ui/slider";
+import { Switch } from "../components/ui/switch";
 import { Textarea } from "../components/ui/textarea";
-import type { Education, Experience, ProfileCreate, TechStack } from "../types";
+import type { DocStyle, Education, Experience, ProfileCreate, TechStack } from "../types";
 
 const emptyProfile: ProfileCreate = {
   name: "",
@@ -44,6 +46,8 @@ const emptyProfile: ProfileCreate = {
   tech_stack_id: null,
   creativity_factor: 0.7,
   custom_prompt: null,
+  doc_style_id: null,
+  show_skills: true,
   educations: [],
   experiences: [],
 };
@@ -59,10 +63,14 @@ export default function ProfileEdit() {
   const [error, setError] = useState<string | null>(null);
   const [readOnly, setReadOnly] = useState(false);
   const [techStacks, setTechStacks] = useState<TechStack[]>([]);
+  const [docStyles, setDocStyles] = useState<DocStyle[]>([]);
 
   useEffect(() => {
     getTechStacksPublic()
       .then((res) => setTechStacks(res.data))
+      .catch(() => {});
+    getDocStyles()
+      .then((res) => setDocStyles(res.data))
       .catch(() => {});
   }, []);
 
@@ -81,6 +89,8 @@ export default function ProfileEdit() {
           tech_stack_id: p.tech_stack_id ?? null,
           creativity_factor: p.creativity_factor ?? 0.7,
           custom_prompt: p.custom_prompt ?? null,
+          doc_style_id: p.doc_style_id ?? null,
+          show_skills: p.show_skills ?? true,
           educations: p.educations,
           experiences: p.experiences,
         });
@@ -239,6 +249,47 @@ export default function ProfileEdit() {
                   </SelectContent>
                 </Select>
               </div>
+              <div className="space-y-1.5">
+                <Label>Resume Doc Style</Label>
+                <Select
+                  value={profile.doc_style_id ?? "__default__"}
+                  onValueChange={(v) =>
+                    setProfile({ ...profile, doc_style_id: v === "__default__" ? null : v })
+                  }
+                  disabled={readOnly}
+                >
+                  <SelectTrigger>
+                    <SelectValue placeholder="— Default (Classic) —" />
+                  </SelectTrigger>
+                  <SelectContent>
+                    <SelectItem value="__default__">— Default (Classic) —</SelectItem>
+                    {docStyles.map((ds) => (
+                      <SelectItem key={ds.id} value={ds.id}>
+                        {ds.name}{ds.is_system ? " ✦" : ""}
+                      </SelectItem>
+                    ))}
+                  </SelectContent>
+                </Select>
+                {profile.doc_style_id && (
+                  <p className="text-xs text-muted-foreground">
+                    {docStyles.find((d) => d.id === profile.doc_style_id)?.description}
+                  </p>
+                )}
+              </div>
+            </div>
+
+            <div className="flex items-center justify-between rounded-lg border p-3">
+              <div>
+                <Label className="text-sm font-medium">Technical Skills Section</Label>
+                <p className="text-xs text-muted-foreground mt-0.5">
+                  Include a skills section in generated resumes
+                </p>
+              </div>
+              <Switch
+                checked={profile.show_skills ?? true}
+                onCheckedChange={(v) => setProfile({ ...profile, show_skills: v })}
+                disabled={readOnly}
+              />
             </div>
 
             <div className="space-y-1.5">

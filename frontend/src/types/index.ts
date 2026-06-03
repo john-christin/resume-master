@@ -26,6 +26,54 @@ export interface TechStack {
   created_at: string;
 }
 
+export interface StyleConfig {
+  font_name: string;
+  font_size_name: number;
+  font_size_section: number;
+  font_size_body: number;
+  font_size_contact: number;
+  header_layout: "centered" | "left";
+  accent_color: string;
+  section_separator: "line" | "thick_line" | "double_line" | "none";
+  name_bold: boolean;
+  name_uppercase: boolean;
+  section_caps: boolean;
+  margin_top: number;
+  margin_bottom: number;
+  margin_left: number;
+  margin_right: number;
+  space_before_section: number;
+  space_after_section: number;
+  name_color: string;
+  line_spacing: number;
+  section_bold: boolean;
+  bullet_char: string;
+  contact_separator: string;
+}
+
+export interface DocStyle {
+  id: string;
+  name: string;
+  description?: string | null;
+  is_system: boolean;
+  config: StyleConfig;
+  created_by?: string | null;
+  created_at: string;
+  updated_at?: string | null;
+}
+
+export interface DocStyleCreate {
+  name: string;
+  description?: string | null;
+  config: StyleConfig;
+}
+
+export interface DocStyleUpdate {
+  name?: string;
+  description?: string | null;
+  config?: StyleConfig;
+}
+
 export interface Profile {
   id: string;
   owner_id: string;
@@ -38,6 +86,8 @@ export interface Profile {
   tech_stack_id?: string | null;
   creativity_factor?: number;
   custom_prompt?: string | null;
+  doc_style_id?: string | null;
+  show_skills: boolean;
   educations: Education[];
   experiences: Experience[];
   is_owner: boolean;
@@ -57,6 +107,8 @@ export interface ProfileCreate {
   tech_stack_id?: string | null;
   creativity_factor?: number;
   custom_prompt?: string | null;
+  doc_style_id?: string | null;
+  show_skills?: boolean;
   educations: Education[];
   experiences: Experience[];
 }

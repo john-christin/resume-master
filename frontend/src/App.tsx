@@ -9,6 +9,7 @@ import LogsPage from "./pages/admin/LogsPage";
 import ModelsPage from "./pages/admin/ModelsPage";
 import PendingPage from "./pages/admin/PendingPage";
 import PricingPage from "./pages/admin/PricingPage";
+import DocStylesPage from "./pages/admin/DocStylesPage";
 import TechStacksPage from "./pages/admin/TechStacksPage";
 import UsersPage from "./pages/admin/UsersPage";
 import BatchJobStatus from "./pages/BatchJobStatus";
@@ -81,6 +82,7 @@ function App() {
                 <Route path="users" element={<UsersPage />} />
                 <Route path="pricing" element={<PricingPage />} />
                 <Route path="stacks" element={<TechStacksPage />} />
+                <Route path="doc-styles" element={<DocStylesPage />} />
                 <Route path="kb" element={<KnowledgeBasePage />} />
                 <Route path="models" element={<ModelsPage />} />
                 <Route path="logs" element={<LogsPage />} />

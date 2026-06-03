@@ -15,12 +15,14 @@ from config import settings
 from database import SessionLocal, get_db
 from models.ai_model_config import AIModelConfig
 from models.application import Application
+from models.doc_style import DocStyle
 from models.knowledge_base import KnowledgeBase
 from models.tech_stack import TechStack
 from models.profile import Profile
 from models.profile_share import profile_shares
 from models.token_pricing import TokenPricing
 from models.user import User
+from schemas.doc_style import StyleConfig
 from schemas.generate import (
     BatchGenerateRequest,
     BatchGenerateResponse,
@@ -301,6 +303,20 @@ async def _generate_single(
     db.add(application)
     db.flush()
 
+    # Load doc style for this profile
+    doc_style: StyleConfig | None = None
+    if profile.doc_style_id:
+        style_row = db.get(DocStyle, profile.doc_style_id)
+        if style_row:
+            doc_style = StyleConfig(**json.loads(style_row.config))
+    if doc_style is None:
+        # Fall back to the first system style if one exists
+        default_row = db.scalars(
+            select(DocStyle).where(DocStyle.is_system.is_(True))
+        ).first()
+        if default_row:
+            doc_style = StyleConfig(**json.loads(default_row.config))
+
     # Generate DOCX files
     uploads_dir = Path(settings.upload_dir)
     uploads_dir.mkdir(parents=True, exist_ok=True)
@@ -315,10 +331,11 @@ async def _generate_single(
         phone=profile.phone,
         linkedin=profile.linkedin,
         summary=summary_text,
-        skills=skills_data or None,
+        skills=skills_data if profile.show_skills else None,
         educations=educations,
         tailored_experiences=tailored,
         output_path=resume_docx,
+        style=doc_style,
     )
 
     docx_service.create_cover_letter(

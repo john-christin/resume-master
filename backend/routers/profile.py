@@ -51,6 +51,8 @@ def _profile_to_response(profile: Profile, current_user_id: str) -> dict:
         "tech_stack_id": profile.tech_stack_id,
         "creativity_factor": profile.creativity_factor,
         "custom_prompt": profile.custom_prompt,
+        "doc_style_id": profile.doc_style_id,
+        "show_skills": profile.show_skills,
         "educations": profile.educations,
         "experiences": profile.experiences,
         "is_owner": profile.owner_id == current_user_id,
@@ -147,6 +149,8 @@ def create_profile(
         tech_stack_id=data.tech_stack_id or None,
         creativity_factor=data.creativity_factor,
         custom_prompt=data.custom_prompt or None,
+        doc_style_id=data.doc_style_id or None,
+        show_skills=data.show_skills,
     )
 
     for edu in data.educations:
@@ -194,6 +198,8 @@ def update_profile(
     profile.tech_stack_id = data.tech_stack_id or None
     profile.creativity_factor = data.creativity_factor
     profile.custom_prompt = data.custom_prompt or None
+    profile.doc_style_id = data.doc_style_id or None
+    profile.show_skills = data.show_skills
 
     profile.educations.clear()
     for edu in data.educations:

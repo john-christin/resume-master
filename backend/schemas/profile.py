@@ -33,6 +33,8 @@ class ProfileCreate(BaseModel):
     tech_stack_id: str | None = None
     creativity_factor: float = 0.7
     custom_prompt: str | None = None
+    doc_style_id: str | None = None
+    show_skills: bool = True
     educations: list[EducationSchema] = []
     experiences: list[ExperienceSchema] = []
 
@@ -49,6 +51,8 @@ class ProfileResponse(BaseModel):
     tech_stack_id: str | None = None
     creativity_factor: float = 0.7
     custom_prompt: str | None = None
+    doc_style_id: str | None = None
+    show_skills: bool = True
     educations: list[EducationSchema] = []
     experiences: list[ExperienceSchema] = []
     is_owner: bool = False
