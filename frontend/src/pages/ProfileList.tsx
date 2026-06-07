@@ -148,12 +148,17 @@ export default function ProfileList() {
 
   return (
     <div className="space-y-8">
-      <div className="flex items-center justify-between">
-        <div>
-          <h1 className="text-2xl font-bold">Profiles</h1>
-          <p className="text-muted-foreground text-sm mt-0.5">
-            Manage your resume profiles
-          </p>
+      <div className="flex items-center justify-between gap-4">
+        <div className="flex items-center gap-3">
+          <div className="h-10 w-10 rounded-xl bg-primary/10 flex items-center justify-center shrink-0">
+            <User className="h-5 w-5 text-primary" />
+          </div>
+          <div>
+            <h1 className="text-xl font-bold leading-none">Profiles</h1>
+            <p className="text-muted-foreground text-sm mt-0.5">
+              Manage your resume profiles
+            </p>
+          </div>
         </div>
         <Button onClick={() => navigate("/profiles/new")}>
           <Plus className="h-4 w-4" />

@@ -15,6 +15,7 @@ import UsersPage from "./pages/admin/UsersPage";
 import BatchJobStatus from "./pages/BatchJobStatus";
 import BidderDashboard from "./pages/BidderDashboard";
 import History from "./pages/History";
+import Kanban from "./pages/Kanban";
 import JobInput from "./pages/JobInput";
 import Login from "./pages/Login";
 import PendingApproval from "./pages/PendingApproval";
@@ -69,6 +70,9 @@ function App() {
 
             {/* History - all approved roles */}
             <Route path="/history" element={<History />} />
+
+            {/* Call Board - all approved roles */}
+            <Route path="/calls" element={<Kanban />} />
 
             {/* Settings - all approved roles */}
             <Route path="/settings" element={<Settings />} />

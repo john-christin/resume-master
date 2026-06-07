@@ -14,7 +14,7 @@ export default function PendingApproval() {
   const navigate = useNavigate();
 
   return (
-    <div className="min-h-screen bg-background flex items-center justify-center px-4">
+    <div className="min-h-screen bg-gradient-to-br from-muted/60 via-background to-muted/30 flex items-center justify-center px-4">
       <Card className="max-w-md w-full text-center">
         <CardHeader className="pb-4">
           <div className="flex justify-center mb-3">

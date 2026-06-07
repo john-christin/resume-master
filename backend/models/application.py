@@ -57,3 +57,6 @@ class Application(Base):
 
     user: Mapped["User"] = relationship(back_populates="applications")
     profile: Mapped["Profile | None"] = relationship()
+    call: Mapped["Call | None"] = relationship(
+        back_populates="application", uselist=False, cascade="all, delete-orphan"
+    )

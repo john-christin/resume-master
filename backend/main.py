@@ -15,7 +15,7 @@ from config import settings
 from database import SessionLocal
 from models.doc_style import DocStyle
 from models.token_pricing import TokenPricing
-from routers import admin, applications, auth, batch_jobs, chat, doc_styles, generate, profile, stats, user_settings
+from routers import admin, applications, auth, batch_jobs, call_stages, calls, chat, doc_styles, generate, profile, stats, user_settings
 from services import log_service
 from services.batch_worker import start_worker
 from utils import get_client_ip
@@ -220,6 +220,8 @@ app.include_router(generate.router)
 app.include_router(chat.router)
 app.include_router(batch_jobs.router)
 app.include_router(applications.router)
+app.include_router(calls.router)
+app.include_router(call_stages.router)
 app.include_router(admin.router)
 app.include_router(stats.router)
 app.include_router(doc_styles.router)

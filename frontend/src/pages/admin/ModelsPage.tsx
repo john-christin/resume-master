@@ -175,15 +175,13 @@ export default function ModelsPage() {
   return (
     <div className="space-y-6">
       <div className="flex items-center justify-between flex-wrap gap-3">
-        <div className="flex items-center gap-3">
-          <div className="flex h-9 w-9 items-center justify-center rounded-lg bg-indigo-100 dark:bg-indigo-900/30">
-            <Bot className="h-5 w-5 text-indigo-600" />
+        <div className="flex items-center gap-3 mb-6">
+          <div className="h-10 w-10 rounded-xl bg-primary/10 flex items-center justify-center shrink-0">
+            <Bot className="h-5 w-5 text-primary" />
           </div>
           <div>
-            <h1 className="text-2xl font-bold">AI Models</h1>
-            <p className="text-muted-foreground text-sm mt-0.5">
-              Configure LLM providers for resume generation
-            </p>
+            <h1 className="text-xl font-bold leading-none">AI Models</h1>
+            <p className="text-muted-foreground text-sm mt-0.5">Configure AI model settings</p>
           </div>
         </div>
         <Button onClick={() => openModal()}>

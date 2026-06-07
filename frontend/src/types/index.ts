@@ -226,6 +226,10 @@ export interface ApplicationSummary {
   location?: string;
   tech_stack_name?: string | null;
   call_scheduled?: boolean;
+  call_id?: string;
+  call_stage?: string | null;
+  call_status?: string | null;
+  call_scheduled_at?: string | null;
   user_username?: string;
   prompt_tokens?: number;
   completion_tokens?: number;
@@ -346,6 +350,85 @@ export interface BatchJobSubmitResponse {
   status: string;
   total_jobs: number;
 }
+
+// Stage is now dynamic — fetched from /api/call-stages
+export type CallStage = string;
+export type CallStatus = "scheduled" | "pending" | "passed" | "failed" | "cancelled";
+export type CallType = "video" | "phone";
+
+export interface CallStageConfig {
+  id: string;
+  name: string;
+  value: string;
+  order: number;
+  created_at: string;
+  updated_at: string;
+}
+
+export interface Call {
+  id: string;
+  application_id: string;
+  stage: CallStage;
+  status: CallStatus;
+  scheduled_at?: string | null;
+  recording_link?: string | null;
+  with_whom?: string | null;
+  interviewer_role?: string | null;
+  call_type?: CallType | null;
+  call_link?: string | null;
+  additional_note?: string | null;
+  stage_statuses?: Record<string, {
+    status?: CallStatus;
+    scheduled_at?: string | null;
+    recording_link?: string | null;
+    with_whom?: string | null;
+    interviewer_role?: string | null;
+    call_type?: CallType | null;
+    call_link?: string | null;
+    additional_note?: string | null;
+  }>;
+  is_closed?: boolean;
+  created_at: string;
+  updated_at: string;
+  job_title?: string | null;
+  company?: string | null;
+  profile_name?: string | null;
+  user_username?: string | null;
+}
+
+export interface CallCreate {
+  application_id: string;
+  stage: string;
+  status?: CallStatus;
+  scheduled_at?: string | null;
+  recording_link?: string | null;
+  with_whom?: string | null;
+  interviewer_role?: string | null;
+  call_type?: CallType | null;
+  call_link?: string | null;
+  additional_note?: string | null;
+}
+
+export interface CallUpdate {
+  stage?: string;
+  status?: CallStatus;
+  scheduled_at?: string | null;
+  recording_link?: string | null;
+  with_whom?: string | null;
+  interviewer_role?: string | null;
+  call_type?: CallType | null;
+  call_link?: string | null;
+  additional_note?: string | null;
+  is_closed?: boolean;
+}
+
+export const CALL_STATUSES: { value: CallStatus; label: string }[] = [
+  { value: "scheduled", label: "Scheduled" },
+  { value: "pending", label: "Pending" },
+  { value: "passed", label: "Passed" },
+  { value: "failed", label: "Failed" },
+  { value: "cancelled", label: "Cancelled" },
+];
 
 export interface BatchJobStatus {
   id: string;

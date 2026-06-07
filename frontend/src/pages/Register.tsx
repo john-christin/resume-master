@@ -65,7 +65,7 @@ export default function Register() {
   };
 
   return (
-    <div className="min-h-screen bg-background flex items-center justify-center px-4">
+    <div className="min-h-screen bg-gradient-to-br from-muted/60 via-background to-muted/30 flex items-center justify-center px-4">
       <div className="w-full max-w-sm">
         <div className="flex flex-col items-center mb-8">
           <div className="flex h-12 w-12 items-center justify-center rounded-xl bg-primary mb-4">

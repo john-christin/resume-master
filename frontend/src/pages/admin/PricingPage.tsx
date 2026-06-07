@@ -69,15 +69,13 @@ export default function PricingPage() {
 
   return (
     <div className="space-y-6 max-w-lg">
-      <div className="flex items-center gap-3">
-        <div className="flex h-9 w-9 items-center justify-center rounded-lg bg-emerald-100 dark:bg-emerald-900/30">
-          <DollarSign className="h-5 w-5 text-emerald-600" />
+      <div className="flex items-center gap-3 mb-6">
+        <div className="h-10 w-10 rounded-xl bg-primary/10 flex items-center justify-center shrink-0">
+          <DollarSign className="h-5 w-5 text-primary" />
         </div>
         <div>
-          <h1 className="text-2xl font-bold">Token Pricing</h1>
-          <p className="text-muted-foreground text-sm mt-0.5">
-            Configure cost per 1K tokens for AI generation
-          </p>
+          <h1 className="text-xl font-bold leading-none">Pricing Plans</h1>
+          <p className="text-muted-foreground text-sm mt-0.5">Manage subscription tiers and pricing</p>
         </div>
       </div>
 

@@ -2,6 +2,7 @@ import {
   AlertCircle,
   Calendar,
   DollarSign,
+  LayoutDashboard,
   Phone,
   TrendingUp,
   Users,
@@ -103,7 +104,7 @@ function StatCard({
   colorText: string;
 }) {
   return (
-    <Card className="overflow-hidden border shadow-sm hover:shadow-md transition-shadow">
+    <Card className="overflow-hidden rounded-xl border-border/50 shadow-sm hover:shadow-md transition-shadow">
       <CardContent className="pt-5 pb-4">
         <div className={`inline-flex h-10 w-10 items-center justify-center rounded-2xl mb-4 ${colorBg}`}>
           <span className={colorText}>{icon}</span>
@@ -244,9 +245,14 @@ export default function AdminDashboardPage() {
   return (
     <div className="space-y-8">
       <div className="flex items-center justify-between">
-        <div>
-          <h1 className="text-2xl font-bold">Admin Dashboard</h1>
-          <p className="text-muted-foreground text-sm mt-0.5">Platform-wide analytics</p>
+        <div className="flex items-center gap-3">
+          <div className="h-10 w-10 rounded-xl bg-primary/10 flex items-center justify-center shrink-0">
+            <LayoutDashboard className="h-5 w-5 text-primary" />
+          </div>
+          <div>
+            <h1 className="text-xl font-bold leading-none">Dashboard</h1>
+            <p className="text-muted-foreground text-sm mt-0.5">System overview and analytics</p>
+          </div>
         </div>
         <Button variant="outline" asChild>
           <Link to="/admin/settings">Settings →</Link>
@@ -619,15 +625,15 @@ export default function AdminDashboardPage() {
           </CardHeader>
           <CardContent className="p-0">
             <Table>
-              <TableHeader>
+              <TableHeader className="bg-muted/30">
                 <TableRow>
-                  <TableHead>User</TableHead>
-                  <TableHead className="text-right">Today Apps</TableHead>
-                  <TableHead className="text-right">Today Cost</TableHead>
-                  <TableHead className="text-right">7d Apps</TableHead>
-                  <TableHead className="text-right">7d Cost</TableHead>
-                  <TableHead className="text-right">30d Apps</TableHead>
-                  <TableHead className="text-right">30d Cost</TableHead>
+                  <TableHead className="text-xs font-semibold uppercase tracking-wide">User</TableHead>
+                  <TableHead className="text-right text-xs font-semibold uppercase tracking-wide">Today Apps</TableHead>
+                  <TableHead className="text-right text-xs font-semibold uppercase tracking-wide">Today Cost</TableHead>
+                  <TableHead className="text-right text-xs font-semibold uppercase tracking-wide">7d Apps</TableHead>
+                  <TableHead className="text-right text-xs font-semibold uppercase tracking-wide">7d Cost</TableHead>
+                  <TableHead className="text-right text-xs font-semibold uppercase tracking-wide">30d Apps</TableHead>
+                  <TableHead className="text-right text-xs font-semibold uppercase tracking-wide">30d Cost</TableHead>
                 </TableRow>
               </TableHeader>
               <TableBody>

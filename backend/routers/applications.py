@@ -3,7 +3,7 @@ from pathlib import Path
 
 from fastapi import APIRouter, Body, Depends, HTTPException, Query
 from sqlalchemy import func, or_, select
-from sqlalchemy.orm import Session
+from sqlalchemy.orm import Session, selectinload
 
 from auth import get_approved_user
 from config import settings
@@ -33,6 +33,10 @@ def _app_to_summary(app: Application, db: Session, include_cost: bool = True) ->
         "location": app.location,
         "tech_stack_name": app.tech_stack_name,
         "call_scheduled": app.call_scheduled,
+        "call_id": app.call.id if app.call else None,
+        "call_stage": app.call.stage if app.call else None,
+        "call_status": app.call.status if app.call else None,
+        "call_scheduled_at": app.call.scheduled_at if app.call else None,
         "created_at": app.created_at,
         "user_username": app.user.username if app.user else None,
     }
@@ -55,7 +59,7 @@ def list_applications(
     db: Session = Depends(get_db),
 ):
     # Base query
-    stmt = select(Application)
+    stmt = select(Application).options(selectinload(Application.call))
     count_stmt = select(func.count(Application.id))
 
     # Role-based filtering

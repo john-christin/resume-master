@@ -5,6 +5,7 @@ import {
   LayoutDashboard,
   LogOut,
   Moon,
+  Phone,
   Search,
   Settings,
   Settings2,
@@ -39,6 +40,7 @@ const NAV_ICONS: Record<string, React.ReactNode> = {
   History: <History className="h-4 w-4" />,
   Search: <Search className="h-4 w-4" />,
   Users: <Users className="h-4 w-4" />,
+  Calls: <Phone className="h-4 w-4" />,
 };
 
 const ROLE_VARIANT: Record<
@@ -68,13 +70,16 @@ export default function Layout() {
     navItems.push({ path: "/profiles", label: "Profiles" });
     navItems.push({ path: "/generate", label: "Generate" });
     navItems.push({ path: "/history", label: "History" });
+    navItems.push({ path: "/calls", label: "Calls" });
   } else if (role === "caller") {
     navItems.push({ path: "/history", label: "Search" });
+    navItems.push({ path: "/calls", label: "Calls" });
   } else {
     navItems.push({ path: "/dashboard", label: "Dashboard" });
     navItems.push({ path: "/profiles", label: "Profiles" });
     navItems.push({ path: "/generate", label: "Generate" });
     navItems.push({ path: "/history", label: "History" });
+    navItems.push({ path: "/calls", label: "Calls" });
   }
 
   const initials = username
@@ -85,7 +90,7 @@ export default function Layout() {
     theme === "dark" ? Moon : theme === "light" ? Sun : SunMoon;
 
   return (
-    <div className="min-h-screen bg-background">
+    <div className="min-h-screen bg-muted/20">
       <nav className="sticky top-0 z-40 border-b bg-background/95 backdrop-blur supports-[backdrop-filter]:bg-background/60">
         <div className="max-w-7xl mx-auto px-4 sm:px-6">
           <div className="flex items-center justify-between h-14">
@@ -113,8 +118,8 @@ export default function Layout() {
                     to={item.path}
                     className={`flex items-center gap-1.5 px-3 py-1.5 rounded-md text-sm font-medium transition-colors ${
                       isActive
-                        ? "bg-accent text-accent-foreground"
-                        : "text-muted-foreground hover:text-foreground hover:bg-muted"
+                        ? "bg-primary/10 text-primary"
+                        : "text-muted-foreground hover:text-foreground hover:bg-muted/60"
                     }`}
                   >
                     {NAV_ICONS[item.label]}
@@ -215,7 +220,7 @@ export default function Layout() {
       {location.pathname.startsWith("/admin") ? (
         <Outlet />
       ) : (
-        <main className="max-w-7xl mx-auto px-4 sm:px-6 py-8">
+        <main className="max-w-7xl mx-auto px-4 sm:px-6 py-6">
           <Outlet />
         </main>
       )}

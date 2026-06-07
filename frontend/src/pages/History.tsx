@@ -5,6 +5,7 @@ import {
   ChevronDown,
   ChevronRight,
   ChevronUp,
+  ClipboardList,
   Copy,
   Download,
   FileText,
@@ -24,6 +25,9 @@ import {
   getApplications,
   updateCallStatus,
 } from "../api/applications";
+import { deleteCall, updateCall } from "../api/calls";
+import { getCallStages } from "../api/callStages";
+import CallFormDialog from "../components/kanban/CallFormDialog";
 import { getTechStacksPublic } from "../api/profile";
 import { getUserRole } from "../auth";
 import ApplicationChatSidebar from "../components/ApplicationChatSidebar";
@@ -37,6 +41,7 @@ import {
   Dialog,
   DialogContent,
   DialogDescription,
+  DialogFooter,
   DialogHeader,
   DialogTitle,
 } from "../components/ui/dialog";
@@ -60,6 +65,7 @@ import {
 import type {
   ApplicationDetail,
   ApplicationSummary,
+  CallStageConfig,
   PaginatedApplications,
   TechStack,
 } from "../types";
@@ -203,6 +209,14 @@ function CopyBtn({ value }: { value: string }) {
   );
 }
 
+const CALL_STATUS_CHIP: Record<string, { dot: string; bg: string; text: string; label: string }> = {
+  scheduled: { dot: "#3B82F6", bg: "bg-blue-50 dark:bg-blue-950/40",    text: "text-blue-700 dark:text-blue-300",    label: "Scheduled" },
+  pending:   { dot: "#F59E0B", bg: "bg-amber-50 dark:bg-amber-950/40",  text: "text-amber-700 dark:text-amber-300",  label: "Pending"   },
+  passed:    { dot: "#10B981", bg: "bg-emerald-50 dark:bg-emerald-950/40", text: "text-emerald-700 dark:text-emerald-300", label: "Passed" },
+  failed:    { dot: "#EF4444", bg: "bg-red-50 dark:bg-red-950/40",      text: "text-red-700 dark:text-red-300",      label: "Failed"    },
+  cancelled: { dot: "#9CA3AF", bg: "bg-muted",                           text: "text-muted-foreground",               label: "Cancelled" },
+};
+
 export default function History() {
   const navigate = useNavigate();
   const location = useLocation();
@@ -231,7 +245,18 @@ export default function History() {
   const [expandedDetail, setExpandedDetail] = useState<ApplicationDetail | null>(null);
   const [expandLoading, setExpandLoading] = useState(false);
 
+  const [callStages, setCallStages] = useState<CallStageConfig[]>([]);
   const [callStatus, setCallStatus] = useState<Record<string, boolean>>({});
+  const [callDialogApp, setCallDialogApp] = useState<{
+    id: string;
+    jobTitle: string;
+    company?: string;
+  } | null>(null);
+  const [callDeleteTarget, setCallDeleteTarget] = useState<{
+    appId: string;
+    callId: string;
+  } | null>(null);
+  const [callDeleteLoading, setCallDeleteLoading] = useState(false);
   const [formatPicker, setFormatPicker] = useState<FormatPicker | null>(null);
   const [toast, setToast] = useState<string | null>(null);
   const [chatApp, setChatApp] = useState<{ id: string; jobTitle: string; company?: string } | null>(null);
@@ -245,6 +270,12 @@ export default function History() {
   useEffect(() => {
     getTechStacksPublic()
       .then((res) => setTechStacks(res.data))
+      .catch(() => {});
+  }, []);
+
+  useEffect(() => {
+    getCallStages()
+      .then((res) => setCallStages(res.data))
       .catch(() => {});
   }, []);
 
@@ -310,11 +341,40 @@ export default function History() {
     }
   };
 
-  const handleCallToggle = async (appId: string, current: boolean) => {
-    const next = !current;
-    setCallStatus((p) => ({ ...p, [appId]: next }));
-    try { await updateCallStatus(appId, next); }
-    catch { setCallStatus((p) => ({ ...p, [appId]: current })); }
+  const handleCallToggle = (app: ApplicationSummary, current: boolean) => {
+    if (!current) {
+      if (app.call_id) {
+        // A closed call exists — un-close it (re-open on the board)
+        handleReopenCall(app);
+      } else {
+        setCallDialogApp({ id: app.id, jobTitle: app.job_title, company: app.company });
+      }
+    } else {
+      if (!app.call_id) return;
+      setCallDeleteTarget({ appId: app.id, callId: app.call_id });
+    }
+  };
+
+  const handleReopenCall = async (app: ApplicationSummary) => {
+    if (!app.call_id) return;
+    setCallStatus((p) => ({ ...p, [app.id]: true }));
+    try {
+      await updateCall(app.call_id, { is_closed: false });
+    } catch {
+      setCallStatus((p) => ({ ...p, [app.id]: false }));
+    }
+  };
+
+  const handleCallDeleteConfirm = async () => {
+    if (!callDeleteTarget) return;
+    setCallDeleteLoading(true);
+    try {
+      await updateCall(callDeleteTarget.callId, { is_closed: true });
+      setCallStatus((p) => ({ ...p, [callDeleteTarget.appId]: false }));
+      setCallDeleteTarget(null);
+    } finally {
+      setCallDeleteLoading(false);
+    }
   };
 
   const handleFormatPick = (fmt: "pdf" | "docx") => {
@@ -356,13 +416,16 @@ export default function History() {
   return (
     <div className="space-y-6">
       <div className="flex items-center justify-between">
-        <div>
-          <h1 className="text-2xl font-bold">
-            {isCaller ? "Search Applications" : "Application History"}
-          </h1>
-          <p className="text-muted-foreground text-sm mt-0.5">
-            {data?.total ?? 0} application{data?.total !== 1 ? "s" : ""}
-          </p>
+        <div className="flex items-center gap-3">
+          <div className="h-10 w-10 rounded-xl bg-primary/10 flex items-center justify-center shrink-0">
+            <ClipboardList className="h-5 w-5 text-primary" />
+          </div>
+          <div>
+            <h1 className="text-xl font-bold leading-none">
+              {isCaller ? "Search Applications" : "Application History"}
+            </h1>
+            <p className="text-muted-foreground text-sm mt-0.5">Track and manage your job applications</p>
+          </div>
         </div>
         {!isCaller && (
           <Button onClick={() => navigate("/generate")}>
@@ -459,33 +522,33 @@ export default function History() {
         <>
           <Card className="overflow-hidden">
             <Table>
-              <TableHeader>
+              <TableHeader className="bg-muted/30">
                 <TableRow>
                   <TableHead
-                    className="cursor-pointer select-none hover:text-foreground"
+                    className="text-xs font-semibold uppercase tracking-wide text-muted-foreground cursor-pointer select-none hover:text-foreground"
                     onClick={() => handleSort("job_title")}
                   >
                     Job Title <SortIcon column="job_title" />
                   </TableHead>
                   <TableHead
-                    className="cursor-pointer select-none hover:text-foreground"
+                    className="text-xs font-semibold uppercase tracking-wide text-muted-foreground cursor-pointer select-none hover:text-foreground"
                     onClick={() => handleSort("company")}
                   >
                     Company <SortIcon column="company" />
                   </TableHead>
-                  <TableHead>Profile</TableHead>
+                  <TableHead className="text-xs font-semibold uppercase tracking-wide text-muted-foreground">Profile</TableHead>
                   <TableHead
-                    className="cursor-pointer select-none hover:text-foreground"
+                    className="text-xs font-semibold uppercase tracking-wide text-muted-foreground cursor-pointer select-none hover:text-foreground"
                     onClick={() => handleSort("created_at")}
                   >
                     Date <SortIcon column="created_at" />
                   </TableHead>
                   {!isCaller && (
-                    <TableHead className="text-center">
+                    <TableHead className="text-xs font-semibold uppercase tracking-wide text-muted-foreground text-center">
                       <Phone className="h-3.5 w-3.5 inline" />
                     </TableHead>
                   )}
-                  <TableHead className="text-right">Actions</TableHead>
+                  <TableHead className="text-xs font-semibold uppercase tracking-wide text-muted-foreground text-right">Actions</TableHead>
                 </TableRow>
               </TableHeader>
               <TableBody>
@@ -495,11 +558,18 @@ export default function History() {
                       ? callStatus[app.id]
                       : (app.call_scheduled ?? false);
                   const isExpanded = expandedId === app.id;
+                  const callStageName = app.call_stage
+                    ? (callStages.find((s) => s.value === app.call_stage)?.name ?? app.call_stage)
+                    : null;
+                  const callChip = CALL_STATUS_CHIP[app.call_status ?? "scheduled"] ?? CALL_STATUS_CHIP.scheduled;
+                  const callDateStr = app.call_scheduled_at
+                    ? new Date(app.call_scheduled_at).toLocaleDateString(undefined, { month: "short", day: "numeric" })
+                    : null;
                   return (
                     <>
                       <TableRow
                         key={app.id}
-                        className={`cursor-pointer ${isExpanded ? "bg-accent/30" : ""}`}
+                        className={`cursor-pointer hover:bg-muted/40 transition-colors ${isExpanded ? "bg-accent/30" : ""}`}
                         onClick={() => handleRowClick(app.id)}
                       >
                         <TableCell className="font-medium">
@@ -533,13 +603,31 @@ export default function History() {
                             className="text-center"
                             onClick={(e) => e.stopPropagation()}
                           >
-                            <Switch
-                              checked={scheduled}
-                              onCheckedChange={() =>
-                                handleCallToggle(app.id, scheduled)
-                              }
-                              className="scale-75"
-                            />
+                            <div className="flex flex-col items-center gap-1.5">
+                              <Switch
+                                checked={scheduled}
+                                onCheckedChange={() =>
+                                  handleCallToggle(app, scheduled)
+                                }
+                                className="scale-75"
+                              />
+                              {scheduled && callStageName && (
+                                <div className={`inline-flex items-center gap-1 rounded-md px-1.5 py-0.5 ${callChip.bg} max-w-[140px]`}>
+                                  <span
+                                    className="h-1.5 w-1.5 rounded-full shrink-0"
+                                    style={{ backgroundColor: callChip.dot }}
+                                  />
+                                  <span className={`text-[10px] font-medium leading-none truncate ${callChip.text}`}>
+                                    {callStageName}
+                                  </span>
+                                </div>
+                              )}
+                              {scheduled && callStageName && (
+                                <span className={`text-[10px] font-semibold leading-none ${callChip.text}`}>
+                                  {callChip.label}{callDateStr ? ` · ${callDateStr}` : ""}
+                                </span>
+                              )}
+                            </div>
                           </TableCell>
                         )}
                         <TableCell
@@ -618,7 +706,7 @@ export default function History() {
                       </TableRow>
 
                       {isExpanded && (
-                        <TableRow key={`${app.id}-detail`} className="bg-muted/20 hover:bg-muted/20">
+                        <TableRow key={`${app.id}-detail`} className="bg-muted/30 hover:bg-muted/30">
                           <TableCell
                             colSpan={isCaller ? 5 : 6}
                             className="px-6 py-4"
@@ -785,6 +873,64 @@ export default function History() {
           )}
         </>
       )}
+
+      {/* Call schedule dialog (toggle ON) */}
+      {callDialogApp && (
+        <CallFormDialog
+          open={!!callDialogApp}
+          onOpenChange={(o) => { if (!o) setCallDialogApp(null); }}
+          applicationId={callDialogApp.id}
+          jobTitle={callDialogApp.jobTitle}
+          company={callDialogApp.company}
+          stages={callStages}
+          onSuccess={(call) => {
+            setCallStatus((p) => ({ ...p, [callDialogApp.id]: true }));
+            setCallDialogApp(null);
+            // Update the call_id in local data so toggling OFF works immediately
+            if (data) {
+              setData({
+                ...data,
+                items: data.items.map((a) =>
+                  a.id === callDialogApp.id
+                    ? { ...a, call_scheduled: true, call_id: call.id, call_stage: call.stage, call_status: call.status, call_scheduled_at: call.scheduled_at ?? null }
+                    : a
+                ),
+              });
+            }
+          }}
+        />
+      )}
+
+      {/* Call delete confirmation dialog (toggle OFF) */}
+      <Dialog
+        open={!!callDeleteTarget}
+        onOpenChange={(o) => { if (!o) setCallDeleteTarget(null); }}
+      >
+        <DialogContent className="max-w-xs">
+          <DialogHeader>
+            <DialogTitle>Close Call?</DialogTitle>
+            <DialogDescription>
+              This will hide the call from the board. You can re-open it by toggling the switch again.
+            </DialogDescription>
+          </DialogHeader>
+          <DialogFooter>
+            <Button
+              variant="ghost"
+              onClick={() => setCallDeleteTarget(null)}
+              disabled={callDeleteLoading}
+            >
+              Cancel
+            </Button>
+            <Button
+              variant="destructive"
+              onClick={handleCallDeleteConfirm}
+              disabled={callDeleteLoading}
+            >
+              {callDeleteLoading ? "Closing..." : "Close Call"}
+            </Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
 
       {/* Format picker dialog */}
       <Dialog

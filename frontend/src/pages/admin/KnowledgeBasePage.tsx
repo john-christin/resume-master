@@ -124,15 +124,13 @@ export default function KnowledgeBasePage() {
   return (
     <div className="space-y-6">
       <div className="flex items-center justify-between flex-wrap gap-3">
-        <div className="flex items-center gap-3">
-          <div className="flex h-9 w-9 items-center justify-center rounded-lg bg-cyan-100 dark:bg-cyan-900/30">
-            <BookOpen className="h-5 w-5 text-cyan-600" />
+        <div className="flex items-center gap-3 mb-6">
+          <div className="h-10 w-10 rounded-xl bg-primary/10 flex items-center justify-center shrink-0">
+            <BookOpen className="h-5 w-5 text-primary" />
           </div>
           <div>
-            <h1 className="text-2xl font-bold">Knowledge Base</h1>
-            <p className="text-muted-foreground text-sm mt-0.5">
-              AI instructions and guidelines per tech stack
-            </p>
+            <h1 className="text-xl font-bold leading-none">Knowledge Base</h1>
+            <p className="text-muted-foreground text-sm mt-0.5">Manage knowledge base articles and content</p>
           </div>
         </div>
         <Button onClick={() => openModal()}>

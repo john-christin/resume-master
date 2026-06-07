@@ -4,6 +4,7 @@ import {
   Calendar,
   DollarSign,
   History,
+  LayoutDashboard,
   Phone,
   TrendingUp,
   Wand2,
@@ -93,7 +94,7 @@ function StatCard({
   colorText: string;
 }) {
   return (
-    <Card className="overflow-hidden border shadow-sm hover:shadow-md transition-shadow">
+    <Card className="overflow-hidden rounded-xl border-border/50 shadow-sm hover:shadow-md transition-shadow">
       <CardContent className="pt-5 pb-4">
         <div className={`inline-flex h-10 w-10 items-center justify-center rounded-2xl mb-4 ${colorBg}`}>
           <span className={colorText}>{icon}</span>
@@ -158,11 +159,14 @@ export default function BidderDashboard() {
   return (
     <div className="space-y-8">
       <div className="flex items-center justify-between">
-        <div>
-          <h1 className="text-2xl font-bold">Dashboard</h1>
-          <p className="text-muted-foreground text-sm mt-0.5">
-            Your application activity at a glance
-          </p>
+        <div className="flex items-center gap-3">
+          <div className="h-10 w-10 rounded-xl bg-primary/10 flex items-center justify-center shrink-0">
+            <LayoutDashboard className="h-5 w-5 text-primary" />
+          </div>
+          <div>
+            <h1 className="text-xl font-bold leading-none">My Dashboard</h1>
+            <p className="text-muted-foreground text-sm mt-0.5">Your application activity overview</p>
+          </div>
         </div>
         <div className="flex gap-2">
           <Button asChild>
@@ -426,12 +430,12 @@ export default function BidderDashboard() {
           </CardHeader>
           <CardContent className="p-0">
             <Table>
-              <TableHeader>
+              <TableHeader className="bg-muted/30">
                 <TableRow>
-                  <TableHead>Job Title</TableHead>
-                  <TableHead>Company</TableHead>
-                  <TableHead>Date</TableHead>
-                  <TableHead>Cost</TableHead>
+                  <TableHead className="text-xs font-semibold uppercase tracking-wide">Job Title</TableHead>
+                  <TableHead className="text-xs font-semibold uppercase tracking-wide">Company</TableHead>
+                  <TableHead className="text-xs font-semibold uppercase tracking-wide">Date</TableHead>
+                  <TableHead className="text-xs font-semibold uppercase tracking-wide">Cost</TableHead>
                 </TableRow>
               </TableHeader>
               <TableBody>

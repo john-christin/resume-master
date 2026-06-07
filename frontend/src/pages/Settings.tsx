@@ -4,6 +4,7 @@ import {
   Loader2,
   Moon,
   Palette,
+  Settings2,
   Sun,
   SunMoon,
   User,
@@ -109,12 +110,17 @@ export default function Settings() {
   ];
 
   return (
-    <div className="max-w-xl space-y-8">
-      <div>
-        <h1 className="text-2xl font-bold">Settings</h1>
-        <p className="text-muted-foreground text-sm mt-0.5">
-          Manage your account preferences
-        </p>
+    <div className="max-w-xl space-y-6">
+      <div className="flex items-center gap-3">
+        <div className="h-10 w-10 rounded-xl bg-primary/10 flex items-center justify-center shrink-0">
+          <Settings2 className="h-5 w-5 text-primary" />
+        </div>
+        <div>
+          <h1 className="text-xl font-bold leading-none">Settings</h1>
+          <p className="text-muted-foreground text-sm mt-0.5">
+            Manage your account preferences
+          </p>
+        </div>
       </div>
 
       {/* Appearance */}

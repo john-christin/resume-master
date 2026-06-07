@@ -7,6 +7,7 @@ import {
   User,
   Wand2,
 } from "lucide-react";
+
 import { useEffect, useState } from "react";
 import { useLocation, useNavigate } from "react-router-dom";
 import { submitBatchJob } from "../api/batch_jobs";
@@ -301,11 +302,16 @@ export default function JobInput() {
 
   return (
     <div className="max-w-3xl mx-auto space-y-6">
-      <div>
-        <h1 className="text-2xl font-bold">Generate Application</h1>
-        <p className="text-muted-foreground text-sm mt-0.5">
-          Tailor your resume and generate a cover letter for a job
-        </p>
+      <div className="flex items-center gap-3">
+        <div className="h-10 w-10 rounded-xl bg-primary/10 flex items-center justify-center shrink-0">
+          <Wand2 className="h-5 w-5 text-primary" />
+        </div>
+        <div>
+          <h1 className="text-xl font-bold leading-none">Generate Application</h1>
+          <p className="text-muted-foreground text-sm mt-0.5">
+            Tailor your resume and generate a cover letter for a job
+          </p>
+        </div>
       </div>
 
       {error && (

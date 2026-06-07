@@ -3,6 +3,7 @@ import {
   CheckCircle2,
   ChevronRight,
   Clock,
+  Layers,
   Loader2,
   XCircle,
 } from "lucide-react";
@@ -88,17 +89,22 @@ export default function BatchJobStatusPage() {
 
   return (
     <div className="max-w-2xl mx-auto space-y-6">
-      <div className="flex items-center justify-between">
-        <div>
-          <h1 className="text-2xl font-bold">Batch Generation</h1>
-          {job?.profile_name && (
-            <p className="text-sm text-muted-foreground mt-0.5">
-              Profile:{" "}
-              <span className="font-medium text-foreground">
-                {job.profile_name}
-              </span>
-            </p>
-          )}
+      <div className="flex items-center justify-between gap-4">
+        <div className="flex items-center gap-3">
+          <div className="h-10 w-10 rounded-xl bg-primary/10 flex items-center justify-center shrink-0">
+            <Layers className="h-5 w-5 text-primary" />
+          </div>
+          <div>
+            <h1 className="text-xl font-bold leading-none">Batch Generation</h1>
+            {job?.profile_name && (
+              <p className="text-sm text-muted-foreground mt-0.5">
+                Profile:{" "}
+                <span className="font-medium text-foreground">
+                  {job.profile_name}
+                </span>
+              </p>
+            )}
+          </div>
         </div>
         {job && <StatusBadge status={job.status} />}
       </div>

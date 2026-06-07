@@ -525,13 +525,13 @@ export default function DocStylesPage() {
   return (
     <div className="space-y-6">
       <div className="flex items-center justify-between">
-        <div className="flex items-center gap-3">
-          <div className="flex h-9 w-9 items-center justify-center rounded-lg bg-blue-100 dark:bg-blue-900/30">
-            <FileText className="h-5 w-5 text-blue-600" />
+        <div className="flex items-center gap-3 mb-6">
+          <div className="h-10 w-10 rounded-xl bg-primary/10 flex items-center justify-center shrink-0">
+            <FileText className="h-5 w-5 text-primary" />
           </div>
           <div>
-            <h1 className="text-2xl font-bold">Doc Styles</h1>
-            <p className="text-muted-foreground text-sm mt-0.5">Manage resume document formatting styles</p>
+            <h1 className="text-xl font-bold leading-none">Document Styles</h1>
+            <p className="text-muted-foreground text-sm mt-0.5">Manage resume and cover letter templates</p>
           </div>
         </div>
         <Button onClick={openCreate}>

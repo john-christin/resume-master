@@ -20,6 +20,10 @@ class ApplicationSummary(BaseModel):
     completion_tokens: int | None = None
     total_cost: float | None = None
     call_scheduled: bool = False
+    call_id: str | None = None
+    call_stage: str | None = None
+    call_status: str | None = None
+    call_scheduled_at: datetime | None = None
     created_at: datetime
 
     model_config = {"from_attributes": True}
