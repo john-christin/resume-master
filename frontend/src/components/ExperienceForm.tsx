@@ -135,9 +135,10 @@ export default function ExperienceForm({
               placeholder={"- Built microservices handling 10K req/sec\n- Led migration to event-driven architecture"}
               value={exp.description}
               onChange={(e) => update(index, "description", e.target.value)}
-              rows={4}
+              rows={6}
               readOnly={readOnly}
               required
+              className="resize-y"
             />
           </div>
         </div>

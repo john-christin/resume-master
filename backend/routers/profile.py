@@ -53,6 +53,8 @@ def _profile_to_response(profile: Profile, current_user_id: str) -> dict:
         "custom_prompt": profile.custom_prompt,
         "doc_style_id": profile.doc_style_id,
         "show_skills": profile.show_skills,
+        "check_clearance": profile.check_clearance,
+        "security_clearance": profile.security_clearance,
         "educations": profile.educations,
         "experiences": profile.experiences,
         "is_owner": profile.owner_id == current_user_id,
@@ -151,6 +153,8 @@ def create_profile(
         custom_prompt=data.custom_prompt or None,
         doc_style_id=data.doc_style_id or None,
         show_skills=data.show_skills,
+        check_clearance=data.check_clearance,
+        security_clearance=data.security_clearance or None,
     )
 
     for edu in data.educations:
@@ -200,6 +204,8 @@ def update_profile(
     profile.custom_prompt = data.custom_prompt or None
     profile.doc_style_id = data.doc_style_id or None
     profile.show_skills = data.show_skills
+    profile.check_clearance = data.check_clearance
+    profile.security_clearance = data.security_clearance or None
 
     profile.educations.clear()
     for edu in data.educations:

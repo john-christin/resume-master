@@ -40,6 +40,8 @@ class Profile(Base):
         index=True,
     )
     show_skills: Mapped[bool] = mapped_column(Boolean, default=True, nullable=False)
+    check_clearance: Mapped[bool] = mapped_column(Boolean, default=False, nullable=False)
+    security_clearance: Mapped[str | None] = mapped_column(String(50), nullable=True)
     created_at: Mapped[datetime] = mapped_column(
         DateTime, default=datetime.utcnow
     )

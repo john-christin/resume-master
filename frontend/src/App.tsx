@@ -4,6 +4,7 @@ import AdminLayout from "./components/AdminLayout";
 import Layout from "./components/Layout";
 import ProtectedRoute from "./components/ProtectedRoute";
 import AdminDashboardPage from "./pages/AdminDashboardPage";
+import BannedCompaniesPage from "./pages/admin/BannedCompaniesPage";
 import KnowledgeBasePage from "./pages/admin/KnowledgeBasePage";
 import LogsPage from "./pages/admin/LogsPage";
 import ModelsPage from "./pages/admin/ModelsPage";
@@ -89,6 +90,7 @@ function App() {
                 <Route path="doc-styles" element={<DocStylesPage />} />
                 <Route path="kb" element={<KnowledgeBasePage />} />
                 <Route path="models" element={<ModelsPage />} />
+                <Route path="banned-companies" element={<BannedCompaniesPage />} />
                 <Route path="logs" element={<LogsPage />} />
               </Route>
             </Route>

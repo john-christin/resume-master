@@ -216,3 +216,23 @@ class SystemLogItem(BaseModel):
     created_at: datetime
 
     model_config = {"from_attributes": True}
+
+
+class BannedCompanyCreate(BaseModel):
+    name: str
+    description: str | None = None
+
+
+class BannedCompanyUpdate(BaseModel):
+    name: str | None = None
+    description: str | None = None
+
+
+class BannedCompanyResponse(BaseModel):
+    id: str
+    name: str
+    description: str | None = None
+    created_at: datetime
+
+    model_config = {"from_attributes": True}
+

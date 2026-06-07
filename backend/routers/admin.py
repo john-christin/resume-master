@@ -9,6 +9,7 @@ from database import get_db
 from services import log_service
 from models.ai_model_config import AIModelConfig
 from models.application import Application
+from models.banned_company import BannedCompany
 from services import ai_service
 from models.knowledge_base import KnowledgeBase
 from models.profile import Profile
@@ -22,6 +23,9 @@ from schemas.admin import (
     AIModelConfigCreate,
     AIModelConfigResponse,
     AIModelConfigUpdate,
+    BannedCompanyCreate,
+    BannedCompanyResponse,
+    BannedCompanyUpdate,
     DailyStatPoint,
     DashboardStats,
     KnowledgeBaseCreate,
@@ -1045,3 +1049,70 @@ def count_logs(
     if to_date:
         stmt = stmt.where(SystemLog.created_at < to_date + timedelta(days=1))
     return {"count": db.scalar(stmt) or 0}
+
+
+# ── Banned Companies ──────────────────────────────────────────────────────────
+
+@router.get("/banned-companies", response_model=list[BannedCompanyResponse])
+def list_banned_companies(
+    current_user: User = Depends(_admin_only),
+    db: Session = Depends(get_db),
+):
+    return db.scalars(
+        select(BannedCompany).order_by(BannedCompany.name)
+    ).all()
+
+
+@router.post("/banned-companies", response_model=BannedCompanyResponse, status_code=201)
+def create_banned_company(
+    data: BannedCompanyCreate,
+    current_user: User = Depends(_admin_only),
+    db: Session = Depends(get_db),
+):
+    existing = db.scalars(
+        select(BannedCompany).where(
+            func.lower(BannedCompany.name) == data.name.strip().lower()
+        )
+    ).first()
+    if existing:
+        raise HTTPException(status_code=409, detail="Company is already banned")
+    entry = BannedCompany(
+        name=data.name.strip(),
+        description=data.description or None,
+    )
+    db.add(entry)
+    db.commit()
+    db.refresh(entry)
+    return entry
+
+
+@router.put("/banned-companies/{entry_id}", response_model=BannedCompanyResponse)
+def update_banned_company(
+    entry_id: str,
+    data: BannedCompanyUpdate,
+    current_user: User = Depends(_admin_only),
+    db: Session = Depends(get_db),
+):
+    entry = db.get(BannedCompany, entry_id)
+    if not entry:
+        raise HTTPException(status_code=404, detail="Not found")
+    if data.name is not None:
+        entry.name = data.name.strip()
+    if data.description is not None:
+        entry.description = data.description or None
+    db.commit()
+    db.refresh(entry)
+    return entry
+
+
+@router.delete("/banned-companies/{entry_id}", status_code=204)
+def delete_banned_company(
+    entry_id: str,
+    current_user: User = Depends(_admin_only),
+    db: Session = Depends(get_db),
+):
+    entry = db.get(BannedCompany, entry_id)
+    if not entry:
+        raise HTTPException(status_code=404, detail="Not found")
+    db.delete(entry)
+    db.commit()

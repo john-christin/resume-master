@@ -1,5 +1,5 @@
 import api from "./client";
-import type { AIModelConfig, KnowledgeBase, TechStack, TokenPricing, UserListItem } from "../types";
+import type { AIModelConfig, BannedCompany, KnowledgeBase, TechStack, TokenPricing, UserListItem } from "../types";
 
 export const getUsers = (status?: string, search?: string) => {
   const params = new URLSearchParams();
@@ -273,3 +273,17 @@ export const getAdminDailyCallStats = (from?: string, to?: string) =>
 
 export const getAdminPerUserDailyCallStats = (from?: string, to?: string) =>
   api.get<UserDailyPoint[]>(`/api/admin/stats/per-user-daily-calls${_buildDateParams(from, to)}`);
+
+// ── Banned Companies ──────────────────────────────────────────────────────────
+
+export const getBannedCompanies = () =>
+  api.get<BannedCompany[]>("/api/admin/banned-companies");
+
+export const createBannedCompany = (name: string, description?: string) =>
+  api.post<BannedCompany>("/api/admin/banned-companies", { name, description });
+
+export const updateBannedCompany = (id: string, data: { name?: string; description?: string }) =>
+  api.put<BannedCompany>(`/api/admin/banned-companies/${id}`, data);
+
+export const deleteBannedCompany = (id: string) =>
+  api.delete(`/api/admin/banned-companies/${id}`);

@@ -99,3 +99,28 @@ class CompanyMatch(BaseModel):
 
 class CompanyCheckResponse(BaseModel):
     matches: list[CompanyMatch]
+
+
+class ClearanceCheckRequest(BaseModel):
+    profile_id: str
+    job_description: str
+
+
+class ClearanceCheckResponse(BaseModel):
+    allowed: bool
+    reason: str | None = None
+    detected_clearance: str | None = None
+
+
+class BannedCompanyCheckRequest(BaseModel):
+    companies: list[str]
+
+
+class BannedCompanyMatch(BaseModel):
+    company: str
+    banned_name: str
+    description: str | None = None
+
+
+class BannedCompanyCheckResponse(BaseModel):
+    matches: list[BannedCompanyMatch]

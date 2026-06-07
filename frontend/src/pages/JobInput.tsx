@@ -1,8 +1,11 @@
 import {
   AlertTriangle,
+  Ban,
   ChevronDown,
   Layers,
+  Pencil,
   Plus,
+  ShieldAlert,
   Trash2,
   User,
   Wand2,
@@ -11,7 +14,7 @@ import {
 import { useEffect, useState } from "react";
 import { useLocation, useNavigate } from "react-router-dom";
 import { submitBatchJob } from "../api/batch_jobs";
-import { checkCompanies, generateApplication } from "../api/generate";
+import { checkBannedCompanies, checkClearance, checkCompanies, generateApplication } from "../api/generate";
 import { getProfiles } from "../api/profile";
 import LoadingSpinner from "../components/LoadingSpinner";
 import { Alert, AlertDescription } from "../components/ui/alert";
@@ -94,6 +97,7 @@ export default function JobInput() {
   );
   const [batchMode, setBatchMode] = useState(false);
   const [jobs, setJobs] = useState<JobDescriptionEntry[]>([{ ...emptyJob }]);
+  const [singleClearanceError, setSingleClearanceError] = useState<string | null>(null);
   const [loading, setLoading] = useState(false);
   const [profilesLoading, setProfilesLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
@@ -110,6 +114,14 @@ export default function JobInput() {
   const [expandedMatches, setExpandedMatches] = useState<Set<number>>(
     new Set()
   );
+
+  // Batch modal state
+  const [jobModalOpen, setJobModalOpen] = useState(false);
+  const [editingIndex, setEditingIndex] = useState<number | null>(null);
+  const [draftJob, setDraftJob] = useState<JobDescriptionEntry>({ ...emptyJob });
+  const [modalClearanceError, setModalClearanceError] = useState<string | null>(null);
+  const [modalBannedError, setModalBannedError] = useState<string | null>(null);
+  const [modalValidating, setModalValidating] = useState(false);
 
   useEffect(() => {
     getProfiles(true)
@@ -132,13 +144,69 @@ export default function JobInput() {
       prev.map((j, i) => (i === index ? { ...j, [field]: value } : j))
     );
 
-  const addJob = () => {
-    if (jobs.length >= BATCH_LIMIT) return;
-    setJobs((prev) => [...prev, { ...emptyJob }]);
-  };
-
   const removeJob = (index: number) =>
     setJobs((prev) => prev.filter((_, i) => i !== index));
+
+  const openAddModal = () => {
+    setDraftJob({ ...emptyJob });
+    setEditingIndex(null);
+    setModalClearanceError(null);
+    setModalBannedError(null);
+    setJobModalOpen(true);
+  };
+
+  const openEditModal = (index: number) => {
+    setDraftJob({ ...jobs[index] });
+    setEditingIndex(index);
+    setModalClearanceError(null);
+    setModalBannedError(null);
+    setJobModalOpen(true);
+  };
+
+  const selectedProfile = profiles.find((p) => p.id === selectedProfileId) ?? null;
+
+  const handleModalAdd = async () => {
+    if (!draftJob.job_title.trim() || !draftJob.job_description.trim()) return;
+    setModalClearanceError(null);
+    setModalBannedError(null);
+
+    setModalValidating(true);
+    try {
+      // Banned company check
+      if (draftJob.company?.trim()) {
+        const bannedRes = await checkBannedCompanies([draftJob.company.trim()]);
+        if (bannedRes.data.matches.length > 0) {
+          const match = bannedRes.data.matches[0];
+          setModalBannedError(
+            match.description
+              ? `"${match.banned_name}" is banned: ${match.description}`
+              : `"${match.banned_name}" is on the banned companies list.`
+          );
+          return;
+        }
+      }
+
+      // Clearance check
+      if (selectedProfileId && selectedProfile?.check_clearance) {
+        const clearRes = await checkClearance(selectedProfileId, draftJob.job_description);
+        if (!clearRes.data.allowed) {
+          setModalClearanceError(clearRes.data.reason ?? "Security clearance check failed.");
+          return;
+        }
+      }
+    } catch {
+      // proceed silently if checks fail
+    } finally {
+      setModalValidating(false);
+    }
+
+    if (editingIndex !== null) {
+      setJobs((prev) => prev.map((j, i) => (i === editingIndex ? draftJob : j)));
+    } else {
+      setJobs((prev) => [...prev, draftJob]);
+    }
+    setJobModalOpen(false);
+  };
 
   const detectWorkMode = (text: string): string | null => {
     const lower = text.toLowerCase();
@@ -173,7 +241,7 @@ export default function JobInput() {
     setLoading(true);
     setError(null);
     try {
-      if (batchMode && activeJobs.length > 1) {
+      if (batchMode) {
         const res = await submitBatchJob({
           profile_id: selectedProfileId,
           jobs: activeJobs.map((j) => ({
@@ -263,12 +331,47 @@ export default function JobInput() {
     setExpandedMatches(new Set());
   };
 
-  const handleSubmit = async (e: React.FormEvent<HTMLFormElement>) => {
+  const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
     if (!selectedProfileId) {
       setError("Please select a profile");
       return;
     }
+    if (batchMode && jobs.length === 0) {
+      setError("Add at least one job before generating.");
+      return;
+    }
+    setSingleClearanceError(null);
+
+    if (!batchMode) {
+      try {
+        // Banned company check
+        if (jobs[0].company?.trim()) {
+          const bannedRes = await checkBannedCompanies([jobs[0].company.trim()]);
+          if (bannedRes.data.matches.length > 0) {
+            const match = bannedRes.data.matches[0];
+            setSingleClearanceError(
+              match.description
+                ? `"${match.banned_name}" is banned: ${match.description}`
+                : `"${match.banned_name}" is on the banned companies list.`
+            );
+            return;
+          }
+        }
+
+        // Clearance check
+        if (selectedProfile?.check_clearance) {
+          const clearRes = await checkClearance(selectedProfileId, jobs[0].job_description);
+          if (!clearRes.data.allowed) {
+            setSingleClearanceError(clearRes.data.reason ?? "Security clearance check failed.");
+            return;
+          }
+        }
+      } catch {
+        // proceed silently if checks fail
+      }
+    }
+
     for (let i = 0; i < jobs.length; i++) {
       const workMode = detectWorkMode(jobs[i].job_description);
       if (workMode) {
@@ -292,7 +395,7 @@ export default function JobInput() {
     return (
       <LoadingSpinner
         message={
-          batchMode && jobs.length > 1
+          batchMode
             ? "Submitting batch job..."
             : "Tailoring your resume and generating cover letter… This may take 10–15 seconds."
         }
@@ -354,7 +457,12 @@ export default function JobInput() {
                     checked={batchMode}
                     onCheckedChange={(checked) => {
                       setBatchMode(checked);
-                      if (!checked && jobs.length > 1) setJobs([jobs[0]]);
+                      setSingleClearanceError(null);
+                      if (checked) {
+                        setJobs([]);
+                      } else {
+                        setJobs([{ ...emptyJob }]);
+                      }
                     }}
                   />
                 </div>
@@ -397,7 +505,7 @@ export default function JobInput() {
                     type="button"
                     variant="outline"
                     size="sm"
-                    onClick={addJob}
+                    onClick={openAddModal}
                     disabled={jobs.length >= BATCH_LIMIT}
                   >
                     <Plus className="h-3.5 w-3.5" />
@@ -406,77 +514,54 @@ export default function JobInput() {
                 </div>
               </div>
 
-              {jobs.map((job, index) => {
-                const titleWarn = jobTitleWarning(job.job_title);
-                const compWarn = companyWarning(job.company || "");
-                return (
-                  <Card key={index}>
-                    <CardHeader className="pb-3">
-                      <div className="flex items-center justify-between">
-                        <CardTitle className="text-sm text-muted-foreground">
-                          Job #{index + 1}
-                        </CardTitle>
+              {jobs.length === 0 && (
+                <Card className="border-dashed">
+                  <CardContent className="py-10 text-center text-muted-foreground text-sm">
+                    No jobs added yet. Click <strong>Add Job</strong> to get started.
+                  </CardContent>
+                </Card>
+              )}
+
+              {jobs.map((job, index) => (
+                <Card key={index}>
+                  <CardHeader className="pb-2">
+                    <div className="flex items-center justify-between">
+                      <CardTitle className="text-sm text-muted-foreground">
+                        Job #{index + 1}
+                      </CardTitle>
+                      <div className="flex items-center gap-1">
+                        <Button
+                          type="button"
+                          variant="ghost"
+                          size="icon"
+                          className="h-7 w-7 text-muted-foreground hover:text-foreground"
+                          onClick={() => openEditModal(index)}
+                        >
+                          <Pencil className="h-3.5 w-3.5" />
+                        </Button>
                         <Button
                           type="button"
                           variant="ghost"
                           size="icon"
                           className="h-7 w-7 text-muted-foreground hover:text-destructive"
                           onClick={() => removeJob(index)}
-                          disabled={jobs.length === 1}
                         >
                           <Trash2 className="h-3.5 w-3.5" />
                         </Button>
                       </div>
-                    </CardHeader>
-                    <CardContent className="space-y-3">
-                      <div className="grid grid-cols-1 md:grid-cols-3 gap-3">
-                        <div>
-                          <Input
-                            placeholder="Job Title *"
-                            value={job.job_title}
-                            onChange={(e) =>
-                              updateJob(index, "job_title", e.target.value)
-                            }
-                            maxLength={300}
-                            required
-                            className={titleWarn ? "border-amber-400" : ""}
-                          />
-                          <FieldWarning msg={titleWarn} />
-                        </div>
-                        <div>
-                          <Input
-                            placeholder="Company (optional)"
-                            value={job.company || ""}
-                            onChange={(e) =>
-                              updateJob(index, "company", e.target.value)
-                            }
-                            maxLength={300}
-                            className={compWarn ? "border-amber-400" : ""}
-                          />
-                          <FieldWarning msg={compWarn} />
-                        </div>
-                        <Input
-                          type="url"
-                          placeholder="Job URL (optional)"
-                          value={job.job_url || ""}
-                          onChange={(e) =>
-                            updateJob(index, "job_url", e.target.value)
-                          }
-                        />
-                      </div>
-                      <Textarea
-                        placeholder="Paste the full job description here..."
-                        value={job.job_description}
-                        onChange={(e) =>
-                          updateJob(index, "job_description", e.target.value)
-                        }
-                        rows={6}
-                        required
-                      />
-                    </CardContent>
-                  </Card>
-                );
-              })}
+                    </div>
+                  </CardHeader>
+                  <CardContent className="pt-0 pb-3 space-y-0.5">
+                    <p className="text-sm font-medium truncate">{job.job_title || <span className="italic text-muted-foreground">Untitled</span>}</p>
+                    <p className="text-xs text-muted-foreground">
+                      {[job.company, job.job_url].filter(Boolean).join(" · ") || "No company or URL"}
+                    </p>
+                    <p className="text-xs text-muted-foreground line-clamp-2 mt-1 leading-relaxed">
+                      {job.job_description.slice(0, 120)}{job.job_description.length > 120 ? "…" : ""}
+                    </p>
+                  </CardContent>
+                </Card>
+              ))}
             </div>
           ) : (
             <Card>
@@ -533,14 +618,21 @@ export default function JobInput() {
                   <Label>Job Description *</Label>
                   <Textarea
                     value={jobs[0].job_description}
-                    onChange={(e) =>
-                      updateJob(0, "job_description", e.target.value)
-                    }
+                    onChange={(e) => {
+                      updateJob(0, "job_description", e.target.value);
+                      setSingleClearanceError(null);
+                    }}
                     rows={12}
                     placeholder="Paste the full job description here..."
                     required
                   />
                 </div>
+                {singleClearanceError && (
+                  <Alert variant="destructive">
+                    <ShieldAlert className="h-4 w-4" />
+                    <AlertDescription>{singleClearanceError}</AlertDescription>
+                  </Alert>
+                )}
               </CardContent>
             </Card>
           )}
@@ -548,13 +640,103 @@ export default function JobInput() {
           <div className="flex justify-end">
             <Button type="submit" size="lg">
               <Wand2 className="h-4 w-4" />
-              {batchMode && jobs.length > 1
-                ? `Generate ${jobs.length} Applications`
+              {batchMode
+                ? `Generate ${jobs.length} Application${jobs.length !== 1 ? "s" : ""}`
                 : "Generate Resume & Cover Letter"}
             </Button>
           </div>
         </form>
       )}
+
+      {/* Batch job add/edit modal */}
+      <Dialog open={jobModalOpen} onOpenChange={(o) => { if (!o) setJobModalOpen(false); }}>
+        <DialogContent className="max-w-lg">
+          <DialogHeader>
+            <DialogTitle>
+              {editingIndex !== null ? `Edit Job #${editingIndex + 1}` : "Add Job"}
+            </DialogTitle>
+            <DialogDescription>
+              Fill in the job details below.
+              {selectedProfile?.check_clearance && (
+                <span className="block mt-1 text-xs text-primary font-medium">
+                  Security clearance check is enabled for this profile.
+                </span>
+              )}
+            </DialogDescription>
+          </DialogHeader>
+          <div className="space-y-3">
+            <div>
+              <Label className="text-xs text-muted-foreground mb-1 block">Job Title *</Label>
+              <Input
+                placeholder="Senior Software Engineer"
+                value={draftJob.job_title}
+                onChange={(e) => setDraftJob({ ...draftJob, job_title: e.target.value })}
+                maxLength={300}
+              />
+              <FieldWarning msg={jobTitleWarning(draftJob.job_title)} />
+            </div>
+            <div className="grid grid-cols-2 gap-3">
+              <div>
+                <Label className="text-xs text-muted-foreground mb-1 block">Company</Label>
+                <Input
+                  placeholder="Acme Corp"
+                  value={draftJob.company || ""}
+                  onChange={(e) => {
+                    setDraftJob({ ...draftJob, company: e.target.value });
+                    setModalBannedError(null);
+                  }}
+                  maxLength={300}
+                />
+                <FieldWarning msg={companyWarning(draftJob.company || "")} />
+              </div>
+              <div>
+                <Label className="text-xs text-muted-foreground mb-1 block">Job URL</Label>
+                <Input
+                  type="url"
+                  placeholder="https://..."
+                  value={draftJob.job_url || ""}
+                  onChange={(e) => setDraftJob({ ...draftJob, job_url: e.target.value })}
+                />
+              </div>
+            </div>
+            <div>
+              <Label className="text-xs text-muted-foreground mb-1 block">Job Description *</Label>
+              <Textarea
+                placeholder="Paste the full job description here..."
+                value={draftJob.job_description}
+                onChange={(e) => {
+                  setDraftJob({ ...draftJob, job_description: e.target.value });
+                  setModalClearanceError(null);
+                }}
+                rows={8}
+              />
+            </div>
+            {modalBannedError && (
+              <Alert variant="destructive">
+                <Ban className="h-4 w-4" />
+                <AlertDescription>{modalBannedError}</AlertDescription>
+              </Alert>
+            )}
+            {modalClearanceError && (
+              <Alert variant="destructive">
+                <ShieldAlert className="h-4 w-4" />
+                <AlertDescription>{modalClearanceError}</AlertDescription>
+              </Alert>
+            )}
+          </div>
+          <DialogFooter>
+            <Button variant="outline" onClick={() => setJobModalOpen(false)}>
+              Cancel
+            </Button>
+            <Button
+              onClick={handleModalAdd}
+              disabled={!draftJob.job_title.trim() || !draftJob.job_description.trim() || modalValidating}
+            >
+              {modalValidating ? "Checking…" : editingIndex !== null ? "Save Changes" : "Add Job"}
+            </Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
 
       {/* Work mode warning dialog */}
       <Dialog

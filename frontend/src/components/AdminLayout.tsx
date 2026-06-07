@@ -1,4 +1,5 @@
 import {
+  Ban,
   BookOpen,
   Bot,
   ChevronLeft,
@@ -38,8 +39,9 @@ const BASE_ITEMS: Omit<NavItem, "badge">[] = [
   { path: "/admin/stacks",      label: "Tech Stacks",    icon: <Layers className="h-4 w-4" /> },
   { path: "/admin/doc-styles",  label: "Doc Styles",     icon: <FileText className="h-4 w-4" /> },
   { path: "/admin/kb",        label: "Knowledge Base", icon: <BookOpen className="h-4 w-4" /> },
-  { path: "/admin/models",    label: "AI Models",      icon: <Bot className="h-4 w-4" /> },
-  { path: "/admin/logs",      label: "System Logs",    icon: <ScrollText className="h-4 w-4" /> },
+  { path: "/admin/models",           label: "AI Models",       icon: <Bot className="h-4 w-4" /> },
+  { path: "/admin/banned-companies", label: "Banned Companies", icon: <Ban className="h-4 w-4" /> },
+  { path: "/admin/logs",             label: "System Logs",     icon: <ScrollText className="h-4 w-4" /> },
 ];
 
 export default function AdminLayout() {

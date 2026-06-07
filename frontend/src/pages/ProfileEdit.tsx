@@ -1,4 +1,4 @@
-import { AlertCircle, ArrowLeft, Loader2, Save, SlidersHorizontal, Sparkles, User } from "lucide-react";
+import { AlertCircle, ArrowLeft, Loader2, Save, ShieldCheck, SlidersHorizontal, Sparkles, User } from "lucide-react";
 import { useEffect, useState } from "react";
 import { useNavigate, useParams } from "react-router-dom";
 import { getDocStyles } from "../api/doc_styles";
@@ -48,6 +48,8 @@ const emptyProfile: ProfileCreate = {
   custom_prompt: null,
   doc_style_id: null,
   show_skills: true,
+  check_clearance: false,
+  security_clearance: null,
   educations: [],
   experiences: [],
 };
@@ -91,6 +93,8 @@ export default function ProfileEdit() {
           custom_prompt: p.custom_prompt ?? null,
           doc_style_id: p.doc_style_id ?? null,
           show_skills: p.show_skills ?? true,
+          check_clearance: p.check_clearance ?? false,
+          security_clearance: p.security_clearance ?? null,
           educations: p.educations,
           experiences: p.experiences,
         });
@@ -292,6 +296,48 @@ export default function ProfileEdit() {
               />
             </div>
 
+            <div className="rounded-lg border p-3 space-y-3">
+              <div className="flex items-center justify-between">
+                <div className="flex items-start gap-2">
+                  <ShieldCheck className="h-4 w-4 text-primary mt-0.5 shrink-0" />
+                  <div>
+                    <Label className="text-sm font-medium">Security Clearance Check</Label>
+                    <p className="text-xs text-muted-foreground mt-0.5">
+                      Block applications when the job requires a higher clearance than this profile holds
+                    </p>
+                  </div>
+                </div>
+                <Switch
+                  checked={profile.check_clearance ?? false}
+                  onCheckedChange={(v) =>
+                    setProfile({ ...profile, check_clearance: v, security_clearance: v ? (profile.security_clearance ?? "None") : null })
+                  }
+                  disabled={readOnly}
+                />
+              </div>
+              {profile.check_clearance && (
+                <div className="pl-6 space-y-1.5">
+                  <Label className="text-xs text-muted-foreground">Clearance Level Held</Label>
+                  <Select
+                    value={profile.security_clearance ?? "None"}
+                    onValueChange={(v) => setProfile({ ...profile, security_clearance: v === "None" ? null : v })}
+                    disabled={readOnly}
+                  >
+                    <SelectTrigger className="w-48">
+                      <SelectValue />
+                    </SelectTrigger>
+                    <SelectContent>
+                      <SelectItem value="None">No Clearance</SelectItem>
+                      <SelectItem value="PublicTrust">Public Trust</SelectItem>
+                      <SelectItem value="Secret">Secret</SelectItem>
+                      <SelectItem value="TopSecret">Top Secret</SelectItem>
+                      <SelectItem value="TSSCI">TS/SCI</SelectItem>
+                    </SelectContent>
+                  </Select>
+                </div>
+              )}
+            </div>
+
             <div className="space-y-1.5">
               <Label>Professional Summary</Label>
               <Textarea
@@ -299,9 +345,10 @@ export default function ProfileEdit() {
                 onChange={(e) =>
                   setProfile({ ...profile, summary: e.target.value })
                 }
-                rows={3}
+                rows={5}
                 placeholder="Brief professional summary..."
                 readOnly={readOnly}
+                className="resize-y"
               />
             </div>
 
@@ -360,7 +407,7 @@ export default function ProfileEdit() {
               onChange={(e) =>
                 setProfile({ ...profile, custom_prompt: e.target.value || null })
               }
-              rows={6}
+              rows={8}
               placeholder="e.g. Always emphasize leadership experience. Avoid passive voice. Focus on measurable outcomes and quantified achievements..."
               readOnly={readOnly}
               className="font-mono text-xs resize-y"

@@ -15,6 +15,7 @@ from config import settings
 from database import SessionLocal, get_db
 from models.ai_model_config import AIModelConfig
 from models.application import Application
+from models.banned_company import BannedCompany
 from models.doc_style import DocStyle
 from models.knowledge_base import KnowledgeBase
 from models.tech_stack import TechStack
@@ -26,6 +27,11 @@ from schemas.doc_style import StyleConfig
 from schemas.generate import (
     BatchGenerateRequest,
     BatchGenerateResponse,
+    BannedCompanyCheckRequest,
+    BannedCompanyCheckResponse,
+    BannedCompanyMatch,
+    ClearanceCheckRequest,
+    ClearanceCheckResponse,
     CompanyCheckRequest,
     CompanyCheckResponse,
     CompanyMatch,
@@ -128,6 +134,17 @@ async def _generate_single(
     total_completion = 0
 
     company = company.strip() if company else None
+
+    clearance_result = _check_clearance_for_profile(profile, job_description)
+    if not clearance_result.allowed:
+        raise HTTPException(status_code=422, detail=clearance_result.reason)
+
+    if company:
+        banned_matches = _find_banned_matches([company], db)
+        if banned_matches:
+            m = banned_matches[0]
+            reason = m.description or f'"{m.banned_name}" is on the banned companies list.'
+            raise HTTPException(status_code=422, detail=reason)
 
     # Cross-profile reference: find similar applications from other profiles
     reference_bullets = None
@@ -460,6 +477,115 @@ async def check_company_duplicates(
             matches.append(CompanyMatch(company=new_company, existing_applications=matched))
 
     return CompanyCheckResponse(matches=matches)
+
+
+_CLEARANCE_LEVELS: dict[str, int] = {
+    "None": 0,
+    "PublicTrust": 1,
+    "Secret": 2,
+    "TopSecret": 3,
+    "TSSCI": 4,
+}
+
+_CLEARANCE_PATTERNS: list[tuple[str, list[str]]] = [
+    ("TSSCI", [r"ts/sci", r"top secret/sci", r"ts-sci", r"sensitive compartmented"]),
+    ("TopSecret", [r"top secret", r"\bts\b clearance", r"top-secret"]),
+    ("Secret", [r"\bsecret clearance\b", r"active secret", r"requires secret", r"hold(s|ing)? a secret", r"\bsecret\b.{0,20}clearance"]),
+    ("PublicTrust", [r"public trust"]),
+]
+
+
+def _detect_required_clearance(job_description: str) -> str | None:
+    """Return the highest clearance level found in the job description, or None."""
+    import re
+    text = job_description.lower()
+    for level, patterns in _CLEARANCE_PATTERNS:
+        for pat in patterns:
+            if re.search(pat, text):
+                return level
+    return None
+
+
+def _clearance_level(name: str | None) -> int:
+    return _CLEARANCE_LEVELS.get(name or "None", 0)
+
+
+def _check_clearance_for_profile(profile: "Profile", job_description: str) -> ClearanceCheckResponse:
+    """Return whether this job is allowed based on profile clearance settings."""
+    if not profile.check_clearance:
+        return ClearanceCheckResponse(allowed=True)
+
+    detected = _detect_required_clearance(job_description)
+    if not detected:
+        return ClearanceCheckResponse(allowed=True, detected_clearance=None)
+
+    profile_level = _clearance_level(profile.security_clearance)
+    required_level = _clearance_level(detected)
+
+    if profile_level >= required_level:
+        return ClearanceCheckResponse(allowed=True, detected_clearance=detected)
+
+    clearance_label = {
+        "TSSCI": "TS/SCI",
+        "TopSecret": "Top Secret",
+        "Secret": "Secret",
+        "PublicTrust": "Public Trust",
+    }.get(detected, detected)
+    profile_label = {
+        "TSSCI": "TS/SCI",
+        "TopSecret": "Top Secret",
+        "Secret": "Secret",
+        "PublicTrust": "Public Trust",
+        "None": "None",
+    }.get(profile.security_clearance or "None", profile.security_clearance or "None")
+
+    return ClearanceCheckResponse(
+        allowed=False,
+        detected_clearance=detected,
+        reason=f"This job requires {clearance_label} clearance, but your profile clearance is {profile_label}.",
+    )
+
+
+@router.post("/api/generate/check-clearance", response_model=ClearanceCheckResponse)
+async def check_clearance(
+    req: ClearanceCheckRequest,
+    current_user: User = Depends(_bidder_or_admin),
+    db: Session = Depends(get_db),
+):
+    profile = _get_accessible_profile(req.profile_id, current_user, db)
+    return _check_clearance_for_profile(profile, req.job_description)
+
+
+def _find_banned_matches(companies: list[str], db: Session) -> list[BannedCompanyMatch]:
+    """Return a BannedCompanyMatch for each input company that hits the banned list."""
+    all_banned = db.scalars(select(BannedCompany)).all()
+    matches: list[BannedCompanyMatch] = []
+    for company in companies:
+        if not company or not company.strip():
+            continue
+        key = company.lower().strip()
+        for banned in all_banned:
+            banned_key = banned.name.lower().strip()
+            if key == banned_key or key in banned_key or banned_key in key:
+                matches.append(
+                    BannedCompanyMatch(
+                        company=company,
+                        banned_name=banned.name,
+                        description=banned.description,
+                    )
+                )
+                break
+    return matches
+
+
+@router.post("/api/generate/check-banned-companies", response_model=BannedCompanyCheckResponse)
+async def check_banned_companies(
+    req: BannedCompanyCheckRequest,
+    current_user: User = Depends(_bidder_or_admin),
+    db: Session = Depends(get_db),
+):
+    matches = _find_banned_matches(req.companies, db)
+    return BannedCompanyCheckResponse(matches=matches)
 
 
 @router.post("/api/generate", response_model=GenerateResponse)

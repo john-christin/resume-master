@@ -88,6 +88,8 @@ export interface Profile {
   custom_prompt?: string | null;
   doc_style_id?: string | null;
   show_skills: boolean;
+  check_clearance: boolean;
+  security_clearance?: string | null;
   educations: Education[];
   experiences: Experience[];
   is_owner: boolean;
@@ -109,8 +111,33 @@ export interface ProfileCreate {
   custom_prompt?: string | null;
   doc_style_id?: string | null;
   show_skills?: boolean;
+  check_clearance?: boolean;
+  security_clearance?: string | null;
   educations: Education[];
   experiences: Experience[];
+}
+
+export interface ClearanceCheckResponse {
+  allowed: boolean;
+  reason?: string | null;
+  detected_clearance?: string | null;
+}
+
+export interface BannedCompany {
+  id: string;
+  name: string;
+  description?: string | null;
+  created_at: string;
+}
+
+export interface BannedCompanyMatch {
+  company: string;
+  banned_name: string;
+  description?: string | null;
+}
+
+export interface BannedCompanyCheckResponse {
+  matches: BannedCompanyMatch[];
 }
 
 export interface RegisterRequest {
