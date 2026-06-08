@@ -36,7 +36,8 @@ interface CallFormDialogProps {
 
 const toLocalDatetime = (iso?: string | null): string => {
   if (!iso) return "";
-  const d = new Date(iso);
+  const utc = /Z|[+-]\d{2}:?\d{2}$/.test(iso) ? iso : iso + "Z";
+  const d = new Date(utc);
   const pad = (n: number) => String(n).padStart(2, "0");
   return `${d.getFullYear()}-${pad(d.getMonth() + 1)}-${pad(d.getDate())}T${pad(d.getHours())}:${pad(d.getMinutes())}`;
 };

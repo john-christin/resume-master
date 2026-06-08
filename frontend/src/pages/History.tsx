@@ -563,7 +563,7 @@ export default function History() {
                     : null;
                   const callChip = CALL_STATUS_CHIP[app.call_status ?? "scheduled"] ?? CALL_STATUS_CHIP.scheduled;
                   const callDateStr = app.call_scheduled_at
-                    ? new Date(app.call_scheduled_at).toLocaleDateString(undefined, { month: "short", day: "numeric" })
+                    ? new Date(/Z|[+-]\d{2}:?\d{2}$/.test(app.call_scheduled_at) ? app.call_scheduled_at : app.call_scheduled_at + "Z").toLocaleDateString(undefined, { month: "short", day: "numeric" })
                     : null;
                   return (
                     <>
