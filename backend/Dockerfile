@@ -1,7 +1,13 @@
 FROM python:3.11-slim
 
 RUN apt-get update && \
-    apt-get install -y --no-install-recommends libreoffice-writer && \
+    apt-get install -y --no-install-recommends \
+        libreoffice-writer \
+        fonts-crosextra-carlito \
+        fonts-crosextra-caladea \
+        fonts-liberation \
+        fonts-liberation2 \
+        fonts-urw-base35 && \
     apt-get clean && \
     rm -rf /var/lib/apt/lists/*
 

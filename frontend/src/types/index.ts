@@ -26,6 +26,11 @@ export interface TechStack {
   created_at: string;
 }
 
+export interface SectionItem {
+  key: string;
+  visible: boolean;
+}
+
 export interface StyleConfig {
   font_name: string;
   font_size_name: number;
@@ -49,6 +54,41 @@ export interface StyleConfig {
   section_bold: boolean;
   bullet_char: string;
   contact_separator: string;
+
+  // Section ordering + visibility
+  sections: SectionItem[];
+
+  // Section heading visual style
+  section_heading_style: "plain" | "underline" | "line_below" | "thick_line_below" | "double_line_below" | "boxed" | "bar";
+
+  // Spacing
+  space_between_entries: number;
+
+  // Entry layout
+  entry_title_size: number;
+  entry_subtitle_size: number;
+  entry_subtitle_style: "normal" | "bold" | "italic" | "bold_italic";
+  entry_list_style: "bullet" | "dash" | "none";
+  entry_indent_body: boolean;
+
+  // Per-element colors
+  color_heading: string;
+  color_heading_line: string;
+  color_job_title: string;
+  color_employer: string;
+  color_dates: string;
+  color_subtitle: string;
+  color_contact: string;
+
+  // Name extended
+  name_italic: boolean;
+  name_letter_spacing: number;
+
+  // Experience layout
+  experience_layout: "employer-title" | "title-employer" | "combined";
+
+  // Education layout
+  education_layout: "degree-school" | "school-degree";
 }
 
 export interface DocStyle {

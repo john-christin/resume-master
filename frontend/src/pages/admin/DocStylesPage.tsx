@@ -1,4 +1,19 @@
-import { AlertCircle, Eye, FileText, Loader2, Minus, Plus, ZoomIn } from "lucide-react";
+import {
+  DndContext,
+  PointerSensor,
+  closestCenter,
+  useSensor,
+  useSensors,
+  type DragEndEvent,
+} from "@dnd-kit/core";
+import {
+  SortableContext,
+  arrayMove,
+  useSortable,
+  verticalListSortingStrategy,
+} from "@dnd-kit/sortable";
+import { CSS } from "@dnd-kit/utilities";
+import { AlertCircle, Eye, FileText, GripVertical, Loader2, Minus, Plus, ZoomIn } from "lucide-react";
 import { useEffect, useState } from "react";
 import { createDocStyle, deleteDocStyle, getDocStyles, updateDocStyle } from "../../api/doc_styles";
 import LoadingSpinner from "../../components/LoadingSpinner";
@@ -25,6 +40,7 @@ import {
   SelectTrigger,
   SelectValue,
 } from "../../components/ui/select";
+import { Switch } from "../../components/ui/switch";
 import {
   Table,
   TableBody,
@@ -33,7 +49,7 @@ import {
   TableHeader,
   TableRow,
 } from "../../components/ui/table";
-import type { DocStyle, StyleConfig } from "../../types";
+import type { DocStyle, SectionItem, StyleConfig } from "../../types";
 
 // ── constants ───────────────────────────────────────────────────────────────
 
@@ -66,10 +82,60 @@ const CONTACT_SEP_OPTIONS = [
 ];
 
 const LINE_SPACING_OPTIONS = [
+  { label: "0.5",          value: "0.5"  },
+  { label: "0.75",         value: "0.75" },
   { label: "Single (1.0)", value: "1"    },
   { label: "1.15",         value: "1.15" },
   { label: "1.25",         value: "1.25" },
   { label: "1.5",          value: "1.5"  },
+];
+
+const SECTION_HEADING_STYLE_OPTIONS = [
+  { label: "Plain (no decoration)",  value: "plain" },
+  { label: "Underline",              value: "underline" },
+  { label: "Line below",             value: "line_below" },
+  { label: "Thick line below",       value: "thick_line_below" },
+  { label: "Double line below",      value: "double_line_below" },
+  { label: "Boxed (full border)",    value: "boxed" },
+  { label: "Bar (left stripe)",      value: "bar" },
+];
+
+const ENTRY_SUBTITLE_STYLE_OPTIONS = [
+  { label: "Normal",      value: "normal" },
+  { label: "Bold",        value: "bold" },
+  { label: "Italic",      value: "italic" },
+  { label: "Bold Italic", value: "bold_italic" },
+];
+
+const ENTRY_LIST_STYLE_OPTIONS = [
+  { label: "Bullet",  value: "bullet" },
+  { label: "Dash",    value: "dash" },
+  { label: "None",    value: "none" },
+];
+
+const EXPERIENCE_LAYOUT_OPTIONS = [
+  { label: "Employer → Title (default)", value: "employer-title" },
+  { label: "Title → Employer",           value: "title-employer" },
+  { label: "Combined (Title | Employer)", value: "combined" },
+];
+
+const EDUCATION_LAYOUT_OPTIONS = [
+  { label: "Degree → School (default)", value: "degree-school" },
+  { label: "School → Degree",           value: "school-degree" },
+];
+
+const SECTION_LABELS: Record<string, string> = {
+  summary:    "Summary",
+  skills:     "Skills",
+  experience: "Experience",
+  education:  "Education",
+};
+
+const DEFAULT_SECTIONS: SectionItem[] = [
+  { key: "summary",    visible: true },
+  { key: "skills",     visible: true },
+  { key: "experience", visible: true },
+  { key: "education",  visible: true },
 ];
 
 const DEFAULT_CONFIG: StyleConfig = {
@@ -95,6 +161,26 @@ const DEFAULT_CONFIG: StyleConfig = {
   line_spacing: 1.0,
   bullet_char: "•",
   contact_separator: "|",
+  // New fields
+  sections: DEFAULT_SECTIONS,
+  section_heading_style: "line_below",
+  space_between_entries: 3.0,
+  entry_title_size: 10.0,
+  entry_subtitle_size: 9.5,
+  entry_subtitle_style: "bold",
+  entry_list_style: "bullet",
+  entry_indent_body: true,
+  color_heading: "000000",
+  color_heading_line: "000000",
+  color_job_title: "000000",
+  color_employer: "000000",
+  color_dates: "555555",
+  color_subtitle: "000000",
+  color_contact: "444444",
+  name_italic: false,
+  name_letter_spacing: 0.0,
+  experience_layout: "employer-title",
+  education_layout: "degree-school",
 };
 
 // ── ZoomControls ────────────────────────────────────────────────────────────
@@ -114,6 +200,105 @@ function ZoomControls({ zoom, onChange }: { zoom: number; onChange: (z: number) 
         <Plus className="h-3 w-3" />
       </Button>
     </div>
+  );
+}
+
+// ── ColorField ──────────────────────────────────────────────────────────────
+
+function ColorField({
+  label,
+  value,
+  onChange,
+}: {
+  label: string;
+  value: string;
+  onChange: (v: string) => void;
+}) {
+  return (
+    <div className="space-y-1.5">
+      <Label className="text-xs">{label}</Label>
+      <div className="flex gap-1.5 items-center">
+        <Input
+          value={value}
+          onChange={(e) => onChange(e.target.value.replace("#", ""))}
+          placeholder="000000"
+          maxLength={6}
+          className="h-8 text-xs font-mono"
+        />
+        <input
+          type="color"
+          className="h-8 w-9 rounded border cursor-pointer shrink-0"
+          value={`#${value.padEnd(6, "0")}`}
+          onChange={(e) => onChange(e.target.value.replace("#", ""))}
+        />
+      </div>
+    </div>
+  );
+}
+
+// ── SectionOrderEditor (drag-to-reorder) ────────────────────────────────────
+
+function SortableSection({
+  item,
+  onToggle,
+}: {
+  item: SectionItem;
+  onToggle: () => void;
+}) {
+  const { attributes, listeners, setNodeRef, transform, transition, isDragging } =
+    useSortable({ id: item.key });
+
+  return (
+    <div
+      ref={setNodeRef}
+      style={{ transform: CSS.Transform.toString(transform), transition, opacity: isDragging ? 0.5 : 1 }}
+      className="flex items-center gap-3 rounded-md border bg-card px-3 py-2"
+    >
+      <span
+        {...attributes}
+        {...listeners}
+        className="cursor-grab text-muted-foreground hover:text-foreground shrink-0"
+      >
+        <GripVertical className="h-4 w-4" />
+      </span>
+      <span className="flex-1 text-sm font-medium">{SECTION_LABELS[item.key] ?? item.key}</span>
+      <Switch checked={item.visible} onCheckedChange={onToggle} />
+    </div>
+  );
+}
+
+function SectionOrderEditor({
+  sections,
+  onChange,
+}: {
+  sections: SectionItem[];
+  onChange: (s: SectionItem[]) => void;
+}) {
+  const sensors = useSensors(useSensor(PointerSensor));
+
+  const handleDragEnd = (event: DragEndEvent) => {
+    const { active, over } = event;
+    if (over && active.id !== over.id) {
+      const oldIndex = sections.findIndex((s) => s.key === active.id);
+      const newIndex = sections.findIndex((s) => s.key === over.id);
+      onChange(arrayMove(sections, oldIndex, newIndex));
+    }
+  };
+
+  const toggleVisible = (key: string) => {
+    onChange(sections.map((s) => s.key === key ? { ...s, visible: !s.visible } : s));
+  };
+
+  return (
+    <DndContext sensors={sensors} collisionDetection={closestCenter} onDragEnd={handleDragEnd}>
+      <SortableContext items={sections.map((s) => s.key)} strategy={verticalListSortingStrategy}>
+        <div className="flex flex-col gap-2">
+          {sections.map((item) => (
+            <SortableSection key={item.key} item={item} onToggle={() => toggleVisible(item.key)} />
+          ))}
+        </div>
+      </SortableContext>
+    </DndContext>
   );
 }
 
@@ -147,6 +332,17 @@ function PreviewDialog({ style, onClose }: { style: DocStyle | null; onClose: ()
   );
 }
 
+// ── Section label ────────────────────────────────────────────────────────────
+
+function FormSection({ label }: { label: string }) {
+  return (
+    <>
+      <hr />
+      <p className="text-xs font-semibold uppercase tracking-wide text-muted-foreground">{label}</p>
+    </>
+  );
+}
+
 // ── Edit / Create dialog ────────────────────────────────────────────────────
 
 function EditDialog({
@@ -169,6 +365,9 @@ function EditDialog({
   const [zoom, setZoom] = useState(1);
   useEffect(() => { if (open) setZoom(1); }, [open]);
 
+  const cfg = (key: keyof StyleConfig) => (e: React.ChangeEvent<HTMLInputElement>) =>
+    onConfigChange(key, parseFloat(e.target.value));
+
   return (
     <Dialog open={open} onOpenChange={(o) => { if (!o) onClose(); }}>
       <DialogContent
@@ -177,7 +376,7 @@ function EditDialog({
       >
         <div className="flex h-full" style={{ maxHeight: "92vh" }}>
 
-          {/* ── Left: form ──────────────────────────── */}
+          {/* ── Left: form ──────────────────────── */}
           <div className="flex flex-col flex-1 min-w-0 overflow-y-auto p-6">
             <DialogHeader className="mb-4">
               <DialogTitle>{editingId ? "Edit Doc Style" : "Create Doc Style"}</DialogTitle>
@@ -204,11 +403,9 @@ function EditDialog({
                 </div>
               </div>
 
-              <hr />
-              <p className="text-xs font-semibold uppercase tracking-wide text-muted-foreground">Typography</p>
+              <FormSection label="Typography" />
 
               <div className="grid grid-cols-3 gap-4">
-                {/* Font — grouped by family type */}
                 <div className="space-y-1.5 col-span-1">
                   <Label>Font</Label>
                   <Select value={config.font_name} onValueChange={(v) => onConfigChange("font_name", v)}>
@@ -231,29 +428,22 @@ function EditDialog({
                   </Select>
                 </div>
 
-                {/* Font sizes */}
                 <div className="space-y-1.5">
                   <Label>Name size (pt)</Label>
-                  <Input type="number" step="0.5" value={config.font_size_name}
-                    onChange={(e) => onConfigChange("font_size_name", parseFloat(e.target.value))} />
+                  <Input type="number" step="0.5" value={config.font_size_name} onChange={cfg("font_size_name")} />
                 </div>
                 <div className="space-y-1.5">
                   <Label>Section size (pt)</Label>
-                  <Input type="number" step="0.5" value={config.font_size_section}
-                    onChange={(e) => onConfigChange("font_size_section", parseFloat(e.target.value))} />
+                  <Input type="number" step="0.5" value={config.font_size_section} onChange={cfg("font_size_section")} />
                 </div>
                 <div className="space-y-1.5">
                   <Label>Body size (pt)</Label>
-                  <Input type="number" step="0.5" value={config.font_size_body}
-                    onChange={(e) => onConfigChange("font_size_body", parseFloat(e.target.value))} />
+                  <Input type="number" step="0.5" value={config.font_size_body} onChange={cfg("font_size_body")} />
                 </div>
                 <div className="space-y-1.5">
                   <Label>Contact size (pt)</Label>
-                  <Input type="number" step="0.5" value={config.font_size_contact}
-                    onChange={(e) => onConfigChange("font_size_contact", parseFloat(e.target.value))} />
+                  <Input type="number" step="0.5" value={config.font_size_contact} onChange={cfg("font_size_contact")} />
                 </div>
-
-                {/* Line spacing */}
                 <div className="space-y-1.5">
                   <Label>Line spacing</Label>
                   <Select
@@ -270,8 +460,7 @@ function EditDialog({
                 </div>
               </div>
 
-              <hr />
-              <p className="text-xs font-semibold uppercase tracking-wide text-muted-foreground">Layout & Style</p>
+              <FormSection label="Header & Name" />
 
               <div className="grid grid-cols-3 gap-4">
                 <div className="space-y-1.5">
@@ -285,67 +474,6 @@ function EditDialog({
                   </Select>
                 </div>
                 <div className="space-y-1.5">
-                  <Label>Section separator</Label>
-                  <Select value={config.section_separator} onValueChange={(v) => onConfigChange("section_separator", v)}>
-                    <SelectTrigger><SelectValue /></SelectTrigger>
-                    <SelectContent>
-                      <SelectItem value="line">Line</SelectItem>
-                      <SelectItem value="thick_line">Thick line</SelectItem>
-                      <SelectItem value="double_line">Double line</SelectItem>
-                      <SelectItem value="none">None</SelectItem>
-                    </SelectContent>
-                  </Select>
-                </div>
-                <div className="space-y-1.5">
-                  <Label>Accent color (hex)</Label>
-                  <div className="flex gap-2 items-center">
-                    <Input
-                      value={config.accent_color}
-                      onChange={(e) => onConfigChange("accent_color", e.target.value.replace("#", ""))}
-                      placeholder="000000"
-                      maxLength={6}
-                    />
-                    <input
-                      type="color"
-                      className="h-9 w-10 rounded border cursor-pointer shrink-0"
-                      value={`#${config.accent_color}`}
-                      onChange={(e) => onConfigChange("accent_color", e.target.value.replace("#", ""))}
-                    />
-                  </div>
-                </div>
-                <div className="space-y-1.5">
-                  <Label>Name color (hex)</Label>
-                  <div className="flex gap-2 items-center">
-                    <Input
-                      value={config.name_color}
-                      onChange={(e) => onConfigChange("name_color", e.target.value.replace("#", ""))}
-                      placeholder="000000"
-                      maxLength={6}
-                    />
-                    <input
-                      type="color"
-                      className="h-9 w-10 rounded border cursor-pointer shrink-0"
-                      value={`#${config.name_color}`}
-                      onChange={(e) => onConfigChange("name_color", e.target.value.replace("#", ""))}
-                    />
-                  </div>
-                </div>
-
-                {/* Bullet char */}
-                <div className="space-y-1.5">
-                  <Label>Bullet character</Label>
-                  <Select value={config.bullet_char} onValueChange={(v) => onConfigChange("bullet_char", v)}>
-                    <SelectTrigger><SelectValue /></SelectTrigger>
-                    <SelectContent>
-                      {BULLET_OPTIONS.map((o) => (
-                        <SelectItem key={o.value} value={o.value}>{o.label}</SelectItem>
-                      ))}
-                    </SelectContent>
-                  </Select>
-                </div>
-
-                {/* Contact separator */}
-                <div className="space-y-1.5">
                   <Label>Contact separator</Label>
                   <Select value={config.contact_separator} onValueChange={(v) => onConfigChange("contact_separator", v)}>
                     <SelectTrigger><SelectValue /></SelectTrigger>
@@ -356,15 +484,17 @@ function EditDialog({
                     </SelectContent>
                   </Select>
                 </div>
+                <div className="space-y-1.5">
+                  <Label>Letter spacing (pt)</Label>
+                  <Input type="number" step="0.5" value={config.name_letter_spacing} onChange={cfg("name_letter_spacing")} />
+                </div>
               </div>
 
-              {/* Checkboxes */}
               <div className="flex flex-wrap gap-5">
                 {([
                   ["name_bold",      "Bold name"],
                   ["name_uppercase", "Uppercase name"],
-                  ["section_caps",   "Uppercase sections"],
-                  ["section_bold",   "Bold section headings"],
+                  ["name_italic",    "Italic name"],
                 ] as [keyof StyleConfig, string][]).map(([key, label]) => (
                   <label key={key} className="flex items-center gap-2 cursor-pointer text-sm">
                     <input
@@ -378,8 +508,142 @@ function EditDialog({
                 ))}
               </div>
 
-              <hr />
-              <p className="text-xs font-semibold uppercase tracking-wide text-muted-foreground">Margins & Spacing</p>
+              <FormSection label="Section Headings" />
+
+              <div className="grid grid-cols-3 gap-4">
+                <div className="space-y-1.5 col-span-2">
+                  <Label>Heading style</Label>
+                  <Select
+                    value={config.section_heading_style}
+                    onValueChange={(v) => onConfigChange("section_heading_style", v)}
+                  >
+                    <SelectTrigger><SelectValue /></SelectTrigger>
+                    <SelectContent>
+                      {SECTION_HEADING_STYLE_OPTIONS.map((o) => (
+                        <SelectItem key={o.value} value={o.value}>{o.label}</SelectItem>
+                      ))}
+                    </SelectContent>
+                  </Select>
+                </div>
+              </div>
+
+              <div className="flex flex-wrap gap-5">
+                {([
+                  ["section_bold", "Bold headings"],
+                  ["section_caps", "Uppercase headings"],
+                ] as [keyof StyleConfig, string][]).map(([key, label]) => (
+                  <label key={key} className="flex items-center gap-2 cursor-pointer text-sm">
+                    <input
+                      type="checkbox"
+                      checked={config[key] as boolean}
+                      onChange={(e) => onConfigChange(key, e.target.checked)}
+                      className="h-4 w-4 rounded"
+                    />
+                    {label}
+                  </label>
+                ))}
+              </div>
+
+              <FormSection label="Entry Layout" />
+
+              <div className="grid grid-cols-3 gap-4">
+                <div className="space-y-1.5">
+                  <Label>Title size (pt)</Label>
+                  <Input type="number" step="0.5" value={config.entry_title_size} onChange={cfg("entry_title_size")} />
+                </div>
+                <div className="space-y-1.5">
+                  <Label>Subtitle size (pt)</Label>
+                  <Input type="number" step="0.5" value={config.entry_subtitle_size} onChange={cfg("entry_subtitle_size")} />
+                </div>
+                <div className="space-y-1.5">
+                  <Label>Subtitle style</Label>
+                  <Select
+                    value={config.entry_subtitle_style}
+                    onValueChange={(v) => onConfigChange("entry_subtitle_style", v)}
+                  >
+                    <SelectTrigger><SelectValue /></SelectTrigger>
+                    <SelectContent>
+                      {ENTRY_SUBTITLE_STYLE_OPTIONS.map((o) => (
+                        <SelectItem key={o.value} value={o.value}>{o.label}</SelectItem>
+                      ))}
+                    </SelectContent>
+                  </Select>
+                </div>
+                <div className="space-y-1.5">
+                  <Label>List style</Label>
+                  <Select
+                    value={config.entry_list_style}
+                    onValueChange={(v) => onConfigChange("entry_list_style", v)}
+                  >
+                    <SelectTrigger><SelectValue /></SelectTrigger>
+                    <SelectContent>
+                      {ENTRY_LIST_STYLE_OPTIONS.map((o) => (
+                        <SelectItem key={o.value} value={o.value}>{o.label}</SelectItem>
+                      ))}
+                    </SelectContent>
+                  </Select>
+                </div>
+                {config.entry_list_style === "bullet" && (
+                  <div className="space-y-1.5">
+                    <Label>Bullet character</Label>
+                    <Select value={config.bullet_char} onValueChange={(v) => onConfigChange("bullet_char", v)}>
+                      <SelectTrigger><SelectValue /></SelectTrigger>
+                      <SelectContent>
+                        {BULLET_OPTIONS.map((o) => (
+                          <SelectItem key={o.value} value={o.value}>{o.label}</SelectItem>
+                        ))}
+                      </SelectContent>
+                    </Select>
+                  </div>
+                )}
+              </div>
+
+              <div className="flex flex-wrap gap-5">
+                <label className="flex items-center gap-2 cursor-pointer text-sm">
+                  <input
+                    type="checkbox"
+                    checked={config.entry_indent_body}
+                    onChange={(e) => onConfigChange("entry_indent_body", e.target.checked)}
+                    className="h-4 w-4 rounded"
+                  />
+                  Indent bullet body
+                </label>
+              </div>
+
+              <FormSection label="Experience & Education" />
+
+              <div className="grid grid-cols-2 gap-4">
+                <div className="space-y-1.5">
+                  <Label>Experience layout</Label>
+                  <Select
+                    value={config.experience_layout}
+                    onValueChange={(v) => onConfigChange("experience_layout", v)}
+                  >
+                    <SelectTrigger><SelectValue /></SelectTrigger>
+                    <SelectContent>
+                      {EXPERIENCE_LAYOUT_OPTIONS.map((o) => (
+                        <SelectItem key={o.value} value={o.value}>{o.label}</SelectItem>
+                      ))}
+                    </SelectContent>
+                  </Select>
+                </div>
+                <div className="space-y-1.5">
+                  <Label>Education layout</Label>
+                  <Select
+                    value={config.education_layout}
+                    onValueChange={(v) => onConfigChange("education_layout", v)}
+                  >
+                    <SelectTrigger><SelectValue /></SelectTrigger>
+                    <SelectContent>
+                      {EDUCATION_LAYOUT_OPTIONS.map((o) => (
+                        <SelectItem key={o.value} value={o.value}>{o.label}</SelectItem>
+                      ))}
+                    </SelectContent>
+                  </Select>
+                </div>
+              </div>
+
+              <FormSection label="Margins & Spacing" />
 
               <div className="grid grid-cols-4 gap-4">
                 {([
@@ -390,21 +654,44 @@ function EditDialog({
                 ] as [keyof StyleConfig, string][]).map(([key, label]) => (
                   <div key={key} className="space-y-1.5">
                     <Label>{label}</Label>
-                    <Input type="number" step="0.05" value={config[key] as number}
-                      onChange={(e) => onConfigChange(key, parseFloat(e.target.value))} />
+                    <Input type="number" step="0.05" value={config[key] as number} onChange={cfg(key)} />
                   </div>
                 ))}
                 <div className="space-y-1.5">
                   <Label>Space before section (pt)</Label>
-                  <Input type="number" step="0.5" value={config.space_before_section}
-                    onChange={(e) => onConfigChange("space_before_section", parseFloat(e.target.value))} />
+                  <Input type="number" step="0.5" value={config.space_before_section} onChange={cfg("space_before_section")} />
                 </div>
                 <div className="space-y-1.5">
                   <Label>Space after section (pt)</Label>
-                  <Input type="number" step="0.5" value={config.space_after_section}
-                    onChange={(e) => onConfigChange("space_after_section", parseFloat(e.target.value))} />
+                  <Input type="number" step="0.5" value={config.space_after_section} onChange={cfg("space_after_section")} />
+                </div>
+                <div className="space-y-1.5">
+                  <Label>Between entries (pt)</Label>
+                  <Input type="number" step="0.5" value={config.space_between_entries} onChange={cfg("space_between_entries")} />
                 </div>
               </div>
+
+              <FormSection label="Element Colors" />
+
+              <div className="grid grid-cols-4 gap-4">
+                <ColorField label="Name" value={config.name_color} onChange={(v) => onConfigChange("name_color", v)} />
+                <ColorField label="Contact" value={config.color_contact} onChange={(v) => onConfigChange("color_contact", v)} />
+                <ColorField label="Heading text" value={config.color_heading} onChange={(v) => onConfigChange("color_heading", v)} />
+                <ColorField label="Heading line/border" value={config.color_heading_line} onChange={(v) => onConfigChange("color_heading_line", v)} />
+                <ColorField label="Job title" value={config.color_job_title} onChange={(v) => onConfigChange("color_job_title", v)} />
+                <ColorField label="Employer/school" value={config.color_employer} onChange={(v) => onConfigChange("color_employer", v)} />
+                <ColorField label="Dates" value={config.color_dates} onChange={(v) => onConfigChange("color_dates", v)} />
+                <ColorField label="Subtitle" value={config.color_subtitle} onChange={(v) => onConfigChange("color_subtitle", v)} />
+              </div>
+
+              <FormSection label="Section Order" />
+
+              <p className="text-xs text-muted-foreground">Drag to reorder. Toggle to show/hide.</p>
+              <SectionOrderEditor
+                sections={config.sections ?? DEFAULT_SECTIONS}
+                onChange={(s) => onConfigChange("sections", s)}
+              />
+
             </form>
 
             <div className="flex justify-end gap-2 pt-6 mt-auto">

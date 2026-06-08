@@ -23,6 +23,13 @@ from utils import get_client_ip
 logger = logging.getLogger(__name__)
 
 
+_DEFAULT_SECTIONS = [
+    {"key": "summary", "visible": True},
+    {"key": "skills", "visible": True},
+    {"key": "experience", "visible": True},
+    {"key": "education", "visible": True},
+]
+
 _DEFAULT_DOC_STYLES = [
     {
         "name": "Classic",
@@ -35,11 +42,22 @@ _DEFAULT_DOC_STYLES = [
             "section_caps": False, "margin_top": 0.5, "margin_bottom": 0.5,
             "margin_left": 0.5, "margin_right": 0.5,
             "space_before_section": 4, "space_after_section": 3,
+            "sections": _DEFAULT_SECTIONS,
+            "section_heading_style": "line_below",
+            "space_between_entries": 3.0,
+            "entry_title_size": 10.0, "entry_subtitle_size": 9.5,
+            "entry_subtitle_style": "bold", "entry_list_style": "bullet",
+            "entry_indent_body": True,
+            "color_heading": "000000", "color_heading_line": "000000",
+            "color_job_title": "000000", "color_employer": "000000",
+            "color_dates": "555555", "color_subtitle": "000000", "color_contact": "444444",
+            "name_italic": False, "name_letter_spacing": 0.0,
+            "experience_layout": "employer-title", "education_layout": "degree-school",
         },
     },
     {
         "name": "Modern",
-        "description": "Left-aligned header with a subtle blue accent color for a contemporary look.",
+        "description": "Left-aligned header with blue accent, bar headings, and title-first experience.",
         "config": {
             "font_name": "Calibri", "font_size_name": 18, "font_size_section": 10,
             "font_size_body": 9.5, "font_size_contact": 9,
@@ -48,6 +66,17 @@ _DEFAULT_DOC_STYLES = [
             "section_caps": True, "margin_top": 0.6, "margin_bottom": 0.6,
             "margin_left": 0.6, "margin_right": 0.6,
             "space_before_section": 5, "space_after_section": 3,
+            "sections": _DEFAULT_SECTIONS,
+            "section_heading_style": "bar",
+            "space_between_entries": 4.0,
+            "entry_title_size": 10.0, "entry_subtitle_size": 9.5,
+            "entry_subtitle_style": "normal", "entry_list_style": "bullet",
+            "entry_indent_body": True,
+            "color_heading": "2E74B5", "color_heading_line": "2E74B5",
+            "color_job_title": "000000", "color_employer": "2E74B5",
+            "color_dates": "555555", "color_subtitle": "555555", "color_contact": "555555",
+            "name_italic": False, "name_letter_spacing": 0.0,
+            "experience_layout": "title-employer", "education_layout": "degree-school",
         },
     },
     {
@@ -61,11 +90,22 @@ _DEFAULT_DOC_STYLES = [
             "section_caps": False, "margin_top": 0.75, "margin_bottom": 0.75,
             "margin_left": 0.75, "margin_right": 0.75,
             "space_before_section": 6, "space_after_section": 2,
+            "sections": _DEFAULT_SECTIONS,
+            "section_heading_style": "plain",
+            "space_between_entries": 3.0,
+            "entry_title_size": 10.0, "entry_subtitle_size": 9.5,
+            "entry_subtitle_style": "bold", "entry_list_style": "dash",
+            "entry_indent_body": False,
+            "color_heading": "000000", "color_heading_line": "000000",
+            "color_job_title": "000000", "color_employer": "000000",
+            "color_dates": "777777", "color_subtitle": "555555", "color_contact": "555555",
+            "name_italic": False, "name_letter_spacing": 0.0,
+            "experience_layout": "employer-title", "education_layout": "degree-school",
         },
     },
     {
         "name": "Executive",
-        "description": "Larger name, wider margins, and double-line separators for a senior professional look.",
+        "description": "Larger name, wider margins, boxed headings, and school-first education.",
         "config": {
             "font_name": "Garamond", "font_size_name": 20, "font_size_section": 11,
             "font_size_body": 10, "font_size_contact": 9.5,
@@ -74,6 +114,17 @@ _DEFAULT_DOC_STYLES = [
             "section_caps": True, "margin_top": 0.75, "margin_bottom": 0.75,
             "margin_left": 0.75, "margin_right": 0.75,
             "space_before_section": 6, "space_after_section": 4,
+            "sections": _DEFAULT_SECTIONS,
+            "section_heading_style": "boxed",
+            "space_between_entries": 4.0,
+            "entry_title_size": 10.5, "entry_subtitle_size": 10.0,
+            "entry_subtitle_style": "italic", "entry_list_style": "bullet",
+            "entry_indent_body": True,
+            "color_heading": "000000", "color_heading_line": "000000",
+            "color_job_title": "000000", "color_employer": "000000",
+            "color_dates": "555555", "color_subtitle": "555555", "color_contact": "444444",
+            "name_italic": False, "name_letter_spacing": 1.0,
+            "experience_layout": "employer-title", "education_layout": "school-degree",
         },
     },
 ]
