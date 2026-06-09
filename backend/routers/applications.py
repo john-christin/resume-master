@@ -9,6 +9,7 @@ from auth import get_approved_user
 from config import settings
 from database import get_db
 from models.application import Application
+from models.call import Call
 from models.user import User
 from schemas.application import (
     ApplicationDetail,
@@ -55,6 +56,8 @@ def list_applications(
     sort_by: str = "created_at",
     sort_dir: str = "desc",
     tech_stack_id: str | None = None,
+    call_status: str | None = None,
+    profile_name: str | None = None,
     current_user: User = Depends(get_approved_user),
     db: Session = Depends(get_db),
 ):
@@ -72,6 +75,19 @@ def list_applications(
     if tech_stack_id:
         stmt = stmt.where(Application.tech_stack_id == tech_stack_id)
         count_stmt = count_stmt.where(Application.tech_stack_id == tech_stack_id)
+
+    # Call status filter
+    if call_status == "no_call":
+        stmt = stmt.where(Application.call_scheduled == False)  # noqa: E712
+        count_stmt = count_stmt.where(Application.call_scheduled == False)  # noqa: E712
+    elif call_status:
+        stmt = stmt.join(Call, Call.application_id == Application.id).where(Call.status == call_status)
+        count_stmt = count_stmt.join(Call, Call.application_id == Application.id).where(Call.status == call_status)
+
+    # Profile name filter
+    if profile_name:
+        stmt = stmt.where(Application.profile_name == profile_name)
+        count_stmt = count_stmt.where(Application.profile_name == profile_name)
 
     # Search filter
     if search:

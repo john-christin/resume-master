@@ -121,6 +121,9 @@ export default function JobInput() {
   const [draftJob, setDraftJob] = useState<JobDescriptionEntry>({ ...emptyJob });
   const [modalClearanceError, setModalClearanceError] = useState<string | null>(null);
   const [modalBannedError, setModalBannedError] = useState<string | null>(null);
+  const [modalWorkModeWarning, setModalWorkModeWarning] = useState<string | null>(null);
+  const [modalDuplicateWarning, setModalDuplicateWarning] = useState<{ company: string; jobTitle: string; date: string } | null>(null);
+  const [modalWarningsShown, setModalWarningsShown] = useState(false);
   const [modalValidating, setModalValidating] = useState(false);
 
   useEffect(() => {
@@ -152,6 +155,9 @@ export default function JobInput() {
     setEditingIndex(null);
     setModalClearanceError(null);
     setModalBannedError(null);
+    setModalWorkModeWarning(null);
+    setModalDuplicateWarning(null);
+    setModalWarningsShown(false);
     setJobModalOpen(true);
   };
 
@@ -160,19 +166,37 @@ export default function JobInput() {
     setEditingIndex(index);
     setModalClearanceError(null);
     setModalBannedError(null);
+    setModalWorkModeWarning(null);
+    setModalDuplicateWarning(null);
+    setModalWarningsShown(false);
     setJobModalOpen(true);
   };
 
   const selectedProfile = profiles.find((p) => p.id === selectedProfileId) ?? null;
+
+  const doAddJob = () => {
+    if (editingIndex !== null) {
+      setJobs((prev) => prev.map((j, i) => (i === editingIndex ? draftJob : j)));
+    } else {
+      setJobs((prev) => [...prev, draftJob]);
+    }
+    setJobModalOpen(false);
+  };
 
   const handleModalAdd = async () => {
     if (!draftJob.job_title.trim() || !draftJob.job_description.trim()) return;
     setModalClearanceError(null);
     setModalBannedError(null);
 
+    // Warnings already shown — user clicked "Add Anyway"
+    if (modalWarningsShown) {
+      doAddJob();
+      return;
+    }
+
     setModalValidating(true);
     try {
-      // Banned company check
+      // Banned company check (blocking)
       if (draftJob.company?.trim()) {
         const bannedRes = await checkBannedCompanies([draftJob.company.trim()]);
         if (bannedRes.data.matches.length > 0) {
@@ -186,7 +210,7 @@ export default function JobInput() {
         }
       }
 
-      // Clearance check
+      // Clearance check (blocking)
       if (selectedProfileId && selectedProfile?.check_clearance) {
         const clearRes = await checkClearance(selectedProfileId, draftJob.job_description);
         if (!clearRes.data.allowed) {
@@ -194,18 +218,53 @@ export default function JobInput() {
           return;
         }
       }
+
+      // Work mode check (soft warning)
+      let hasWarnings = false;
+      const detectedMode = detectWorkMode(draftJob.job_description);
+      if (detectedMode) {
+        setModalWorkModeWarning(
+          detectedMode === "hybrid"
+            ? "This job appears to be hybrid (partially in-office). All profiles prefer remote."
+            : "This job appears to be onsite (in-office). All profiles prefer remote."
+        );
+        hasWarnings = true;
+      } else {
+        setModalWorkModeWarning(null);
+      }
+
+      // Duplicate company check (soft warning)
+      if (draftJob.company?.trim() && selectedProfileId) {
+        try {
+          const dupRes = await checkCompanies(selectedProfileId, [draftJob.company.trim()]);
+          if (dupRes.data.matches.length > 0) {
+            const match = dupRes.data.matches[0];
+            const mostRecent = match.existing_applications[0];
+            setModalDuplicateWarning({
+              company: match.company,
+              jobTitle: mostRecent.job_title,
+              date: new Date(mostRecent.created_at).toLocaleDateString(),
+            });
+            hasWarnings = true;
+          } else {
+            setModalDuplicateWarning(null);
+          }
+        } catch {
+          setModalDuplicateWarning(null);
+        }
+      }
+
+      if (hasWarnings) {
+        setModalWarningsShown(true);
+        return;
+      }
     } catch {
       // proceed silently if checks fail
     } finally {
       setModalValidating(false);
     }
 
-    if (editingIndex !== null) {
-      setJobs((prev) => prev.map((j, i) => (i === editingIndex ? draftJob : j)));
-    } else {
-      setJobs((prev) => [...prev, draftJob]);
-    }
-    setJobModalOpen(false);
+    doAddJob();
   };
 
   const detectWorkMode = (text: string): string | null => {
@@ -370,19 +429,18 @@ export default function JobInput() {
       } catch {
         // proceed silently if checks fail
       }
-    }
 
-    for (let i = 0; i < jobs.length; i++) {
-      const workMode = detectWorkMode(jobs[i].job_description);
+      // Work mode check for single mode (batch checks happen at add-time)
+      const workMode = detectWorkMode(jobs[0].job_description);
       if (workMode) {
         setWorkModeWarning({
           label:
             workMode === "hybrid"
               ? "hybrid (partially in-office)"
               : "onsite (in-office)",
-          jobIndex: i,
-          jobTitle: jobs[i].job_title || `Job #${i + 1}`,
-          company: jobs[i].company || "",
+          jobIndex: 0,
+          jobTitle: jobs[0].job_title || "Job #1",
+          company: jobs[0].company || "",
         });
         return;
       }
@@ -649,7 +707,7 @@ export default function JobInput() {
       )}
 
       {/* Batch job add/edit modal */}
-      <Dialog open={jobModalOpen} onOpenChange={(o) => { if (!o) setJobModalOpen(false); }}>
+      <Dialog open={jobModalOpen} onOpenChange={(o) => { if (!o) { setJobModalOpen(false); setModalWorkModeWarning(null); setModalDuplicateWarning(null); setModalWarningsShown(false); } }}>
         <DialogContent className="max-w-lg">
           <DialogHeader>
             <DialogTitle>
@@ -684,6 +742,8 @@ export default function JobInput() {
                   onChange={(e) => {
                     setDraftJob({ ...draftJob, company: e.target.value });
                     setModalBannedError(null);
+                    setModalDuplicateWarning(null);
+                    setModalWarningsShown(false);
                   }}
                   maxLength={300}
                 />
@@ -707,6 +767,8 @@ export default function JobInput() {
                 onChange={(e) => {
                   setDraftJob({ ...draftJob, job_description: e.target.value });
                   setModalClearanceError(null);
+                  setModalWorkModeWarning(null);
+                  setModalWarningsShown(false);
                 }}
                 rows={8}
               />
@@ -723,6 +785,20 @@ export default function JobInput() {
                 <AlertDescription>{modalClearanceError}</AlertDescription>
               </Alert>
             )}
+            {modalWorkModeWarning && (
+              <Alert variant="warning">
+                <AlertTriangle className="h-4 w-4" />
+                <AlertDescription>{modalWorkModeWarning}</AlertDescription>
+              </Alert>
+            )}
+            {modalDuplicateWarning && (
+              <Alert variant="warning">
+                <AlertTriangle className="h-4 w-4" />
+                <AlertDescription>
+                  Already applied to <span className="font-medium">{modalDuplicateWarning.company}</span> on {modalDuplicateWarning.date} ({modalDuplicateWarning.jobTitle}).
+                </AlertDescription>
+              </Alert>
+            )}
           </div>
           <DialogFooter>
             <Button variant="outline" onClick={() => setJobModalOpen(false)}>
@@ -731,8 +807,15 @@ export default function JobInput() {
             <Button
               onClick={handleModalAdd}
               disabled={!draftJob.job_title.trim() || !draftJob.job_description.trim() || modalValidating}
+              variant={modalWarningsShown ? "warning" : "default"}
             >
-              {modalValidating ? "Checking…" : editingIndex !== null ? "Save Changes" : "Add Job"}
+              {modalValidating
+                ? "Checking…"
+                : modalWarningsShown
+                  ? "Add Anyway"
+                  : editingIndex !== null
+                    ? "Save Changes"
+                    : "Add Job"}
             </Button>
           </DialogFooter>
         </DialogContent>

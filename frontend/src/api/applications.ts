@@ -7,7 +7,9 @@ export const getApplications = (
   search?: string,
   sortBy: string = "created_at",
   sortDir: string = "desc",
-  techStackId?: string
+  techStackId?: string,
+  callStatus?: string,
+  profileName?: string,
 ) => {
   const params = new URLSearchParams({
     page: String(page),
@@ -17,6 +19,8 @@ export const getApplications = (
   });
   if (search) params.set("search", search);
   if (techStackId) params.set("tech_stack_id", techStackId);
+  if (callStatus) params.set("call_status", callStatus);
+  if (profileName) params.set("profile_name", profileName);
   return api.get<PaginatedApplications>(
     `/api/applications?${params.toString()}`
   );

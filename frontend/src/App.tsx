@@ -15,6 +15,7 @@ import TechStacksPage from "./pages/admin/TechStacksPage";
 import UsersPage from "./pages/admin/UsersPage";
 import BatchJobStatus from "./pages/BatchJobStatus";
 import BidderDashboard from "./pages/BidderDashboard";
+import ApplicationDetailPage from "./pages/ApplicationDetailPage";
 import History from "./pages/History";
 import Kanban from "./pages/Kanban";
 import JobInput from "./pages/JobInput";
@@ -71,6 +72,7 @@ function App() {
 
             {/* History - all approved roles */}
             <Route path="/history" element={<History />} />
+            <Route path="/history/:appId" element={<ApplicationDetailPage />} />
 
             {/* Call Board - all approved roles */}
             <Route path="/calls" element={<Kanban />} />

@@ -9,6 +9,7 @@ import {
   Copy,
   Download,
   FileText,
+  Link2,
   Loader2,
   MessageSquare,
   Phone,
@@ -28,7 +29,7 @@ import {
 import { deleteCall, updateCall } from "../api/calls";
 import { getCallStages } from "../api/callStages";
 import CallFormDialog from "../components/kanban/CallFormDialog";
-import { getTechStacksPublic } from "../api/profile";
+import { getProfiles, getTechStacksPublic } from "../api/profile";
 import { getUserRole } from "../auth";
 import ApplicationChatSidebar from "../components/ApplicationChatSidebar";
 import LoadingSpinner from "../components/LoadingSpinner";
@@ -67,6 +68,7 @@ import type {
   ApplicationSummary,
   CallStageConfig,
   PaginatedApplications,
+  Profile,
   TechStack,
 } from "../types";
 
@@ -240,6 +242,9 @@ export default function History() {
   const [searchInput, setSearchInput] = useState("");
   const [techStackFilter, setTechStackFilter] = useState("");
   const [techStacks, setTechStacks] = useState<TechStack[]>([]);
+  const [callStatusFilter, setCallStatusFilter] = useState("");
+  const [profileFilter, setProfileFilter] = useState("");
+  const [profiles, setProfiles] = useState<Profile[]>([]);
 
   const [expandedId, setExpandedId] = useState<string | null>(null);
   const [expandedDetail, setExpandedDetail] = useState<ApplicationDetail | null>(null);
@@ -274,6 +279,12 @@ export default function History() {
   }, []);
 
   useEffect(() => {
+    getProfiles(true)
+      .then((res) => setProfiles(res.data))
+      .catch(() => {});
+  }, []);
+
+  useEffect(() => {
     getCallStages()
       .then((res) => setCallStages(res.data))
       .catch(() => {});
@@ -288,7 +299,9 @@ export default function History() {
         search || undefined,
         sortBy,
         sortDir,
-        techStackFilter || undefined
+        techStackFilter || undefined,
+        callStatusFilter || undefined,
+        profileFilter || undefined,
       );
       setData(res.data);
     } catch {
@@ -300,7 +313,7 @@ export default function History() {
 
   useEffect(() => {
     loadApplications();
-  }, [page, pageSize, search, sortBy, sortDir, techStackFilter]);
+  }, [page, pageSize, search, sortBy, sortDir, techStackFilter, callStatusFilter, profileFilter]);
 
   const handleSearch = (e: React.FormEvent<HTMLFormElement>) => {
     e.preventDefault();
@@ -501,6 +514,39 @@ export default function History() {
             </SelectContent>
           </Select>
         )}
+        <Select
+          value={callStatusFilter || "all"}
+          onValueChange={(v) => { setCallStatusFilter(v === "all" ? "" : v); setPage(1); }}
+        >
+          <SelectTrigger className="w-[150px]">
+            <SelectValue placeholder="All Call Status" />
+          </SelectTrigger>
+          <SelectContent>
+            <SelectItem value="all">All Call Status</SelectItem>
+            <SelectItem value="no_call">No Call</SelectItem>
+            <SelectItem value="scheduled">Scheduled</SelectItem>
+            <SelectItem value="pending">Pending</SelectItem>
+            <SelectItem value="passed">Passed</SelectItem>
+            <SelectItem value="failed">Failed</SelectItem>
+            <SelectItem value="cancelled">Cancelled</SelectItem>
+          </SelectContent>
+        </Select>
+        {profiles.length > 0 && (
+          <Select
+            value={profileFilter || "all"}
+            onValueChange={(v) => { setProfileFilter(v === "all" ? "" : v); setPage(1); }}
+          >
+            <SelectTrigger className="w-[150px]">
+              <SelectValue placeholder="All Profiles" />
+            </SelectTrigger>
+            <SelectContent>
+              <SelectItem value="all">All Profiles</SelectItem>
+              {profiles.map((p) => (
+                <SelectItem key={p.id} value={p.name}>{p.name}</SelectItem>
+              ))}
+            </SelectContent>
+          </Select>
+        )}
       </div>
 
       {applications.length === 0 && !loading ? (
@@ -680,6 +726,20 @@ export default function History() {
                                 Cover
                               </Button>
                             )}
+                            <Button
+                              variant="ghost"
+                              size="icon"
+                              className="h-6 w-6 text-muted-foreground hover:text-primary"
+                              title="Copy shareable link"
+                              onClick={() => {
+                                navigator.clipboard.writeText(
+                                  `${window.location.origin}/history/${app.id}`
+                                );
+                                setToast("Link copied!");
+                              }}
+                            >
+                              <Link2 className="h-3 w-3" />
+                            </Button>
                             <Button
                               variant="ghost"
                               size="icon"
