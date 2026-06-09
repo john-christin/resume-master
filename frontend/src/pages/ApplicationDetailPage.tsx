@@ -6,7 +6,6 @@ import {
   Copy,
   Download,
   FileText,
-  Loader2,
 } from "lucide-react";
 import { useEffect, useState } from "react";
 import { Link, useNavigate, useParams } from "react-router-dom";
@@ -87,6 +86,15 @@ type FormatPicker = {
   profileName: string;
 };
 
+interface TailoredExperience {
+  company: string;
+  location?: string | null;
+  title: string;
+  start_date: string;
+  end_date?: string | null;
+  bullets: string[];
+}
+
 export default function ApplicationDetailPage() {
   const { appId } = useParams<{ appId: string }>();
   const navigate = useNavigate();
@@ -133,10 +141,10 @@ export default function ApplicationDetailPage() {
   const showCost = role === "admin";
   const shareUrl = `${window.location.origin}/history/${detail.id}`;
 
-  let bullets: string[] = [];
+  let tailoredExperiences: TailoredExperience[] = [];
   if (detail.tailored_bullets) {
     try {
-      bullets = JSON.parse(detail.tailored_bullets);
+      tailoredExperiences = JSON.parse(detail.tailored_bullets);
     } catch {}
   }
 
@@ -366,20 +374,34 @@ export default function ApplicationDetailPage() {
       </Card>
 
       {/* Tailored Bullets */}
-      {bullets.length > 0 && (
+      {tailoredExperiences.length > 0 && (
         <Card>
           <CardHeader className="pb-2">
-            <CardTitle className="text-base">Tailored Bullets</CardTitle>
+            <CardTitle className="text-base">Tailored Experience</CardTitle>
           </CardHeader>
-          <CardContent>
-            <ul className="space-y-2">
-              {bullets.map((bullet, i) => (
-                <li key={i} className="flex gap-2 text-sm">
-                  <span className="text-primary mt-0.5 shrink-0">•</span>
-                  <span>{bullet}</span>
-                </li>
-              ))}
-            </ul>
+          <CardContent className="space-y-4">
+            {tailoredExperiences.map((exp, i) => (
+              <div key={i} className={i > 0 ? "pt-4 border-t" : ""}>
+                <div className="mb-1.5">
+                  <p className="text-sm font-semibold">{exp.title}</p>
+                  <p className="text-xs text-muted-foreground">
+                    {exp.company}
+                    {exp.location ? ` · ${exp.location}` : ""}
+                    {" · "}
+                    {exp.start_date}
+                    {exp.end_date ? ` – ${exp.end_date}` : ""}
+                  </p>
+                </div>
+                <ul className="space-y-1">
+                  {exp.bullets.map((bullet, j) => (
+                    <li key={j} className="flex gap-2 text-sm">
+                      <span className="text-primary mt-0.5 shrink-0">•</span>
+                      <span>{bullet}</span>
+                    </li>
+                  ))}
+                </ul>
+              </div>
+            ))}
           </CardContent>
         </Card>
       )}
