@@ -4,7 +4,6 @@ import {
   Calendar,
   DollarSign,
   History,
-  LayoutDashboard,
   Phone,
   TrendingUp,
   Wand2,
@@ -29,6 +28,8 @@ import { getApplications } from "../api/applications";
 import { getMyStats } from "../api/stats";
 import type { MyProfileStat, MyStackStat, MyStatsResponse } from "../api/stats";
 import LoadingSpinner from "../components/LoadingSpinner";
+import PageHeader from "../components/shared/PageHeader";
+import StatCard from "../components/shared/StatCard";
 import { Alert, AlertDescription } from "../components/ui/alert";
 import { Button } from "../components/ui/button";
 import { Card, CardContent, CardHeader, CardTitle } from "../components/ui/card";
@@ -77,35 +78,6 @@ const ChartTooltip = ({ active, payload, label }: { active?: boolean; payload?: 
     </div>
   );
 };
-
-function StatCard({
-  label,
-  value,
-  sub,
-  icon,
-  colorBg,
-  colorText,
-}: {
-  label: string;
-  value: string | number;
-  sub?: string;
-  icon: React.ReactNode;
-  colorBg: string;
-  colorText: string;
-}) {
-  return (
-    <Card className="overflow-hidden rounded-xl border-border/50 shadow-sm hover:shadow-md transition-shadow">
-      <CardContent className="pt-5 pb-4">
-        <div className={`inline-flex h-10 w-10 items-center justify-center rounded-2xl mb-4 ${colorBg}`}>
-          <span className={colorText}>{icon}</span>
-        </div>
-        <p className="text-2xl font-bold tracking-tight leading-none">{value}</p>
-        <p className="text-sm text-muted-foreground mt-1.5">{label}</p>
-        {sub && <p className="text-xs text-muted-foreground/60 mt-0.5">{sub}</p>}
-      </CardContent>
-    </Card>
-  );
-}
 
 export default function BidderDashboard() {
   const [stats, setStats] = useState<MyStatsResponse | null>(null);
@@ -157,32 +129,27 @@ export default function BidderDashboard() {
   };
 
   return (
-    <div className="space-y-8">
-      <div className="flex items-center justify-between">
-        <div className="flex items-center gap-3">
-          <div className="h-10 w-10 rounded-xl bg-primary/10 flex items-center justify-center shrink-0">
-            <LayoutDashboard className="h-5 w-5 text-primary" />
-          </div>
-          <div>
-            <h1 className="text-xl font-bold leading-none">My Dashboard</h1>
-            <p className="text-muted-foreground text-sm mt-0.5">Your application activity overview</p>
-          </div>
-        </div>
-        <div className="flex gap-2">
-          <Button asChild>
-            <Link to="/generate">
-              <Wand2 className="h-4 w-4" />
-              New Application
-            </Link>
-          </Button>
-          <Button variant="outline" asChild>
-            <Link to="/history">
-              <History className="h-4 w-4" />
-              History
-            </Link>
-          </Button>
-        </div>
-      </div>
+    <div className="space-y-6">
+      <PageHeader
+        title="My Dashboard"
+        description="Your application activity overview"
+        actions={
+          <>
+            <Button variant="outline" asChild>
+              <Link to="/history">
+                <History className="h-4 w-4" />
+                History
+              </Link>
+            </Button>
+            <Button asChild>
+              <Link to="/generate">
+                <Wand2 className="h-4 w-4" />
+                New Application
+              </Link>
+            </Button>
+          </>
+        }
+      />
 
       {error && (
         <Alert variant="destructive">
@@ -194,46 +161,21 @@ export default function BidderDashboard() {
       {/* Summary cards */}
       {stats && (
         <div className="grid grid-cols-2 md:grid-cols-5 gap-4">
-          <StatCard
-            label="Today"
-            value={stats.summary.today_count}
-            sub="applications"
+          <StatCard label="Today" value={stats.summary.today_count} sub="applications"
             icon={<TrendingUp className="h-5 w-5" />}
-            colorBg="bg-violet-100 dark:bg-violet-900/40"
-            colorText="text-violet-600 dark:text-violet-400"
-          />
-          <StatCard
-            label="This Week"
-            value={stats.summary.week_count}
-            sub="last 7 days"
+            iconBg="bg-violet-100 dark:bg-violet-900/40" iconColor="text-violet-600 dark:text-violet-400" />
+          <StatCard label="This Week" value={stats.summary.week_count} sub="last 7 days"
             icon={<Calendar className="h-5 w-5" />}
-            colorBg="bg-blue-100 dark:bg-blue-900/40"
-            colorText="text-blue-600 dark:text-blue-400"
-          />
-          <StatCard
-            label="This Month"
-            value={stats.summary.month_count}
-            sub="last 30 days"
+            iconBg="bg-blue-100 dark:bg-blue-900/40" iconColor="text-blue-600 dark:text-blue-400" />
+          <StatCard label="This Month" value={stats.summary.month_count} sub="last 30 days"
             icon={<Calendar className="h-5 w-5" />}
-            colorBg="bg-indigo-100 dark:bg-indigo-900/40"
-            colorText="text-indigo-600 dark:text-indigo-400"
-          />
-          <StatCard
-            label="Month Cost"
-            value={`$${stats.summary.month_cost.toFixed(4)}`}
-            sub="last 30 days"
+            iconBg="bg-indigo-100 dark:bg-indigo-900/40" iconColor="text-indigo-600 dark:text-indigo-400" />
+          <StatCard label="Month Cost" value={`$${stats.summary.month_cost.toFixed(4)}`} sub="last 30 days"
             icon={<DollarSign className="h-5 w-5" />}
-            colorBg="bg-emerald-100 dark:bg-emerald-900/40"
-            colorText="text-emerald-600 dark:text-emerald-400"
-          />
-          <StatCard
-            label="Calls Scheduled"
-            value={stats.summary.calls_scheduled}
-            sub="all time"
+            iconBg="bg-emerald-100 dark:bg-emerald-900/40" iconColor="text-emerald-600 dark:text-emerald-400" />
+          <StatCard label="Calls Scheduled" value={stats.summary.calls_scheduled} sub="all time"
             icon={<Phone className="h-5 w-5" />}
-            colorBg="bg-amber-100 dark:bg-amber-900/40"
-            colorText="text-amber-600 dark:text-amber-400"
-          />
+            iconBg="bg-amber-100 dark:bg-amber-900/40" iconColor="text-amber-600 dark:text-amber-400" />
         </div>
       )}
 
@@ -267,7 +209,7 @@ export default function BidderDashboard() {
         </CardContent>
       </Card>
 
-      <div className="space-y-6">
+      <div className="space-y-5">
         {/* Daily Applications — Area chart */}
         <Card>
           <CardHeader className="pb-2">

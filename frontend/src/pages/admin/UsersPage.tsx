@@ -1,4 +1,5 @@
 import { AlertCircle, Users } from "lucide-react";
+import PageHeader from "../../components/shared/PageHeader";
 import { useEffect, useState } from "react";
 import {
   approveUser,
@@ -114,15 +115,7 @@ export default function UsersPage() {
 
   return (
     <div className="space-y-6">
-      <div className="flex items-center gap-3 mb-6">
-        <div className="h-10 w-10 rounded-xl bg-primary/10 flex items-center justify-center shrink-0">
-          <Users className="h-5 w-5 text-primary" />
-        </div>
-        <div>
-          <h1 className="text-xl font-bold leading-none">Users</h1>
-          <p className="text-muted-foreground text-sm mt-0.5">Manage user accounts and permissions</p>
-        </div>
-      </div>
+      <PageHeader title="Users" description="Manage user accounts and permissions" />
 
       {error && (
         <Alert variant="destructive">

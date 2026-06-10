@@ -50,6 +50,7 @@ class StyleConfig(BaseModel):
 
     # --- Spacing ---
     space_between_entries: float = 3.0    # pt between job/edu entries
+    space_after_bullet: float = 1.0       # pt after each bullet line
 
     # --- Entry layout ---
     entry_title_size: float = 10.0

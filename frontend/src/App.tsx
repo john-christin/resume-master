@@ -1,7 +1,6 @@
 import { BrowserRouter, Navigate, Route, Routes } from "react-router-dom";
 import { getUserRole } from "./auth";
-import AdminLayout from "./components/AdminLayout";
-import Layout from "./components/Layout";
+import AppLayout from "./components/layout/AppLayout";
 import ProtectedRoute from "./components/ProtectedRoute";
 import AdminDashboardPage from "./pages/AdminDashboardPage";
 import BannedCompaniesPage from "./pages/admin/BannedCompaniesPage";
@@ -41,60 +40,56 @@ function App() {
   return (
     <BrowserRouter>
       <Routes>
+        {/* Public routes */}
         <Route path="/login" element={<Login />} />
         <Route path="/register" element={<Register />} />
         <Route path="/pending" element={<PendingApproval />} />
         <Route path="/rejected" element={<Rejected />} />
         <Route path="/suspended" element={<Suspended />} />
 
+        {/* Authenticated routes — all under AppLayout */}
         <Route element={<ProtectedRoute roles={["admin", "bidder", "caller"]} />}>
-          <Route element={<Layout />}>
+          <Route element={<AppLayout />}>
             <Route path="/" element={<RoleRedirect />} />
 
-            {/* Bidder dashboard */}
+            {/* Bidder */}
             <Route element={<ProtectedRoute roles={["bidder"]} />}>
               <Route path="/dashboard" element={<BidderDashboard />} />
             </Route>
 
-            {/* Profiles - bidder + admin */}
+            {/* Profiles — bidder + admin */}
             <Route element={<ProtectedRoute roles={["admin", "bidder"]} />}>
               <Route path="/profiles" element={<ProfileList />} />
               <Route path="/profiles/new" element={<ProfileEdit />} />
               <Route path="/profiles/:profileId" element={<ProfileEdit />} />
             </Route>
 
-            {/* Generate - bidder + admin */}
+            {/* Generate — bidder + admin */}
             <Route element={<ProtectedRoute roles={["admin", "bidder"]} />}>
               <Route path="/generate" element={<JobInput />} />
               <Route path="/preview/:applicationId" element={<Preview />} />
               <Route path="/batch-jobs/:jobId" element={<BatchJobStatus />} />
             </Route>
 
-            {/* History - all approved roles */}
+            {/* Shared — all approved roles */}
             <Route path="/history" element={<History />} />
             <Route path="/history/:appId" element={<ApplicationDetailPage />} />
-
-            {/* Call Board - all approved roles */}
             <Route path="/calls" element={<Kanban />} />
-
-            {/* Settings - all approved roles */}
             <Route path="/settings" element={<Settings />} />
 
-            {/* Admin routes — nested under AdminLayout for left sidebar */}
+            {/* Admin routes */}
             <Route element={<ProtectedRoute roles={["admin"]} />}>
-              <Route path="/admin" element={<AdminLayout />}>
-                <Route index element={<Navigate to="/admin/dashboard" replace />} />
-                <Route path="dashboard" element={<AdminDashboardPage />} />
-                <Route path="pending" element={<PendingPage />} />
-                <Route path="users" element={<UsersPage />} />
-                <Route path="pricing" element={<PricingPage />} />
-                <Route path="stacks" element={<TechStacksPage />} />
-                <Route path="doc-styles" element={<DocStylesPage />} />
-                <Route path="kb" element={<KnowledgeBasePage />} />
-                <Route path="models" element={<ModelsPage />} />
-                <Route path="banned-companies" element={<BannedCompaniesPage />} />
-                <Route path="logs" element={<LogsPage />} />
-              </Route>
+              <Route path="/admin" element={<Navigate to="/admin/dashboard" replace />} />
+              <Route path="/admin/dashboard" element={<AdminDashboardPage />} />
+              <Route path="/admin/pending" element={<PendingPage />} />
+              <Route path="/admin/users" element={<UsersPage />} />
+              <Route path="/admin/pricing" element={<PricingPage />} />
+              <Route path="/admin/stacks" element={<TechStacksPage />} />
+              <Route path="/admin/doc-styles" element={<DocStylesPage />} />
+              <Route path="/admin/kb" element={<KnowledgeBasePage />} />
+              <Route path="/admin/models" element={<ModelsPage />} />
+              <Route path="/admin/banned-companies" element={<BannedCompaniesPage />} />
+              <Route path="/admin/logs" element={<LogsPage />} />
             </Route>
           </Route>
         </Route>

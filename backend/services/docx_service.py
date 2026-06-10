@@ -162,7 +162,7 @@ def create_resume(
     # --- Headline ---
     name_para = doc.add_paragraph()
     name_para.alignment = align
-    name_para.space_after = Pt(2)
+    name_para.paragraph_format.space_after = Pt(2)
     name_text = user_name.upper() if s.name_uppercase else user_name
     run = name_para.add_run(name_text)
     _set_font(run, name=s.font_name, size=s.font_size_name, bold=s.name_bold,
@@ -180,14 +180,14 @@ def create_resume(
     if contact_parts:
         contact_para = doc.add_paragraph()
         contact_para.alignment = align
-        contact_para.space_after = Pt(6)
+        contact_para.paragraph_format.space_after = Pt(6)
         run = contact_para.add_run(f" {s.contact_separator} ".join(contact_parts))
         _set_font(run, name=s.font_name, size=s.font_size_contact, color=s.color_contact)
 
     def _section_heading(label: str):
         heading = doc.add_paragraph()
-        heading.space_before = Pt(s.space_before_section)
-        heading.space_after = Pt(s.space_after_section)
+        heading.paragraph_format.space_before = Pt(s.space_before_section)
+        heading.paragraph_format.space_after = Pt(s.space_after_section)
         text = label.upper() if s.section_caps else label
         run = heading.add_run(text)
         _set_font(run, name=s.font_name, size=s.font_size_section, bold=s.section_bold,
@@ -200,7 +200,7 @@ def create_resume(
             return
         _section_heading("Professional Summary")
         summary_para = doc.add_paragraph()
-        summary_para.space_after = Pt(4)
+        summary_para.paragraph_format.space_after = Pt(4)
         _set_line_spacing(summary_para, s.line_spacing)
         run = summary_para.add_run(summary)
         _set_font(run, name=s.font_name, size=s.font_size_body)
@@ -211,7 +211,7 @@ def create_resume(
         _section_heading("Technical Skills")
         for skill_cat in skills:
             skill_para = doc.add_paragraph()
-            skill_para.space_after = Pt(1)
+            skill_para.paragraph_format.space_after = Pt(1)
             _set_line_spacing(skill_para, s.line_spacing)
             cat_run = skill_para.add_run(f"{skill_cat['category']}: ")
             _set_font(cat_run, name=s.font_name, size=s.font_size_body, bold=True)
@@ -237,8 +237,8 @@ def create_resume(
             if s.experience_layout == "combined":
                 # Single line: "Title | Company" with dates right-aligned
                 entry_para = doc.add_paragraph()
-                entry_para.space_before = Pt(s.space_between_entries)
-                entry_para.space_after = Pt(1)
+                entry_para.paragraph_format.space_before = Pt(s.space_between_entries)
+                entry_para.paragraph_format.space_after = Pt(1)
                 _add_tabstop_right(entry_para, content_width)
                 combined_text = f"{title} | {company_text}"
                 run = entry_para.add_run(combined_text)
@@ -250,8 +250,8 @@ def create_resume(
             elif s.experience_layout == "title-employer":
                 # Title (bold) on line 1, employer on line 2
                 title_para = doc.add_paragraph()
-                title_para.space_before = Pt(s.space_between_entries)
-                title_para.space_after = Pt(1)
+                title_para.paragraph_format.space_before = Pt(s.space_between_entries)
+                title_para.paragraph_format.space_after = Pt(1)
                 _add_tabstop_right(title_para, content_width)
                 run = title_para.add_run(title)
                 _set_font(run, name=s.font_name, size=s.entry_title_size, bold=True,
@@ -260,7 +260,7 @@ def create_resume(
                 _set_font(run, name=s.font_name, size=s.font_size_contact, color=s.color_dates)
 
                 employer_para = doc.add_paragraph()
-                employer_para.space_after = Pt(1)
+                employer_para.paragraph_format.space_after = Pt(1)
                 run = employer_para.add_run(company_text)
                 _set_font(run, name=s.font_name, size=s.entry_subtitle_size,
                           color=s.color_employer)
@@ -269,14 +269,14 @@ def create_resume(
             else:
                 # employer-title (default): Company bold on line 1, title + dates on line 2
                 company_para = doc.add_paragraph()
-                company_para.space_before = Pt(s.space_between_entries)
-                company_para.space_after = Pt(1)
+                company_para.paragraph_format.space_before = Pt(s.space_between_entries)
+                company_para.paragraph_format.space_after = Pt(1)
                 run = company_para.add_run(company_text)
                 _set_font(run, name=s.font_name, size=s.entry_subtitle_size, bold=True,
                           color=s.color_employer)
 
                 title_para = doc.add_paragraph()
-                title_para.space_after = Pt(1)
+                title_para.paragraph_format.space_after = Pt(1)
                 _add_tabstop_right(title_para, content_width)
                 run = title_para.add_run(title)
                 _set_font(run, name=s.font_name, size=s.entry_title_size, color=s.color_job_title)
@@ -285,7 +285,8 @@ def create_resume(
 
             for bullet in exp.get("bullets", []):
                 bullet_para = doc.add_paragraph()
-                bullet_para.space_after = Pt(1)
+                bullet_para.paragraph_format.space_before = Pt(0)
+                bullet_para.paragraph_format.space_after = Pt(s.space_after_bullet)
                 if s.entry_indent_body:
                     bullet_para.paragraph_format.left_indent = indent
                     bullet_para.paragraph_format.first_line_indent = Inches(-0.25)
@@ -305,8 +306,8 @@ def create_resume(
             end = edu.get("end_date") or "Present"
 
             edu_para = doc.add_paragraph()
-            edu_para.space_before = Pt(s.space_between_entries)
-            edu_para.space_after = Pt(1)
+            edu_para.paragraph_format.space_before = Pt(s.space_between_entries)
+            edu_para.paragraph_format.space_after = Pt(1)
             _add_tabstop_right(edu_para, content_width)
 
             degree_text = f"{edu['degree']} in {edu['field']}"
@@ -322,7 +323,7 @@ def create_resume(
                 _set_font(run, name=s.font_name, size=s.font_size_contact, color=s.color_dates)
 
                 subtitle_para = doc.add_paragraph()
-                subtitle_para.space_after = Pt(1)
+                subtitle_para.paragraph_format.space_after = Pt(1)
                 run = subtitle_para.add_run(degree_text)
                 _set_font(run, name=s.font_name, size=s.entry_subtitle_size,
                           color=s.color_subtitle)
@@ -337,7 +338,7 @@ def create_resume(
 
             if edu.get("gpa"):
                 gpa_para = doc.add_paragraph()
-                gpa_para.space_after = Pt(1)
+                gpa_para.paragraph_format.space_after = Pt(1)
                 run = gpa_para.add_run(f"GPA: {edu['gpa']}")
                 _set_font(run, name=s.font_name, size=s.font_size_contact, color=s.color_subtitle)
 
@@ -377,19 +378,19 @@ def create_cover_letter(
 
     name_para = doc.add_paragraph()
     name_para.alignment = WD_ALIGN_PARAGRAPH.LEFT
-    name_para.space_after = Pt(2)
+    name_para.paragraph_format.space_after = Pt(2)
     run = name_para.add_run(user_name)
     _set_font(run, size=14, bold=True)
 
     contact_parts = [p for p in [email, phone] if p]
     if contact_parts:
         contact_para = doc.add_paragraph()
-        contact_para.space_after = Pt(12)
+        contact_para.paragraph_format.space_after = Pt(12)
         run = contact_para.add_run(" | ".join(contact_parts))
         _set_font(run, size=10)
 
     date_para = doc.add_paragraph()
-    date_para.space_after = Pt(12)
+    date_para.paragraph_format.space_after = Pt(12)
     run = date_para.add_run(date.today().strftime("%B %d, %Y"))
     _set_font(run, size=11)
 
@@ -399,7 +400,7 @@ def create_cover_letter(
         if not text:
             continue
         para = doc.add_paragraph()
-        para.space_after = Pt(8)
+        para.paragraph_format.space_after = Pt(8)
         run = para.add_run(text)
         _set_font(run, size=11)
 

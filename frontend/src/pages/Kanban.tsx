@@ -1,4 +1,5 @@
-import { LayoutGrid, Settings } from "lucide-react";
+import { Settings } from "lucide-react";
+import PageHeader from "../components/shared/PageHeader";
 import { useEffect, useMemo, useState } from "react";
 import { getUserRole } from "../auth";
 import { getCallStages } from "../api/callStages";
@@ -76,27 +77,21 @@ export default function Kanban() {
     <div className="flex flex-col gap-4 h-full">
       {/* Page header */}
       <div className="flex items-center justify-between gap-4 shrink-0">
-        <div className="flex items-center gap-3">
-          <div className="h-9 w-9 rounded-xl bg-primary/10 flex items-center justify-center shrink-0">
-            <LayoutGrid className="h-4 w-4 text-primary" />
-          </div>
-          <div>
-            <h1 className="text-xl font-bold leading-none">Call Board</h1>
-            {!loading && visibleCalls.length > 0 && (
-              <div className="flex items-center gap-2.5 mt-1">
-                {(Object.entries(statusCounts) as [CallStatus, number][])
-                  .filter(([, count]) => count > 0)
-                  .map(([status, count]) => (
-                    <span key={status} className={`text-[11px] font-medium ${STATUS_SUMMARY_COLORS[status]}`}>
-                      {count} {status}
-                    </span>
-                  ))}
-              </div>
-            )}
-            {!loading && visibleCalls.length === 0 && (
-              <p className="text-xs text-muted-foreground mt-0.5">No active calls</p>
-            )}
-          </div>
+        <div>
+          <h1 className="text-xl font-semibold text-foreground">Call Board</h1>
+          {!loading && visibleCalls.length > 0 ? (
+            <div className="flex items-center gap-2.5 mt-0.5">
+              {(Object.entries(statusCounts) as [CallStatus, number][])
+                .filter(([, count]) => count > 0)
+                .map(([status, count]) => (
+                  <span key={status} className={`text-[11px] font-medium ${STATUS_SUMMARY_COLORS[status]}`}>
+                    {count} {status}
+                  </span>
+                ))}
+            </div>
+          ) : !loading ? (
+            <p className="text-xs text-muted-foreground mt-0.5">No active calls</p>
+          ) : null}
         </div>
 
         <div className="flex items-center gap-2">

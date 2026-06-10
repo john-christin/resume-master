@@ -1,4 +1,5 @@
 import { AlertCircle, Shield } from "lucide-react";
+import PageHeader from "../../components/shared/PageHeader";
 import { useEffect, useState } from "react";
 import { approveUser, getUsers, rejectUser } from "../../api/admin";
 import LoadingSpinner from "../../components/LoadingSpinner";
@@ -72,18 +73,11 @@ export default function PendingPage() {
 
   return (
     <div className="space-y-6">
-      <div className="flex items-center gap-3 mb-6">
-        <div className="h-10 w-10 rounded-xl bg-primary/10 flex items-center justify-center shrink-0">
-          <Shield className="h-5 w-5 text-primary" />
-        </div>
-        <div>
-          <h1 className="text-xl font-bold leading-none">Pending Approvals</h1>
-          <p className="text-muted-foreground text-sm mt-0.5">Review and approve new user registrations</p>
-        </div>
-        {users.length > 0 && (
-          <Badge variant="warning" className="ml-2">{users.length}</Badge>
-        )}
-      </div>
+      <PageHeader
+        title="Pending Approvals"
+        description="Review and approve new user registrations"
+        actions={users.length > 0 ? <Badge variant="warning">{users.length} pending</Badge> : undefined}
+      />
 
       {error && (
         <Alert variant="destructive">

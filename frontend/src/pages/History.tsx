@@ -13,6 +13,7 @@ import {
   Loader2,
   MessageSquare,
   Phone,
+  RefreshCw,
   Search,
   Trash2,
   Wand2,
@@ -33,6 +34,7 @@ import { getProfiles, getTechStacksPublic } from "../api/profile";
 import { getUserRole } from "../auth";
 import ApplicationChatSidebar from "../components/ApplicationChatSidebar";
 import LoadingSpinner from "../components/LoadingSpinner";
+import PageHeader from "../components/shared/PageHeader";
 import Pagination from "../components/Pagination";
 import { Alert, AlertDescription } from "../components/ui/alert";
 import { Badge } from "../components/ui/badge";
@@ -265,6 +267,7 @@ export default function History() {
   const [formatPicker, setFormatPicker] = useState<FormatPicker | null>(null);
   const [toast, setToast] = useState<string | null>(null);
   const [chatApp, setChatApp] = useState<{ id: string; jobTitle: string; company?: string } | null>(null);
+  const [regenLoading, setRegenLoading] = useState<string | null>(null);
 
   useEffect(() => {
     if (!toast) return;
@@ -335,6 +338,33 @@ export default function History() {
       await loadApplications();
     } catch {
       setError("Failed to delete application");
+    }
+  };
+
+  const handleRegenerate = async (app: ApplicationSummary) => {
+    setRegenLoading(app.id);
+    try {
+      const detail =
+        expandedId === app.id && expandedDetail
+          ? expandedDetail
+          : (await getApplication(app.id)).data;
+      const profile = profiles.find((p) => p.name === app.profile_name);
+      navigate("/generate", {
+        state: {
+          profileId: profile?.id,
+          prefill: {
+            job_title: detail.job_title,
+            company: detail.company ?? "",
+            job_url: detail.job_url ?? "",
+            job_description: detail.job_description,
+            resume_type: detail.resume_type,
+          },
+        },
+      });
+    } catch {
+      setError("Failed to load application details for re-generation.");
+    } finally {
+      setRegenLoading(null);
     }
   };
 
@@ -428,25 +458,16 @@ export default function History() {
 
   return (
     <div className="space-y-6">
-      <div className="flex items-center justify-between">
-        <div className="flex items-center gap-3">
-          <div className="h-10 w-10 rounded-xl bg-primary/10 flex items-center justify-center shrink-0">
-            <ClipboardList className="h-5 w-5 text-primary" />
-          </div>
-          <div>
-            <h1 className="text-xl font-bold leading-none">
-              {isCaller ? "Search Applications" : "Application History"}
-            </h1>
-            <p className="text-muted-foreground text-sm mt-0.5">Track and manage your job applications</p>
-          </div>
-        </div>
-        {!isCaller && (
+      <PageHeader
+        title={isCaller ? "Search Applications" : "Application History"}
+        description="Track and manage your job applications"
+        actions={!isCaller ? (
           <Button onClick={() => navigate("/generate")}>
             <Wand2 className="h-4 w-4" />
             Generate New
           </Button>
-        )}
-      </div>
+        ) : undefined}
+      />
 
       {error && (
         <Alert variant="destructive">
@@ -751,6 +772,20 @@ export default function History() {
                             >
                               <MessageSquare className="h-3 w-3" />
                             </Button>
+                            {!isCaller && (
+                              <Button
+                                variant="ghost"
+                                size="icon"
+                                className="h-6 w-6 text-muted-foreground hover:text-primary"
+                                title="Re-generate"
+                                disabled={regenLoading === app.id}
+                                onClick={() => handleRegenerate(app)}
+                              >
+                                {regenLoading === app.id
+                                  ? <Loader2 className="h-3 w-3 animate-spin" />
+                                  : <RefreshCw className="h-3 w-3" />}
+                              </Button>
+                            )}
                             {!isCaller && (
                               <Button
                                 variant="ghost"

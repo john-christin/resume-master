@@ -1,4 +1,5 @@
-import { AlertCircle, DollarSign, Loader2, RefreshCw } from "lucide-react";
+import { AlertCircle, Loader2, RefreshCw } from "lucide-react";
+import PageHeader from "../../components/shared/PageHeader";
 import { useEffect, useState } from "react";
 import { getPricing, recalculateCosts, setPricing } from "../../api/admin";
 import LoadingSpinner from "../../components/LoadingSpinner";
@@ -69,15 +70,7 @@ export default function PricingPage() {
 
   return (
     <div className="space-y-6 max-w-lg">
-      <div className="flex items-center gap-3 mb-6">
-        <div className="h-10 w-10 rounded-xl bg-primary/10 flex items-center justify-center shrink-0">
-          <DollarSign className="h-5 w-5 text-primary" />
-        </div>
-        <div>
-          <h1 className="text-xl font-bold leading-none">Pricing Plans</h1>
-          <p className="text-muted-foreground text-sm mt-0.5">Manage subscription tiers and pricing</p>
-        </div>
-      </div>
+      <PageHeader title="Pricing Plans" description="Manage subscription tiers and pricing" />
 
       {error && (
         <Alert variant="destructive">

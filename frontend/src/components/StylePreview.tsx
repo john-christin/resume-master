@@ -70,10 +70,12 @@ function ExperienceEntry({ title, employer, dates, bullets, config }: Experience
   const subtitleS = getSubtitleStyle(config);
   const entryMb   = `${pt(config.space_between_entries)}px`;
 
+  const bulletAfter = `${pt(config.space_after_bullet ?? 1)}px`;
+
   const BulletList = () => (
     <>
       {bullets.map((b, i) => (
-        <div key={i} style={{ display: "flex", gap: "5px", marginLeft: indent, marginBottom: "2px" }}>
+        <div key={i} style={{ display: "flex", gap: "5px", marginLeft: indent, marginBottom: bulletAfter }}>
           {bPrefix && <span style={{ flexShrink: 0, fontSize: `${bodyPx}px`, lineHeight: config.line_spacing }}>{bPrefix}</span>}
           <span style={{ fontSize: `${bodyPx}px`, lineHeight: config.line_spacing }}>{b}</span>
         </div>
@@ -172,15 +174,22 @@ const MOCK_EXPERIENCES = [
     employer: "Acme Technologies, New York",
     dates: "Jan 2021 – Present",
     bullets: [
-      "Architected microservices platform handling 50M+ daily requests with 99.9% uptime",
-      "Led team of 7 engineers, delivering roadmap 20% ahead of schedule",
+      "Architected microservices platform handling 50M+ daily requests with 99.9% uptime SLA",
+      "Led team of 7 engineers delivering quarterly roadmap consistently 20% ahead of schedule",
+      "Reduced infrastructure costs by $180K annually through right-sizing and spot instance adoption",
+      "Drove code coverage from 42% to 91% via automated testing and mandatory PR review gates",
+      "Implemented zero-downtime blue-green deployment pipeline cutting release cycle from 2 weeks to daily",
     ],
   },
   {
     title: "Software Engineer",
     employer: "Startup Co, San Francisco",
     dates: "Mar 2018 – Dec 2020",
-    bullets: ["Built real-time data pipeline reducing latency by 40%"],
+    bullets: [
+      "Built real-time data pipeline processing 2M events/day, reducing end-to-end latency by 40%",
+      "Designed RESTful API consumed by 12 downstream services with full OpenAPI documentation",
+      "Mentored 2 junior engineers through onboarding and code reviews, both promoted within a year",
+    ],
   },
 ];
 

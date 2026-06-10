@@ -10,6 +10,7 @@ import {
   User,
   Wand2,
 } from "lucide-react";
+import PageHeader from "../components/shared/PageHeader";
 
 import { useEffect, useState } from "react";
 import { useLocation, useNavigate } from "react-router-dom";
@@ -88,15 +89,21 @@ function FieldWarning({ msg }: { msg: string | null }) {
 export default function JobInput() {
   const navigate = useNavigate();
   const location = useLocation();
-  const preselectedProfileId = (location.state as { profileId?: string })
-    ?.profileId;
+  const locationState = location.state as {
+    profileId?: string;
+    prefill?: JobDescriptionEntry;
+  } | null;
+  const preselectedProfileId = locationState?.profileId;
+  const prefill = locationState?.prefill;
 
   const [profiles, setProfiles] = useState<Profile[]>([]);
   const [selectedProfileId, setSelectedProfileId] = useState(
     preselectedProfileId || ""
   );
   const [batchMode, setBatchMode] = useState(false);
-  const [jobs, setJobs] = useState<JobDescriptionEntry[]>([{ ...emptyJob }]);
+  const [jobs, setJobs] = useState<JobDescriptionEntry[]>([
+    prefill ? { ...prefill } : { ...emptyJob },
+  ]);
   const [singleClearanceError, setSingleClearanceError] = useState<string | null>(null);
   const [loading, setLoading] = useState(false);
   const [profilesLoading, setProfilesLoading] = useState(true);
@@ -463,17 +470,10 @@ export default function JobInput() {
 
   return (
     <div className="max-w-3xl mx-auto space-y-6">
-      <div className="flex items-center gap-3">
-        <div className="h-10 w-10 rounded-xl bg-primary/10 flex items-center justify-center shrink-0">
-          <Wand2 className="h-5 w-5 text-primary" />
-        </div>
-        <div>
-          <h1 className="text-xl font-bold leading-none">Generate Application</h1>
-          <p className="text-muted-foreground text-sm mt-0.5">
-            Tailor your resume and generate a cover letter for a job
-          </p>
-        </div>
-      </div>
+      <PageHeader
+        title="Generate Application"
+        description="Tailor your resume and generate a cover letter for a job"
+      />
 
       {error && (
         <Alert variant="destructive">

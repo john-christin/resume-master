@@ -3,22 +3,21 @@ import json
 import logging
 import re
 import time
-from dataclasses import dataclass
 from sqlalchemy import select
 
 from config import settings
 from database import SessionLocal
 from services import log_service
+from services.providers import LLMResponse, call_provider, test_model_connection  # noqa: F401
 
 logger = logging.getLogger(__name__)
 
 
 def _jd_hash(text: str) -> str:
-    """Stable hash of a job description for cache keying."""
     return hashlib.md5(text.strip().lower().encode()).hexdigest()
 
 
-# Simple in-memory cache for extraction results (saves AI calls in batch mode)
+# In-memory cache for extraction results (saves AI calls in batch mode)
 _extraction_cache: dict[str, tuple] = {}
 _CACHE_MAX_SIZE = 200
 
@@ -30,17 +29,6 @@ from prompts import (
     RESUME_SUMMARY as SUMMARY_SYSTEM_PROMPT,
     RESUME_TAILOR as RESUME_SYSTEM_PROMPT,
 )
-
-
-# ---------------------------------------------------------------------------
-# Provider abstraction
-# ---------------------------------------------------------------------------
-
-@dataclass
-class LLMResponse:
-    content: str
-    prompt_tokens: int
-    completion_tokens: int
 
 
 def _get_active_model_config(role: str = "primary"):
@@ -91,182 +79,6 @@ def _get_active_model_config(role: str = "primary"):
     return None
 
 
-def _call_openai(messages, max_tokens, temperature, config):
-    """Call OpenAI-compatible API (OpenAI direct)."""
-    from openai import OpenAI
-
-    kwargs = {"api_key": config["api_key"]}
-    if config.get("endpoint"):
-        kwargs["base_url"] = config["endpoint"]
-
-    client = OpenAI(**kwargs)
-    response = client.chat.completions.create(
-        model=config["model_id"],
-        messages=messages,
-        max_tokens=max_tokens,
-        temperature=temperature,
-    )
-    return LLMResponse(
-        content=response.choices[0].message.content.strip(),
-        prompt_tokens=response.usage.prompt_tokens,
-        completion_tokens=response.usage.completion_tokens,
-    )
-
-
-def _call_azure_openai(messages, max_tokens, temperature, config):
-    """Call Azure OpenAI API."""
-    from openai import AzureOpenAI
-
-    client = AzureOpenAI(
-        api_key=config["api_key"],
-        azure_endpoint=config["endpoint"] or settings.azure_openai_endpoint,
-        api_version=config.get("api_version") or settings.azure_openai_api_version,
-    )
-    response = client.chat.completions.create(
-        model=config["model_id"],
-        messages=messages,
-        max_tokens=max_tokens,
-        temperature=temperature,
-    )
-    return LLMResponse(
-        content=response.choices[0].message.content.strip(),
-        prompt_tokens=response.usage.prompt_tokens,
-        completion_tokens=response.usage.completion_tokens,
-    )
-
-
-def _call_anthropic(messages, max_tokens, temperature, config):
-    """Call Anthropic Claude API (direct or via Azure AI Foundry)."""
-    # Separate system message from user/assistant messages
-    system_text = ""
-    chat_messages = []
-    for msg in messages:
-        if msg["role"] == "system":
-            system_text = msg["content"]
-        else:
-            chat_messages.append(msg)
-
-    if config.get("endpoint"):
-        # Azure AI Foundry: use raw httpx because the SDK sends an
-        # anthropic-version header that Azure doesn't support.
-        import httpx
-
-        body: dict = {
-            "model": config["model_id"],
-            "max_tokens": max_tokens,
-            "temperature": temperature,
-            "messages": chat_messages,
-        }
-        if system_text:
-            body["system"] = system_text
-
-        endpoint = config["endpoint"].rstrip("/")
-        resp = httpx.post(
-            f"{endpoint}/messages",
-            json=body,
-            headers={
-                "Content-Type": "application/json",
-                "x-api-key": config["api_key"],
-                "anthropic-version": "2023-06-01",
-            },
-            timeout=httpx.Timeout(connect=15.0, read=600.0, write=30.0, pool=15.0),
-        )
-        resp.raise_for_status()
-        data = resp.json()
-        text = data["content"][0]["text"].strip() if data.get("content") else ""
-        return LLMResponse(
-            content=text,
-            prompt_tokens=data["usage"]["input_tokens"],
-            completion_tokens=data["usage"]["output_tokens"],
-        )
-
-    # Direct Anthropic API: use the SDK
-    import anthropic
-
-    client = anthropic.Anthropic(api_key=config["api_key"])
-    kwargs = {
-        "model": config["model_id"],
-        "max_tokens": max_tokens,
-        "temperature": temperature,
-        "messages": chat_messages,
-    }
-    if system_text:
-        kwargs["system"] = system_text
-
-    response = client.messages.create(**kwargs)
-    return LLMResponse(
-        content=response.content[0].text.strip(),
-        prompt_tokens=response.usage.input_tokens,
-        completion_tokens=response.usage.output_tokens,
-    )
-
-
-def _call_google(messages, max_tokens, temperature, config):
-    """Call Google Gemini API."""
-    import google.generativeai as genai
-
-    genai.configure(api_key=config["api_key"])
-
-    # Extract system instruction and build contents
-    system_text = ""
-    contents = []
-    for msg in messages:
-        if msg["role"] == "system":
-            system_text = msg["content"]
-        elif msg["role"] == "user":
-            contents.append({"role": "user", "parts": [msg["content"]]})
-        elif msg["role"] == "assistant":
-            contents.append({"role": "model", "parts": [msg["content"]]})
-
-    model_kwargs = {}
-    if system_text:
-        model_kwargs["system_instruction"] = system_text
-
-    model = genai.GenerativeModel(config["model_id"], **model_kwargs)
-    response = model.generate_content(
-        contents,
-        generation_config=genai.types.GenerationConfig(
-            max_output_tokens=max_tokens,
-            temperature=temperature,
-        ),
-    )
-    usage = response.usage_metadata
-    return LLMResponse(
-        content=response.text.strip(),
-        prompt_tokens=getattr(usage, "prompt_token_count", 0) or 0,
-        completion_tokens=getattr(usage, "candidates_token_count", 0) or 0,
-    )
-
-
-_PROVIDER_MAP = {
-    "azure_openai": _call_azure_openai,
-    "openai": _call_openai,
-    "anthropic": _call_anthropic,
-    "google": _call_google,
-}
-
-
-def test_model_connection(config: dict) -> str:
-    """Send a minimal test message to verify the model is reachable.
-
-    Returns the model's reply on success; raises on failure.
-    """
-    handler = _PROVIDER_MAP.get(config["provider"])
-    if not handler:
-        raise RuntimeError(f"Unsupported provider: {config['provider']}")
-
-    resp = handler(
-        messages=[
-            {"role": "system", "content": "Reply with OK only."},
-            {"role": "user", "content": "ping"},
-        ],
-        max_tokens=5,
-        temperature=0.0,
-        config=config,
-    )
-    return resp.content
-
-
 def _call_llm(
     messages: list[dict],
     max_tokens: int = 1024,
@@ -309,14 +121,9 @@ def _call_llm(
             "api_version": settings.azure_openai_api_version,
         }
 
-    provider = config["provider"]
-    handler = _PROVIDER_MAP.get(provider)
-    if not handler:
-        raise RuntimeError(f"Unsupported AI provider: {provider}")
-
     start = time.monotonic()
     try:
-        result = handler(messages, max_tokens, temperature, config)
+        result = call_provider(messages, max_tokens, temperature, config)
         duration_ms = int((time.monotonic() - start) * 1000)
         log_service.log_bg(
             log_service.INFO, log_service.AI_CALL,

@@ -1,4 +1,5 @@
-import { AlertCircle, Ban, Loader2, Pencil, Plus, Trash2 } from "lucide-react";
+import { AlertCircle, Loader2, Pencil, Plus, Trash2 } from "lucide-react";
+import PageHeader from "../../components/shared/PageHeader";
 import { useEffect, useState } from "react";
 import {
   createBannedCompany,
@@ -96,23 +97,11 @@ export default function BannedCompaniesPage() {
 
   return (
     <div className="space-y-6">
-      <div className="flex items-center justify-between">
-        <div className="flex items-center gap-3">
-          <div className="h-10 w-10 rounded-xl bg-destructive/10 flex items-center justify-center shrink-0">
-            <Ban className="h-5 w-5 text-destructive" />
-          </div>
-          <div>
-            <h1 className="text-xl font-bold leading-none">Banned Companies</h1>
-            <p className="text-muted-foreground text-sm mt-0.5">
-              Companies on this list cannot be used in job applications
-            </p>
-          </div>
-        </div>
-        <Button onClick={() => openModal()}>
-          <Plus className="h-4 w-4" />
-          Add Company
-        </Button>
-      </div>
+      <PageHeader
+        title="Banned Companies"
+        description="Companies on this list cannot be used in job applications"
+        actions={<Button onClick={() => openModal()}><Plus className="h-4 w-4" />Add Company</Button>}
+      />
 
       {error && (
         <Alert variant="destructive">

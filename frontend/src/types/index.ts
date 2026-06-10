@@ -63,6 +63,7 @@ export interface StyleConfig {
 
   // Spacing
   space_between_entries: number;
+  space_after_bullet: number;
 
   // Entry layout
   entry_title_size: number;

@@ -1,4 +1,5 @@
-import { AlertCircle, BookOpen, Loader2, Plus } from "lucide-react";
+import { AlertCircle, Loader2, Plus } from "lucide-react";
+import PageHeader from "../../components/shared/PageHeader";
 import { useEffect, useState } from "react";
 import {
   createKnowledgeBase,
@@ -123,21 +124,11 @@ export default function KnowledgeBasePage() {
 
   return (
     <div className="space-y-6">
-      <div className="flex items-center justify-between flex-wrap gap-3">
-        <div className="flex items-center gap-3 mb-6">
-          <div className="h-10 w-10 rounded-xl bg-primary/10 flex items-center justify-center shrink-0">
-            <BookOpen className="h-5 w-5 text-primary" />
-          </div>
-          <div>
-            <h1 className="text-xl font-bold leading-none">Knowledge Base</h1>
-            <p className="text-muted-foreground text-sm mt-0.5">Manage knowledge base articles and content</p>
-          </div>
-        </div>
-        <Button onClick={() => openModal()}>
-          <Plus className="h-4 w-4" />
-          Create KB
-        </Button>
-      </div>
+      <PageHeader
+        title="Knowledge Base"
+        description="Manage knowledge base articles and content"
+        actions={<Button onClick={() => openModal()}><Plus className="h-4 w-4" />Create KB</Button>}
+      />
 
       {error && (
         <Alert variant="destructive">

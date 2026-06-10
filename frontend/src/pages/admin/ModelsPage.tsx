@@ -1,5 +1,6 @@
 import axios from "axios";
-import { AlertCircle, Bot, Cpu, Loader2, Plus } from "lucide-react";
+import { AlertCircle, Cpu, Loader2, Plus } from "lucide-react";
+import PageHeader from "../../components/shared/PageHeader";
 import { useEffect, useState } from "react";
 import {
   activateModel,
@@ -174,21 +175,11 @@ export default function ModelsPage() {
 
   return (
     <div className="space-y-6">
-      <div className="flex items-center justify-between flex-wrap gap-3">
-        <div className="flex items-center gap-3 mb-6">
-          <div className="h-10 w-10 rounded-xl bg-primary/10 flex items-center justify-center shrink-0">
-            <Bot className="h-5 w-5 text-primary" />
-          </div>
-          <div>
-            <h1 className="text-xl font-bold leading-none">AI Models</h1>
-            <p className="text-muted-foreground text-sm mt-0.5">Configure AI model settings</p>
-          </div>
-        </div>
-        <Button onClick={() => openModal()}>
-          <Plus className="h-4 w-4" />
-          Add Model
-        </Button>
-      </div>
+      <PageHeader
+        title="AI Models"
+        description="Configure AI model settings"
+        actions={<Button onClick={() => openModal()}><Plus className="h-4 w-4" />Add Model</Button>}
+      />
 
       {error && (
         <Alert variant="destructive">

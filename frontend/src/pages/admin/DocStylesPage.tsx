@@ -13,7 +13,8 @@ import {
   verticalListSortingStrategy,
 } from "@dnd-kit/sortable";
 import { CSS } from "@dnd-kit/utilities";
-import { AlertCircle, Eye, FileText, GripVertical, Loader2, Minus, Plus, ZoomIn } from "lucide-react";
+import { AlertCircle, Eye, GripVertical, Loader2, Minus, Plus, ZoomIn } from "lucide-react";
+import PageHeader from "../../components/shared/PageHeader";
 import { useEffect, useState } from "react";
 import { createDocStyle, deleteDocStyle, getDocStyles, updateDocStyle } from "../../api/doc_styles";
 import LoadingSpinner from "../../components/LoadingSpinner";
@@ -165,6 +166,7 @@ const DEFAULT_CONFIG: StyleConfig = {
   sections: DEFAULT_SECTIONS,
   section_heading_style: "line_below",
   space_between_entries: 3.0,
+  space_after_bullet: 1.0,
   entry_title_size: 10.0,
   entry_subtitle_size: 9.5,
   entry_subtitle_style: "bold",
@@ -669,6 +671,10 @@ function EditDialog({
                   <Label>Between entries (pt)</Label>
                   <Input type="number" step="0.5" value={config.space_between_entries} onChange={cfg("space_between_entries")} />
                 </div>
+                <div className="space-y-1.5">
+                  <Label>Space after bullet (pt)</Label>
+                  <Input type="number" step="0.5" min="0" max="20" value={config.space_after_bullet ?? 1} onChange={cfg("space_after_bullet")} />
+                </div>
               </div>
 
               <FormSection label="Element Colors" />
@@ -811,21 +817,11 @@ export default function DocStylesPage() {
 
   return (
     <div className="space-y-6">
-      <div className="flex items-center justify-between">
-        <div className="flex items-center gap-3 mb-6">
-          <div className="h-10 w-10 rounded-xl bg-primary/10 flex items-center justify-center shrink-0">
-            <FileText className="h-5 w-5 text-primary" />
-          </div>
-          <div>
-            <h1 className="text-xl font-bold leading-none">Document Styles</h1>
-            <p className="text-muted-foreground text-sm mt-0.5">Manage resume and cover letter templates</p>
-          </div>
-        </div>
-        <Button onClick={openCreate}>
-          <Plus className="h-4 w-4" />
-          Create Style
-        </Button>
-      </div>
+      <PageHeader
+        title="Document Styles"
+        description="Manage resume and cover letter templates"
+        actions={<Button onClick={openCreate}><Plus className="h-4 w-4" />Create Style</Button>}
+      />
 
       {error && (
         <Alert variant="destructive">

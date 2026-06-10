@@ -1,4 +1,5 @@
-import { AlertCircle, Layers, Loader2, Plus } from "lucide-react";
+import { AlertCircle, Loader2, Plus } from "lucide-react";
+import PageHeader from "../../components/shared/PageHeader";
 import { useEffect, useState } from "react";
 import {
   createTechStack,
@@ -107,21 +108,11 @@ export default function TechStacksPage() {
 
   return (
     <div className="space-y-6">
-      <div className="flex items-center justify-between">
-        <div className="flex items-center gap-3 mb-6">
-          <div className="h-10 w-10 rounded-xl bg-primary/10 flex items-center justify-center shrink-0">
-            <Layers className="h-5 w-5 text-primary" />
-          </div>
-          <div>
-            <h1 className="text-xl font-bold leading-none">Tech Stacks</h1>
-            <p className="text-muted-foreground text-sm mt-0.5">Manage technology stack configurations</p>
-          </div>
-        </div>
-        <Button onClick={() => openModal()}>
-          <Plus className="h-4 w-4" />
-          Create Tech Stack
-        </Button>
-      </div>
+      <PageHeader
+        title="Tech Stacks"
+        description="Manage technology stack configurations"
+        actions={<Button onClick={() => openModal()}><Plus className="h-4 w-4" />Create Tech Stack</Button>}
+      />
 
       {error && (
         <Alert variant="destructive">

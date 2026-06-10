@@ -3,10 +3,10 @@ import {
   CheckCircle2,
   ChevronRight,
   Clock,
-  Layers,
   Loader2,
   XCircle,
 } from "lucide-react";
+import PageHeader from "../components/shared/PageHeader";
 import { useEffect, useRef, useState } from "react";
 import { useNavigate, useParams } from "react-router-dom";
 import { getBatchJob } from "../api/batch_jobs";
@@ -89,23 +89,12 @@ export default function BatchJobStatusPage() {
 
   return (
     <div className="max-w-2xl mx-auto space-y-6">
-      <div className="flex items-center justify-between gap-4">
-        <div className="flex items-center gap-3">
-          <div className="h-10 w-10 rounded-xl bg-primary/10 flex items-center justify-center shrink-0">
-            <Layers className="h-5 w-5 text-primary" />
-          </div>
-          <div>
-            <h1 className="text-xl font-bold leading-none">Batch Generation</h1>
-            {job?.profile_name && (
-              <p className="text-sm text-muted-foreground mt-0.5">
-                Profile:{" "}
-                <span className="font-medium text-foreground">
-                  {job.profile_name}
-                </span>
-              </p>
-            )}
-          </div>
-        </div>
+      <div className="flex items-start justify-between gap-4">
+        <PageHeader
+          title="Batch Generation"
+          description={job?.profile_name ? `Profile: ${job.profile_name}` : undefined}
+          className="mb-0"
+        />
         {job && <StatusBadge status={job.status} />}
       </div>
 

@@ -1,4 +1,5 @@
-import { AlertCircle, ChevronLeft, ChevronRight, Loader2, ScrollText } from "lucide-react";
+import { AlertCircle, ChevronLeft, ChevronRight, Loader2 } from "lucide-react";
+import PageHeader from "../../components/shared/PageHeader";
 import { useEffect, useState } from "react";
 import { getLogCount, getLogs } from "../../api/admin";
 import type { SystemLogItem } from "../../api/admin";
@@ -89,15 +90,7 @@ export default function LogsPage() {
 
   return (
     <div className="space-y-6">
-      <div className="flex items-center gap-3 mb-6">
-        <div className="h-10 w-10 rounded-xl bg-primary/10 flex items-center justify-center shrink-0">
-          <ScrollText className="h-5 w-5 text-primary" />
-        </div>
-        <div>
-          <h1 className="text-xl font-bold leading-none">System Logs</h1>
-          <p className="text-muted-foreground text-sm mt-0.5">Monitor application activity and errors</p>
-        </div>
-      </div>
+      <PageHeader title="System Logs" description="Monitor application activity and errors" />
 
       {error && (
         <Alert variant="destructive">

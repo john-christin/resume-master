@@ -2,13 +2,11 @@ import {
   AlertCircle,
   Calendar,
   DollarSign,
-  LayoutDashboard,
   Phone,
   TrendingUp,
   Users,
 } from "lucide-react";
 import { useEffect, useMemo, useState } from "react";
-import { Link } from "react-router-dom";
 import {
   Area,
   AreaChart,
@@ -38,6 +36,8 @@ import type {
   UserDailyPoint,
 } from "../api/admin";
 import LoadingSpinner from "../components/LoadingSpinner";
+import PageHeader from "../components/shared/PageHeader";
+import StatCard from "../components/shared/StatCard";
 import { Alert, AlertDescription } from "../components/ui/alert";
 import { Button } from "../components/ui/button";
 import { Card, CardContent, CardHeader, CardTitle } from "../components/ui/card";
@@ -87,35 +87,6 @@ const ChartTooltip = ({ active, payload, label }: { active?: boolean; payload?: 
     </div>
   );
 };
-
-function StatCard({
-  label,
-  value,
-  sub,
-  icon,
-  colorBg,
-  colorText,
-}: {
-  label: string;
-  value: string | number;
-  sub?: string;
-  icon: React.ReactNode;
-  colorBg: string;
-  colorText: string;
-}) {
-  return (
-    <Card className="overflow-hidden rounded-xl border-border/50 shadow-sm hover:shadow-md transition-shadow">
-      <CardContent className="pt-5 pb-4">
-        <div className={`inline-flex h-10 w-10 items-center justify-center rounded-2xl mb-4 ${colorBg}`}>
-          <span className={colorText}>{icon}</span>
-        </div>
-        <p className="text-2xl font-bold tracking-tight leading-none">{value}</p>
-        <p className="text-sm text-muted-foreground mt-1.5">{label}</p>
-        {sub && <p className="text-xs text-muted-foreground/60 mt-0.5">{sub}</p>}
-      </CardContent>
-    </Card>
-  );
-}
 
 export default function AdminDashboardPage() {
   const [overview, setOverview] = useState<AdminOverview | null>(null);
@@ -243,21 +214,8 @@ export default function AdminDashboardPage() {
       : dailyCallsChartData;
 
   return (
-    <div className="space-y-8">
-      <div className="flex items-center justify-between">
-        <div className="flex items-center gap-3">
-          <div className="h-10 w-10 rounded-xl bg-primary/10 flex items-center justify-center shrink-0">
-            <LayoutDashboard className="h-5 w-5 text-primary" />
-          </div>
-          <div>
-            <h1 className="text-xl font-bold leading-none">Dashboard</h1>
-            <p className="text-muted-foreground text-sm mt-0.5">System overview and analytics</p>
-          </div>
-        </div>
-        <Button variant="outline" asChild>
-          <Link to="/admin/settings">Settings →</Link>
-        </Button>
-      </div>
+    <div className="space-y-6">
+      <PageHeader title="Dashboard" description="System overview and analytics" />
 
       {error && (
         <Alert variant="destructive">
@@ -269,43 +227,22 @@ export default function AdminDashboardPage() {
       {/* Overview stat cards */}
       {overview && (
         <div className="grid grid-cols-2 md:grid-cols-5 gap-4">
-          <StatCard
-            label="Today's Applications"
-            value={overview.today_count}
+          <StatCard label="Today's Applications" value={overview.today_count}
             icon={<TrendingUp className="h-5 w-5" />}
-            colorBg="bg-violet-100 dark:bg-violet-900/40"
-            colorText="text-violet-600 dark:text-violet-400"
-          />
-          <StatCard
-            label="Today's Cost"
-            value={`$${overview.today_cost.toFixed(4)}`}
+            iconBg="bg-violet-100 dark:bg-violet-900/40" iconColor="text-violet-600 dark:text-violet-400" />
+          <StatCard label="Today's Cost" value={`$${overview.today_cost.toFixed(4)}`}
             icon={<DollarSign className="h-5 w-5" />}
-            colorBg="bg-emerald-100 dark:bg-emerald-900/40"
-            colorText="text-emerald-600 dark:text-emerald-400"
-          />
-          <StatCard
-            label="Active Users"
-            value={overview.active_users}
+            iconBg="bg-emerald-100 dark:bg-emerald-900/40" iconColor="text-emerald-600 dark:text-emerald-400" />
+          <StatCard label="Active Users" value={overview.active_users}
             icon={<Users className="h-5 w-5" />}
-            colorBg="bg-blue-100 dark:bg-blue-900/40"
-            colorText="text-blue-600 dark:text-blue-400"
-          />
-          <StatCard
-            label="Pending Approvals"
-            value={overview.pending_users}
-            sub={overview.pending_users > 0 ? "Settings → review" : undefined}
+            iconBg="bg-blue-100 dark:bg-blue-900/40" iconColor="text-blue-600 dark:text-blue-400" />
+          <StatCard label="Pending Approvals" value={overview.pending_users}
+            sub={overview.pending_users > 0 ? "Review in admin" : undefined}
             icon={<Calendar className="h-5 w-5" />}
-            colorBg="bg-amber-100 dark:bg-amber-900/40"
-            colorText="text-amber-600 dark:text-amber-400"
-          />
-          <StatCard
-            label="Calls Scheduled"
-            value={overview.calls_scheduled}
-            sub="all users · all time"
+            iconBg="bg-amber-100 dark:bg-amber-900/40" iconColor="text-amber-600 dark:text-amber-400" />
+          <StatCard label="Calls Scheduled" value={overview.calls_scheduled} sub="all users · all time"
             icon={<Phone className="h-5 w-5" />}
-            colorBg="bg-pink-100 dark:bg-pink-900/40"
-            colorText="text-pink-600 dark:text-pink-400"
-          />
+            iconBg="bg-pink-100 dark:bg-pink-900/40" iconColor="text-pink-600 dark:text-pink-400" />
         </div>
       )}
 
@@ -339,7 +276,7 @@ export default function AdminDashboardPage() {
         </CardContent>
       </Card>
 
-      <div className="space-y-6">
+      <div className="space-y-5">
         {/* Daily Applications — Area */}
         <Card>
           <CardHeader className="pb-2">
