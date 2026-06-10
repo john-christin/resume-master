@@ -1,4 +1,4 @@
-import { Settings } from "lucide-react";
+import { Calendar, Settings } from "lucide-react";
 import PageHeader from "../components/shared/PageHeader";
 import { useEffect, useMemo, useState } from "react";
 import { getUserRole } from "../auth";
@@ -18,6 +18,34 @@ import {
 } from "../components/ui/select";
 import type { Call, CallStageConfig, CallStatus } from "../types";
 
+type TimeRange = "today" | "7d" | "30d" | "all";
+
+const TIME_RANGE_OPTIONS: { value: TimeRange; label: string }[] = [
+  { value: "today", label: "Today" },
+  { value: "7d",    label: "7 days" },
+  { value: "30d",   label: "30 days" },
+  { value: "all",   label: "All time" },
+];
+
+function isCallInRange(call: Call, range: TimeRange): boolean {
+  if (range === "all") return true;
+  // Calls with no scheduled_at are always shown (unscheduled)
+  if (!call.scheduled_at) return true;
+  const utc = /Z|[+-]\d{2}:?\d{2}$/.test(call.scheduled_at)
+    ? call.scheduled_at
+    : call.scheduled_at + "Z";
+  const callDate = new Date(utc);
+  const now = new Date();
+  const startOfToday = new Date(now.getFullYear(), now.getMonth(), now.getDate());
+  if (range === "today") {
+    const endOfToday = new Date(startOfToday.getTime() + 86400000);
+    return callDate >= startOfToday && callDate < endOfToday;
+  }
+  const days = range === "7d" ? 7 : 30;
+  const cutoff = new Date(startOfToday.getTime() + days * 86400000);
+  return callDate >= startOfToday && callDate < cutoff;
+}
+
 const STATUS_SUMMARY_COLORS: Record<CallStatus, string> = {
   scheduled: "text-blue-500",
   pending:   "text-amber-500",
@@ -32,6 +60,7 @@ export default function Kanban() {
   const [loading, setLoading] = useState(true);
   const [editTarget, setEditTarget] = useState<Call | null>(null);
   const [profileFilter, setProfileFilter] = useState<string>("all");
+  const [timeRange, setTimeRange] = useState<TimeRange>("today");
   const [stageManagerOpen, setStageManagerOpen] = useState(false);
 
   const role = getUserRole();
@@ -52,8 +81,10 @@ export default function Kanban() {
   }, [calls]);
 
   const visibleCalls = useMemo(
-    () => profileFilter === "all" ? calls : calls.filter((c) => c.profile_name === profileFilter),
-    [calls, profileFilter]
+    () => calls
+      .filter((c) => profileFilter === "all" || c.profile_name === profileFilter)
+      .filter((c) => isCallInRange(c, timeRange)),
+    [calls, profileFilter, timeRange]
   );
 
   const statusCounts = useMemo(() => {
@@ -94,7 +125,26 @@ export default function Kanban() {
           ) : null}
         </div>
 
-        <div className="flex items-center gap-2">
+        <div className="flex items-center gap-2 flex-wrap">
+          {/* Timeline range buttons */}
+          <div className="flex items-center gap-1 bg-muted/50 rounded-lg p-0.5">
+            <Calendar className="h-3.5 w-3.5 text-muted-foreground ml-1.5 shrink-0" />
+            {TIME_RANGE_OPTIONS.map((opt) => (
+              <button
+                key={opt.value}
+                type="button"
+                onClick={() => setTimeRange(opt.value)}
+                className={`h-7 px-2.5 rounded-md text-xs font-medium transition-all ${
+                  timeRange === opt.value
+                    ? "bg-background shadow-sm text-foreground"
+                    : "text-muted-foreground hover:text-foreground"
+                }`}
+              >
+                {opt.label}
+              </button>
+            ))}
+          </div>
+
           {profiles.length > 0 && (
             <Select value={profileFilter} onValueChange={setProfileFilter}>
               <SelectTrigger className="h-8 w-[180px] text-xs">
@@ -131,7 +181,7 @@ export default function Kanban() {
           ))}
         </div>
       ) : (
-        <div className="overflow-x-auto -mx-1 px-1 pb-2">
+        <div className="overflow-x-auto -mx-1 px-1 pb-2 flex-1">
           <KanbanBoard
             calls={visibleCalls}
             stages={stages}

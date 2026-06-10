@@ -1,6 +1,7 @@
 import { useSortable } from "@dnd-kit/sortable";
 import { CSS } from "@dnd-kit/utilities";
-import { Building2, Calendar, ExternalLink, Phone, Video, X } from "lucide-react";
+import { Building2, Calendar, ExternalLink, History, Phone, Video, X } from "lucide-react";
+import { useNavigate } from "react-router-dom";
 import type { Call, CallStatus } from "../../types";
 
 const STATUS_CONFIG: Record<CallStatus, { label: string; color: string; bgClass: string }> = {
@@ -19,6 +20,7 @@ interface KanbanCardProps {
 }
 
 export default function KanbanCard({ call, stageColor, onClick, onClose }: KanbanCardProps) {
+  const navigate = useNavigate();
   const { attributes, listeners, setNodeRef, transform, transition, isDragging } =
     useSortable({ id: call.id });
 
@@ -34,8 +36,9 @@ export default function KanbanCard({ call, stageColor, onClick, onClose }: Kanba
     if (!iso) return null;
     const utc = /Z|[+-]\d{2}:?\d{2}$/.test(iso) ? iso : iso + "Z";
     const d = new Date(utc);
-    return d.toLocaleDateString(undefined, { month: "short", day: "numeric" }) +
-      " · " + d.toLocaleTimeString(undefined, { hour: "2-digit", minute: "2-digit" });
+    const tz = localStorage.getItem("user_timezone") || undefined;
+    return d.toLocaleDateString(undefined, { month: "short", day: "numeric", timeZone: tz }) +
+      " · " + d.toLocaleTimeString(undefined, { hour: "2-digit", minute: "2-digit", timeZone: tz });
   };
 
   const hasDetails = call.with_whom || call.scheduled_at || call.call_type;
@@ -63,14 +66,28 @@ export default function KanbanCard({ call, stageColor, onClick, onClose }: Kanba
           <p className="text-sm font-semibold leading-snug line-clamp-2 flex-1 text-foreground">
             {call.job_title ?? "Untitled Position"}
           </p>
-          <button
-            type="button"
-            onPointerDown={(e) => e.stopPropagation()}
-            onClick={(e) => { e.stopPropagation(); onClose(); }}
-            className="shrink-0 mt-0.5 opacity-0 group-hover:opacity-100 transition-opacity rounded-md p-0.5 text-muted-foreground/60 hover:text-foreground hover:bg-muted"
-          >
-            <X className="h-3 w-3" />
-          </button>
+          <div className="flex items-center gap-0.5 shrink-0">
+            <button
+              type="button"
+              onPointerDown={(e) => e.stopPropagation()}
+              onClick={(e) => {
+                e.stopPropagation();
+                navigate("/history", { state: { expandAppId: call.application_id } });
+              }}
+              className="mt-0.5 opacity-0 group-hover:opacity-100 transition-opacity rounded-md p-0.5 text-muted-foreground/60 hover:text-primary hover:bg-muted"
+              title="View application in History"
+            >
+              <History className="h-3 w-3" />
+            </button>
+            <button
+              type="button"
+              onPointerDown={(e) => e.stopPropagation()}
+              onClick={(e) => { e.stopPropagation(); onClose(); }}
+              className="mt-0.5 opacity-0 group-hover:opacity-100 transition-opacity rounded-md p-0.5 text-muted-foreground/60 hover:text-foreground hover:bg-muted"
+            >
+              <X className="h-3 w-3" />
+            </button>
+          </div>
         </div>
 
         {/* Company */}

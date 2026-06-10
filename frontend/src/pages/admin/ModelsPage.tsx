@@ -1,5 +1,5 @@
 import axios from "axios";
-import { AlertCircle, Cpu, Loader2, Plus } from "lucide-react";
+import { AlertCircle, Bot, Cpu, Loader2, MessageSquare, Plus, Wand2 } from "lucide-react";
 import PageHeader from "../../components/shared/PageHeader";
 import { useEffect, useState } from "react";
 import {
@@ -8,8 +8,10 @@ import {
   deactivateModel,
   deleteModel,
   getModels,
+  getSystemSettings,
   testModel,
   updateModel,
+  updateSystemSetting,
 } from "../../api/admin";
 import LoadingSpinner from "../../components/LoadingSpinner";
 import { Alert, AlertDescription } from "../../components/ui/alert";
@@ -38,6 +40,10 @@ export default function ModelsPage() {
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
 
+  const [defaultChatModelId, setDefaultChatModelId] = useState<string>("");
+  const [defaultResumeModelId, setDefaultResumeModelId] = useState<string>("");
+  const [settingsSaving, setSettingsSaving] = useState(false);
+
   const [modalOpen, setModalOpen] = useState(false);
   const [editingId, setEditingId] = useState<string | null>(null);
   const [provider, setProvider] = useState("openai");
@@ -55,8 +61,12 @@ export default function ModelsPage() {
 
   const load = async () => {
     try {
-      const res = await getModels();
-      setModels(res.data);
+      const [modelsRes, settingsRes] = await Promise.all([getModels(), getSystemSettings()]);
+      setModels(modelsRes.data);
+      for (const s of settingsRes.data) {
+        if (s.key === "default_chat_model_id") setDefaultChatModelId(s.value ?? "");
+        if (s.key === "default_resume_model_id") setDefaultResumeModelId(s.value ?? "");
+      }
     } catch {
       setError("Failed to load models");
     } finally {
@@ -65,6 +75,20 @@ export default function ModelsPage() {
   };
 
   useEffect(() => { load(); }, []);
+
+  const handleSaveDefaultSettings = async () => {
+    setSettingsSaving(true);
+    try {
+      await Promise.all([
+        updateSystemSetting("default_chat_model_id", defaultChatModelId || null),
+        updateSystemSetting("default_resume_model_id", defaultResumeModelId || null),
+      ]);
+    } catch {
+      setError("Failed to save default model settings");
+    } finally {
+      setSettingsSaving(false);
+    }
+  };
 
   const openModal = (m?: AIModelConfig) => {
     setEditingId(m?.id ?? null);
@@ -224,6 +248,58 @@ export default function ModelsPage() {
           </Alert>
         )}
       </div>
+
+      {/* Default Models */}
+      <Card>
+        <CardContent className="pt-4 space-y-4">
+          <p className="text-sm font-semibold text-foreground">Default Models</p>
+          <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
+            <div className="space-y-1.5">
+              <label className="text-xs font-medium text-muted-foreground flex items-center gap-1.5">
+                <MessageSquare className="h-3.5 w-3.5" /> Default Chat Model
+              </label>
+              <Select value={defaultChatModelId || "none"} onValueChange={(v) => setDefaultChatModelId(v === "none" ? "" : v)}>
+                <SelectTrigger className="h-8 text-xs">
+                  <SelectValue placeholder="Use utility model" />
+                </SelectTrigger>
+                <SelectContent>
+                  <SelectItem value="none" className="text-xs">Use utility model (default)</SelectItem>
+                  {models.map((m) => (
+                    <SelectItem key={m.id} value={m.id} className="text-xs">
+                      {m.display_name}
+                      <span className="ml-1.5 text-muted-foreground">· {m.provider}</span>
+                    </SelectItem>
+                  ))}
+                </SelectContent>
+              </Select>
+            </div>
+            <div className="space-y-1.5">
+              <label className="text-xs font-medium text-muted-foreground flex items-center gap-1.5">
+                <Wand2 className="h-3.5 w-3.5" /> Default Resume Creation Model
+              </label>
+              <Select value={defaultResumeModelId || "none"} onValueChange={(v) => setDefaultResumeModelId(v === "none" ? "" : v)}>
+                <SelectTrigger className="h-8 text-xs">
+                  <SelectValue placeholder="Use primary model" />
+                </SelectTrigger>
+                <SelectContent>
+                  <SelectItem value="none" className="text-xs">Use primary model (default)</SelectItem>
+                  {models.map((m) => (
+                    <SelectItem key={m.id} value={m.id} className="text-xs">
+                      {m.display_name}
+                      <span className="ml-1.5 text-muted-foreground">· {m.provider}</span>
+                    </SelectItem>
+                  ))}
+                </SelectContent>
+              </Select>
+            </div>
+          </div>
+          <div className="flex justify-end">
+            <Button size="sm" onClick={handleSaveDefaultSettings} disabled={settingsSaving}>
+              {settingsSaving ? <><Loader2 className="h-3.5 w-3.5 animate-spin mr-1.5" />Saving…</> : "Save Defaults"}
+            </Button>
+          </div>
+        </CardContent>
+      </Card>
 
       {models.length === 0 ? (
         <Card>

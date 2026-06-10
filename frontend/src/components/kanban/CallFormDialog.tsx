@@ -3,6 +3,7 @@ import { createCall, deleteCall, updateCall } from "../../api/calls";
 import type { Call, CallCreate, CallStageConfig, CallStatus, CallType, CallUpdate } from "../../types";
 import { CALL_STATUSES } from "../../types";
 import { Button } from "../ui/button";
+import DateTimePicker from "../ui/DateTimePicker";
 import {
   Dialog,
   DialogContent,
@@ -184,10 +185,10 @@ export default function CallFormDialog({
 
           <div className="space-y-1.5">
             <Label>Scheduled At</Label>
-            <Input
-              type="datetime-local"
+            <DateTimePicker
               value={scheduledAt}
-              onChange={(e) => setScheduledAt(e.target.value)}
+              onChange={setScheduledAt}
+              placeholder="Pick date & time"
             />
           </div>
 

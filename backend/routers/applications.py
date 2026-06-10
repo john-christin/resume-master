@@ -58,6 +58,7 @@ def list_applications(
     tech_stack_id: str | None = None,
     call_status: str | None = None,
     profile_name: str | None = None,
+    username: str | None = None,
     current_user: User = Depends(get_approved_user),
     db: Session = Depends(get_db),
 ):
@@ -88,6 +89,12 @@ def list_applications(
     if profile_name:
         stmt = stmt.where(Application.profile_name == profile_name)
         count_stmt = count_stmt.where(Application.profile_name == profile_name)
+
+    # Username filter (admin/caller only — bidders always see only their own)
+    if username and current_user.role != "bidder":
+        user_sub = select(User.id).where(User.username == username).scalar_subquery()
+        stmt = stmt.where(Application.user_id == user_sub)
+        count_stmt = count_stmt.where(Application.user_id == user_sub)
 
     # Search filter
     if search:

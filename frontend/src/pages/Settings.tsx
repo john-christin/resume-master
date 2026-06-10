@@ -1,5 +1,6 @@
 import {
   CheckCircle2,
+  Clock,
   KeyRound,
   Loader2,
   Moon,
@@ -19,7 +20,42 @@ import { Button } from "../components/ui/button";
 import { Card, CardContent, CardHeader, CardTitle } from "../components/ui/card";
 import { Input } from "../components/ui/input";
 import { Label } from "../components/ui/label";
+import {
+  Select,
+  SelectContent,
+  SelectItem,
+  SelectTrigger,
+  SelectValue,
+} from "../components/ui/select";
 import { Separator } from "../components/ui/separator";
+
+const COMMON_TIMEZONES = [
+  "UTC",
+  "America/New_York",
+  "America/Chicago",
+  "America/Denver",
+  "America/Los_Angeles",
+  "America/Anchorage",
+  "America/Honolulu",
+  "America/Sao_Paulo",
+  "America/Toronto",
+  "America/Vancouver",
+  "Europe/London",
+  "Europe/Paris",
+  "Europe/Berlin",
+  "Europe/Moscow",
+  "Europe/Istanbul",
+  "Asia/Dubai",
+  "Asia/Kolkata",
+  "Asia/Bangkok",
+  "Asia/Singapore",
+  "Asia/Shanghai",
+  "Asia/Tokyo",
+  "Asia/Seoul",
+  "Australia/Sydney",
+  "Australia/Melbourne",
+  "Pacific/Auckland",
+];
 
 type Msg = { type: "success" | "error"; text: string } | null;
 
@@ -38,6 +74,16 @@ function StatusAlert({ msg }: { msg: Msg }) {
 }
 
 export default function Settings() {
+  const browserTz = Intl.DateTimeFormat().resolvedOptions().timeZone;
+  const [timezone, setTimezone] = useState(
+    localStorage.getItem("user_timezone") || browserTz
+  );
+
+  const handleTimezoneChange = (tz: string) => {
+    setTimezone(tz);
+    localStorage.setItem("user_timezone", tz);
+  };
+
   const [username, setUsername] = useState(getUsername() ?? "");
   const [usernameMsg, setUsernameMsg] = useState<Msg>(null);
   const [usernameSaving, setUsernameSaving] = useState(false);
@@ -139,6 +185,38 @@ export default function Settings() {
               </button>
             ))}
           </div>
+        </CardContent>
+      </Card>
+
+      <Separator />
+
+      {/* Timezone */}
+      <Card>
+        <CardHeader>
+          <CardTitle className="flex items-center gap-2 text-base">
+            <Clock className="h-4 w-4 text-primary" />
+            Timezone
+          </CardTitle>
+        </CardHeader>
+        <CardContent className="space-y-3">
+          <p className="text-sm text-muted-foreground">
+            Sets the timezone used for the topbar clock and scheduled call times.
+          </p>
+          <Select value={timezone} onValueChange={handleTimezoneChange}>
+            <SelectTrigger>
+              <SelectValue />
+            </SelectTrigger>
+            <SelectContent className="max-h-64">
+              {COMMON_TIMEZONES.map((tz) => (
+                <SelectItem key={tz} value={tz}>{tz}</SelectItem>
+              ))}
+            </SelectContent>
+          </Select>
+          {timezone !== browserTz && (
+            <p className="text-xs text-muted-foreground">
+              Browser timezone: {browserTz}
+            </p>
+          )}
         </CardContent>
       </Card>
 

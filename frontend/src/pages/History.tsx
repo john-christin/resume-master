@@ -31,6 +31,7 @@ import { deleteCall, updateCall } from "../api/calls";
 import { getCallStages } from "../api/callStages";
 import CallFormDialog from "../components/kanban/CallFormDialog";
 import { getProfiles, getTechStacksPublic } from "../api/profile";
+import { getUsers } from "../api/admin";
 import { getUserRole } from "../auth";
 import ApplicationChatSidebar from "../components/ApplicationChatSidebar";
 import LoadingSpinner from "../components/LoadingSpinner";
@@ -72,6 +73,7 @@ import type {
   PaginatedApplications,
   Profile,
   TechStack,
+  UserListItem,
 } from "../types";
 
 async function smartDownload(url: string, filename: string): Promise<void> {
@@ -225,9 +227,9 @@ export default function History() {
   const navigate = useNavigate();
   const location = useLocation();
   const role = getUserRole();
-  const batchResult = (
-    location.state as { batchResult?: { count: number; totalCost: number } }
-  )?.batchResult;
+  const locationState = location.state as { batchResult?: { count: number; totalCost: number }; expandAppId?: string } | null;
+  const batchResult = locationState?.batchResult;
+  const expandAppIdFromNav = locationState?.expandAppId ?? null;
 
   const [data, setData] = useState<PaginatedApplications | null>(null);
   const [loading, setLoading] = useState(true);
@@ -247,6 +249,8 @@ export default function History() {
   const [callStatusFilter, setCallStatusFilter] = useState("");
   const [profileFilter, setProfileFilter] = useState("");
   const [profiles, setProfiles] = useState<Profile[]>([]);
+  const [usernameFilter, setUsernameFilter] = useState("");
+  const [userList, setUserList] = useState<UserListItem[]>([]);
 
   const [expandedId, setExpandedId] = useState<string | null>(null);
   const [expandedDetail, setExpandedDetail] = useState<ApplicationDetail | null>(null);
@@ -293,6 +297,14 @@ export default function History() {
       .catch(() => {});
   }, []);
 
+  useEffect(() => {
+    if (role === "admin") {
+      getUsers()
+        .then((res) => setUserList(res.data))
+        .catch(() => {});
+    }
+  }, [role]);
+
   const loadApplications = async () => {
     setLoading(true);
     try {
@@ -305,6 +317,7 @@ export default function History() {
         techStackFilter || undefined,
         callStatusFilter || undefined,
         profileFilter || undefined,
+        usernameFilter || undefined,
       );
       setData(res.data);
     } catch {
@@ -316,7 +329,16 @@ export default function History() {
 
   useEffect(() => {
     loadApplications();
-  }, [page, pageSize, search, sortBy, sortDir, techStackFilter, callStatusFilter, profileFilter]);
+  }, [page, pageSize, search, sortBy, sortDir, techStackFilter, callStatusFilter, profileFilter, usernameFilter]);
+
+  useEffect(() => {
+    if (expandAppIdFromNav && data) {
+      const found = data.items.find((a) => a.id === expandAppIdFromNav);
+      if (found && expandedId !== expandAppIdFromNav) {
+        handleRowClick(expandAppIdFromNav);
+      }
+    }
+  }, [expandAppIdFromNav, data]);
 
   const handleSearch = (e: React.FormEvent<HTMLFormElement>) => {
     e.preventDefault();
@@ -564,6 +586,22 @@ export default function History() {
               <SelectItem value="all">All Profiles</SelectItem>
               {profiles.map((p) => (
                 <SelectItem key={p.id} value={p.name}>{p.name}</SelectItem>
+              ))}
+            </SelectContent>
+          </Select>
+        )}
+        {role === "admin" && userList.length > 0 && (
+          <Select
+            value={usernameFilter || "all"}
+            onValueChange={(v) => { setUsernameFilter(v === "all" ? "" : v); setPage(1); }}
+          >
+            <SelectTrigger className="w-[150px]">
+              <SelectValue placeholder="All Users" />
+            </SelectTrigger>
+            <SelectContent>
+              <SelectItem value="all">All Users</SelectItem>
+              {userList.map((u) => (
+                <SelectItem key={u.id} value={u.username}>{u.username}</SelectItem>
               ))}
             </SelectContent>
           </Select>

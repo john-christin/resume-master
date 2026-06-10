@@ -30,7 +30,7 @@ export default function KanbanColumn({
 
       {/* Column shell */}
       <div
-        className={`flex flex-col rounded-b-xl min-h-[calc(100vh-15rem)] transition-colors duration-150 ${
+        className={`flex flex-col rounded-b-xl h-[calc(100vh-14rem)] transition-colors duration-150 ${
           isOver ? "bg-accent/60" : "bg-muted/30"
         }`}
       >
@@ -59,7 +59,7 @@ export default function KanbanColumn({
         {/* Drop zone + cards */}
         <div
           ref={setNodeRef}
-          className="flex flex-col gap-2 px-2.5 pb-3 flex-1"
+          className="flex flex-col gap-2 px-2.5 pb-3 flex-1 overflow-y-auto"
         >
           <SortableContext items={calls.map((c) => c.id)} strategy={verticalListSortingStrategy}>
             {calls.map((call) => (

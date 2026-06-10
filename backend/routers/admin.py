@@ -13,6 +13,7 @@ from models.banned_company import BannedCompany
 from services import ai_service
 from models.knowledge_base import KnowledgeBase
 from models.profile import Profile
+from models.system_setting import SystemSetting
 from models.tech_stack import TechStack
 from models.system_log import SystemLog
 from models.token_pricing import TokenPricing
@@ -1116,3 +1117,55 @@ def delete_banned_company(
         raise HTTPException(status_code=404, detail="Not found")
     db.delete(entry)
     db.commit()
+
+
+# ---------------------------------------------------------------------------
+# System Settings
+# ---------------------------------------------------------------------------
+
+from pydantic import BaseModel as _BaseModel
+
+
+class SystemSettingResponse(_BaseModel):
+    key: str
+    value: str | None
+
+
+class SystemSettingUpdate(_BaseModel):
+    value: str | None
+
+
+ALLOWED_SETTING_KEYS = {"default_chat_model_id", "default_resume_model_id"}
+
+
+@router.get("/settings", response_model=list[SystemSettingResponse])
+def get_system_settings(
+    current_user: User = Depends(_admin_only),
+    db: Session = Depends(get_db),
+):
+    rows = db.scalars(select(SystemSetting)).all()
+    result = {r.key: r.value for r in rows}
+    return [
+        SystemSettingResponse(key=k, value=result.get(k))
+        for k in ALLOWED_SETTING_KEYS
+    ]
+
+
+@router.put("/settings/{key}", response_model=SystemSettingResponse)
+def update_system_setting(
+    key: str,
+    data: SystemSettingUpdate,
+    current_user: User = Depends(_admin_only),
+    db: Session = Depends(get_db),
+):
+    if key not in ALLOWED_SETTING_KEYS:
+        raise HTTPException(status_code=400, detail=f"Unknown setting key: {key}")
+    row = db.get(SystemSetting, key)
+    if row is None:
+        row = SystemSetting(key=key, value=data.value)
+        db.add(row)
+    else:
+        row.value = data.value
+    db.commit()
+    db.refresh(row)
+    return SystemSettingResponse(key=row.key, value=row.value)

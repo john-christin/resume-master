@@ -287,3 +287,16 @@ export const updateBannedCompany = (id: string, data: { name?: string; descripti
 
 export const deleteBannedCompany = (id: string) =>
   api.delete(`/api/admin/banned-companies/${id}`);
+
+// ── System Settings ───────────────────────────────────────────────────────────
+
+export interface SystemSetting {
+  key: string;
+  value: string | null;
+}
+
+export const getSystemSettings = () =>
+  api.get<SystemSetting[]>("/api/admin/settings");
+
+export const updateSystemSetting = (key: string, value: string | null) =>
+  api.put<SystemSetting>(`/api/admin/settings/${key}`, { value });

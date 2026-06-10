@@ -5,6 +5,7 @@ import {
   Sun,
   SunMoon,
 } from "lucide-react";
+import { useEffect, useState } from "react";
 import { Link, useNavigate } from "react-router-dom";
 import { clearAuth, getUsername, getUserRole } from "@/auth";
 import { useTheme } from "@/ThemeContext";
@@ -34,6 +35,23 @@ export default function Header() {
   const role = getUserRole();
   const { theme, setTheme } = useTheme();
 
+  const [now, setNow] = useState(() => new Date());
+  useEffect(() => {
+    const id = setInterval(() => setNow(new Date()), 1000);
+    return () => clearInterval(id);
+  }, []);
+
+  const userTz = localStorage.getItem("user_timezone") || Intl.DateTimeFormat().resolvedOptions().timeZone;
+  const timeStr = now.toLocaleTimeString(undefined, {
+    timeZone: userTz,
+    hour: "2-digit",
+    minute: "2-digit",
+    second: "2-digit",
+  });
+  const tzShort = new Intl.DateTimeFormat(undefined, { timeZone: userTz, timeZoneName: "short" })
+    .formatToParts(now)
+    .find((p) => p.type === "timeZoneName")?.value ?? "";
+
   const initials = username ? username.slice(0, 2).toUpperCase() : "?";
   const ThemeIcon = theme === "dark" ? Moon : theme === "light" ? Sun : SunMoon;
 
@@ -45,6 +63,12 @@ export default function Header() {
   return (
     <header className="sticky top-0 z-30 flex h-[60px] shrink-0 items-center justify-between border-b bg-card px-4 sm:px-6 gap-4">
       <div className="flex-1" />
+
+      {/* Live clock */}
+      <div className="hidden sm:flex flex-col items-end leading-none select-none">
+        <span className="text-sm font-mono font-medium tabular-nums text-foreground">{timeStr}</span>
+        <span className="text-[10px] text-muted-foreground mt-0.5">{tzShort}</span>
+      </div>
 
       <div className="flex items-center gap-2">
         {/* Theme toggle */}
