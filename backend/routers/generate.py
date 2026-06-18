@@ -146,6 +146,21 @@ async def _generate_single(
             reason = m.description or f'"{m.banned_name}" is on the banned companies list.'
             raise HTTPException(status_code=422, detail=reason)
 
+    # Duplicate bid check: same user + same company + same job title
+    if company and current_user.role != "admin":
+        duplicate = db.scalars(
+            select(Application).where(
+                Application.user_id == current_user.id,
+                Application.company.ilike(company),
+                Application.job_title.ilike(job_title),
+            )
+        ).first()
+        if duplicate:
+            raise HTTPException(
+                status_code=409,
+                detail=f'You already have an application for "{job_title}" at "{company}". Duplicate bids are not allowed.',
+            )
+
     # Cross-profile reference: find similar applications from other profiles
     reference_bullets = None
     if company:

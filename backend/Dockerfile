@@ -7,9 +7,13 @@ RUN apt-get update && \
         fonts-crosextra-caladea \
         fonts-liberation \
         fonts-liberation2 \
-        fonts-urw-base35 && \
+        fonts-urw-base35 \
+        fonts-texgyre \
+        fonts-ebgaramond && \
     apt-get clean && \
     rm -rf /var/lib/apt/lists/*
+
+COPY font-substitutions.conf /etc/fonts/conf.d/99-resume-substitutions.conf
 
 WORKDIR /app
 
