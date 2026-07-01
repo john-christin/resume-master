@@ -146,21 +146,6 @@ async def _generate_single(
             reason = m.description or f'"{m.banned_name}" is on the banned companies list.'
             raise HTTPException(status_code=422, detail=reason)
 
-    # Duplicate bid check: same user + same company + same job title
-    if company and current_user.role != "admin":
-        duplicate = db.scalars(
-            select(Application).where(
-                Application.user_id == current_user.id,
-                Application.company.ilike(company),
-                Application.job_title.ilike(job_title),
-            )
-        ).first()
-        if duplicate:
-            raise HTTPException(
-                status_code=409,
-                detail=f'You already have an application for "{job_title}" at "{company}". Duplicate bids are not allowed.',
-            )
-
     # Cross-profile reference: find similar applications from other profiles
     reference_bullets = None
     if company:
@@ -571,6 +556,34 @@ async def check_clearance(
     return _check_clearance_for_profile(profile, req.job_description)
 
 
+def _find_duplicate_bids(
+    user_id: str,
+    profile_id: str,
+    jobs: list[tuple[str | None, str]],
+    db: Session,
+) -> list[tuple[str, str]]:
+    """Return (company, job_title) pairs already applied to under this profile.
+
+    Scoped to (user_id, profile_id) — the same job on a different profile is
+    not a duplicate. Only checks entries where company is non-empty.
+    """
+    duplicates: list[tuple[str, str]] = []
+    for company, job_title in jobs:
+        if not company or not company.strip():
+            continue
+        existing = db.scalars(
+            select(Application).where(
+                Application.user_id == user_id,
+                Application.profile_id == profile_id,
+                Application.company.ilike(company.strip()),
+                Application.job_title.ilike(job_title.strip()),
+            )
+        ).first()
+        if existing:
+            duplicates.append((company.strip(), job_title.strip()))
+    return duplicates
+
+
 def _find_banned_matches(companies: list[str], db: Session) -> list[BannedCompanyMatch]:
     """Return a BannedCompanyMatch for each input company that hits the banned list."""
     all_banned = db.scalars(select(BannedCompany)).all()
@@ -610,6 +623,16 @@ async def generate_application(
     db: Session = Depends(get_db),
 ):
     profile = _get_accessible_profile(req.profile_id, current_user, db)
+    if current_user.role != "admin":
+        dupes = _find_duplicate_bids(
+            current_user.id, profile.id, [(req.company, req.job_title)], db
+        )
+        if dupes:
+            company, title = dupes[0]
+            raise HTTPException(
+                status_code=409,
+                detail=f'You already have an application for "{title}" at "{company}". Duplicate bids are not allowed.',
+            )
     return await _generate_single(
         profile=profile,
         job_title=req.job_title,
@@ -629,6 +652,19 @@ async def batch_generate(
     db: Session = Depends(get_db),
 ):
     profile = _get_accessible_profile(req.profile_id, current_user, db)
+    if current_user.role != "admin":
+        dupes = _find_duplicate_bids(
+            current_user.id,
+            profile.id,
+            [(job.company, job.job_title) for job in req.jobs],
+            db,
+        )
+        if dupes:
+            labels = ", ".join(f'"{t}" at "{c}"' for c, t in dupes)
+            raise HTTPException(
+                status_code=409,
+                detail=f"Duplicate bids detected — already applied to: {labels}. Remove them and try again.",
+            )
     profile_id = profile.id
     user_id = current_user.id
 
