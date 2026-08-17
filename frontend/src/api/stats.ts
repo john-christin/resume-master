@@ -13,11 +13,6 @@ export interface MyProfileStat {
   cost: number;
 }
 
-export interface MyStackStat {
-  stack_name: string;
-  count: number;
-}
-
 export interface MySummary {
   today_count: number;
   week_count: number;
@@ -31,7 +26,6 @@ export interface MyStatsResponse {
   daily: MyDailyPoint[];
   daily_calls: MyDailyPoint[];
   profiles: MyProfileStat[];
-  stacks: MyStackStat[];
 }
 
 export const getMyStats = (from?: string, to?: string) => {

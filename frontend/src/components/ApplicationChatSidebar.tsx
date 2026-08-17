@@ -186,14 +186,12 @@ export default function ApplicationChatSidebar({ appId, jobTitle, company, onClo
             </SelectTrigger>
             <SelectContent>
               <SelectItem value="default" className="text-xs">
-                Default (utility model)
+                Default (chat model)
               </SelectItem>
               {models.map((m) => (
                 <SelectItem key={m.id} value={m.id} className="text-xs">
                   {m.display_name}
-                  {m.role && (
-                    <span className="ml-1.5 text-muted-foreground">· {m.role}</span>
-                  )}
+                  <span className="ml-1.5 text-muted-foreground">· {m.provider}</span>
                 </SelectItem>
               ))}
             </SelectContent>

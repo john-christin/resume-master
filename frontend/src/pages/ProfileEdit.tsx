@@ -5,7 +5,6 @@ import { getDocStyles } from "../api/doc_styles";
 import {
   createProfile,
   getProfile,
-  getTechStacksPublic,
   updateProfile,
 } from "../api/profile";
 import { getUserRole } from "../auth";
@@ -34,7 +33,7 @@ import { Separator } from "../components/ui/separator";
 import { Slider } from "../components/ui/slider";
 import { Switch } from "../components/ui/switch";
 import { Textarea } from "../components/ui/textarea";
-import type { DocStyle, Education, Experience, ProfileCreate, TechStack } from "../types";
+import type { DocStyle, Education, Experience, ProfileCreate } from "../types";
 
 const emptyProfile: ProfileCreate = {
   name: "",
@@ -43,13 +42,15 @@ const emptyProfile: ProfileCreate = {
   email: "",
   linkedin: "",
   summary: "",
-  tech_stack_id: null,
   creativity_factor: 0.7,
   custom_prompt: null,
   doc_style_id: null,
   show_skills: true,
   check_clearance: false,
   security_clearance: null,
+  foundry_endpoint: null,
+  foundry_api_key: null,
+  foundry_model_id: null,
   educations: [],
   experiences: [],
 };
@@ -64,13 +65,10 @@ export default function ProfileEdit() {
   const [saving, setSaving] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [readOnly, setReadOnly] = useState(false);
-  const [techStacks, setTechStacks] = useState<TechStack[]>([]);
   const [docStyles, setDocStyles] = useState<DocStyle[]>([]);
+  const [foundryKeySet, setFoundryKeySet] = useState(false);
 
   useEffect(() => {
-    getTechStacksPublic()
-      .then((res) => setTechStacks(res.data))
-      .catch(() => {});
     getDocStyles()
       .then((res) => setDocStyles(res.data))
       .catch(() => {});
@@ -88,16 +86,19 @@ export default function ProfileEdit() {
           email: p.email || "",
           linkedin: p.linkedin || "",
           summary: p.summary || "",
-          tech_stack_id: p.tech_stack_id ?? null,
           creativity_factor: p.creativity_factor ?? 0.7,
           custom_prompt: p.custom_prompt ?? null,
           doc_style_id: p.doc_style_id ?? null,
           show_skills: p.show_skills ?? true,
           check_clearance: p.check_clearance ?? false,
           security_clearance: p.security_clearance ?? null,
+          foundry_endpoint: p.foundry_endpoint ?? null,
+          foundry_api_key: null,
+          foundry_model_id: p.foundry_model_id ?? null,
           educations: p.educations,
           experiences: p.experiences,
         });
+        setFoundryKeySet(!!p.foundry_api_key_set);
         setReadOnly(p.is_shared && !p.is_owner && getUserRole() !== "admin");
       })
       .catch(() => setError("Failed to load profile"))
@@ -230,28 +231,6 @@ export default function ProfileEdit() {
                   placeholder="https://linkedin.com/in/..."
                   readOnly={readOnly}
                 />
-              </div>
-              <div className="space-y-1.5">
-                <Label>Tech Stack</Label>
-                <Select
-                  value={profile.tech_stack_id ?? "__none__"}
-                  onValueChange={(v) =>
-                    setProfile({ ...profile, tech_stack_id: v === "__none__" ? null : v })
-                  }
-                  disabled={readOnly}
-                >
-                  <SelectTrigger>
-                    <SelectValue placeholder="— None selected —" />
-                  </SelectTrigger>
-                  <SelectContent>
-                    <SelectItem value="__none__">— None selected —</SelectItem>
-                    {techStacks.map((ts) => (
-                      <SelectItem key={ts.id} value={ts.id}>
-                        {ts.name}
-                      </SelectItem>
-                    ))}
-                  </SelectContent>
-                </Select>
               </div>
               <div className="space-y-1.5">
                 <Label>Resume Doc Style</Label>
@@ -418,6 +397,60 @@ export default function ProfileEdit() {
                 <span>Active — sent with all KB prompts during generation</span>
               </div>
             )}
+          </CardContent>
+        </Card>
+
+        <Card>
+          <CardHeader>
+            <CardTitle className="text-base">Bring Your Own Claude Key (optional)</CardTitle>
+            <p className="text-xs text-muted-foreground leading-relaxed">
+              Attach a Microsoft Foundry-hosted Claude deployment to bill this profile's
+              resume generation to your own Azure resource instead of the shared platform key.
+              Leave blank to use the platform default.
+            </p>
+          </CardHeader>
+          <CardContent className="space-y-4">
+            <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+              <div className="space-y-1.5">
+                <Label>Foundry Endpoint</Label>
+                <Input
+                  value={profile.foundry_endpoint || ""}
+                  onChange={(e) =>
+                    setProfile({ ...profile, foundry_endpoint: e.target.value || null })
+                  }
+                  placeholder="https://<resource>.services.ai.azure.com/anthropic/v1"
+                  readOnly={readOnly}
+                />
+              </div>
+              <div className="space-y-1.5">
+                <Label>Model / Deployment ID</Label>
+                <Input
+                  value={profile.foundry_model_id || ""}
+                  onChange={(e) =>
+                    setProfile({ ...profile, foundry_model_id: e.target.value || null })
+                  }
+                  placeholder="claude-opus-4-8"
+                  readOnly={readOnly}
+                />
+              </div>
+            </div>
+            <div className="space-y-1.5">
+              <Label>API Key</Label>
+              <Input
+                type="password"
+                value={profile.foundry_api_key || ""}
+                onChange={(e) =>
+                  setProfile({ ...profile, foundry_api_key: e.target.value || null })
+                }
+                placeholder={foundryKeySet ? "•••••••••••• (unchanged — enter a new key to replace)" : "Enter API key"}
+                readOnly={readOnly}
+              />
+              {foundryKeySet && (
+                <p className="text-xs text-muted-foreground">
+                  A key is already saved. Leave blank to keep it, or enter a new one to replace it.
+                </p>
+              )}
+            </div>
           </CardContent>
         </Card>
 

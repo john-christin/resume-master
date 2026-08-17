@@ -1,11 +1,10 @@
-import { AlertCircle, Loader2, Plus } from "lucide-react";
+import { AlertCircle, BookOpen, Loader2, Plus } from "lucide-react";
 import PageHeader from "../../components/shared/PageHeader";
 import { useEffect, useState } from "react";
 import {
   createKnowledgeBase,
   deleteKnowledgeBase,
   getKnowledgeBases,
-  getTechStacks,
   updateKnowledgeBase,
 } from "../../api/admin";
 import LoadingSpinner from "../../components/LoadingSpinner";
@@ -21,21 +20,11 @@ import {
 } from "../../components/ui/dialog";
 import { Input } from "../../components/ui/input";
 import { Label } from "../../components/ui/label";
-import {
-  Select,
-  SelectContent,
-  SelectItem,
-  SelectTrigger,
-  SelectValue,
-} from "../../components/ui/select";
 import { Textarea } from "../../components/ui/textarea";
-import type { KnowledgeBase, TechStack } from "../../types";
-import { cn } from "@/lib/utils";
+import type { KnowledgeBase } from "../../types";
 
 export default function KnowledgeBasePage() {
   const [kbList, setKbList] = useState<KnowledgeBase[]>([]);
-  const [stacks, setStacks] = useState<TechStack[]>([]);
-  const [filterStack, setFilterStack] = useState<string>("");
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
 
@@ -43,17 +32,12 @@ export default function KnowledgeBasePage() {
   const [editingId, setEditingId] = useState<string | null>(null);
   const [kbName, setKbName] = useState("");
   const [kbContent, setKbContent] = useState("");
-  const [kbStackId, setKbStackId] = useState<string>("__general__");
   const [saving, setSaving] = useState(false);
 
   const load = async () => {
     try {
-      const [kbRes, stackRes] = await Promise.all([
-        getKnowledgeBases(),
-        getTechStacks(),
-      ]);
-      setKbList(kbRes.data);
-      setStacks(stackRes.data);
+      const res = await getKnowledgeBases();
+      setKbList(res.data);
     } catch {
       setError("Failed to load knowledge bases");
     } finally {
@@ -67,23 +51,20 @@ export default function KnowledgeBasePage() {
     setEditingId(kb?.id ?? null);
     setKbName(kb?.name ?? "");
     setKbContent(kb?.content ?? "");
-    setKbStackId(kb?.tech_stack_id ?? (filterStack || "__general__"));
     setModalOpen(true);
   };
 
   const handleSave = async (e: React.FormEvent) => {
     e.preventDefault();
     setSaving(true);
-    const stackIdVal = kbStackId === "__general__" ? null : kbStackId;
     try {
       if (editingId) {
         await updateKnowledgeBase(editingId, {
           name: kbName,
           content: kbContent,
-          tech_stack_id: stackIdVal,
         });
       } else {
-        await createKnowledgeBase(kbName, kbContent, stackIdVal);
+        await createKnowledgeBase(kbName, kbContent);
       }
       setModalOpen(false);
       setError(null);
@@ -114,19 +95,13 @@ export default function KnowledgeBasePage() {
     }
   };
 
-  const filtered = kbList.filter((kb) =>
-    filterStack === ""
-      ? kb.tech_stack_id === null || kb.tech_stack_id === undefined
-      : kb.tech_stack_id === filterStack
-  );
-
   if (loading) return <LoadingSpinner message="Loading knowledge bases..." />;
 
   return (
     <div className="space-y-6">
       <PageHeader
         title="Knowledge Base"
-        description="Manage knowledge base articles and content"
+        description="Manage knowledge base guidelines — every active entry applies to all resume generation"
         actions={<Button onClick={() => openModal()}><Plus className="h-4 w-4" />Create KB</Button>}
       />
 
@@ -137,49 +112,24 @@ export default function KnowledgeBasePage() {
         </Alert>
       )}
 
-      {/* Stack filter pills */}
-      <div className="flex flex-wrap gap-1.5">
-        {[{ id: "", name: "General" }, ...stacks].map((s) => (
-          <button
-            key={s.id}
-            onClick={() => setFilterStack(s.id)}
-            className={cn(
-              "px-3 py-1.5 rounded-full text-sm font-medium transition-colors",
-              filterStack === s.id
-                ? "bg-primary text-primary-foreground"
-                : "bg-muted text-muted-foreground hover:text-foreground"
-            )}
-          >
-            {s.name}
-          </button>
-        ))}
-      </div>
-
-      {filtered.length === 0 ? (
+      {kbList.length === 0 ? (
         <Card>
           <CardContent className="py-16 text-center">
             <BookOpen className="h-10 w-10 text-muted-foreground/30 mx-auto mb-3" />
-            <p className="text-muted-foreground font-medium">No knowledge bases here</p>
+            <p className="text-muted-foreground font-medium">No knowledge bases yet</p>
             <p className="text-sm text-muted-foreground mt-1">
-              Create one for this stack or switch the filter above.
+              Create one to guide resume/cover-letter generation.
             </p>
           </CardContent>
         </Card>
       ) : (
         <div className="space-y-4">
-          {filtered.map((kb) => (
+          {kbList.map((kb) => (
             <Card key={kb.id} className={!kb.is_active ? "opacity-60" : ""}>
               <CardContent className="pt-5">
                 <div className="flex items-start justify-between mb-3 gap-3">
                   <div className="min-w-0">
-                    <div className="flex items-center gap-2 flex-wrap">
-                      <h3 className="font-semibold truncate">{kb.name}</h3>
-                      <Badge variant="secondary">
-                        {kb.tech_stack_id
-                          ? (stacks.find((s) => s.id === kb.tech_stack_id)?.name ?? "Stack")
-                          : "General"}
-                      </Badge>
-                    </div>
+                    <h3 className="font-semibold truncate">{kb.name}</h3>
                     <p className="text-xs text-muted-foreground mt-0.5">
                       Created {new Date(kb.created_at).toLocaleDateString()}
                       {kb.updated_at &&
@@ -232,22 +182,6 @@ export default function KnowledgeBasePage() {
                 placeholder="e.g. Resume Bullet Guidelines"
                 required
               />
-            </div>
-            <div className="space-y-1.5">
-              <Label>Tech Stack</Label>
-              <Select value={kbStackId} onValueChange={setKbStackId}>
-                <SelectTrigger>
-                  <SelectValue />
-                </SelectTrigger>
-                <SelectContent>
-                  <SelectItem value="__general__">General (all stacks)</SelectItem>
-                  {stacks.filter((s) => s.is_active).map((s) => (
-                    <SelectItem key={s.id} value={s.id}>
-                      {s.name}
-                    </SelectItem>
-                  ))}
-                </SelectContent>
-              </Select>
             </div>
             <div className="space-y-1.5">
               <Label>Content</Label>

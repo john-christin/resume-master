@@ -23,12 +23,6 @@ class Profile(Base):
     email: Mapped[str | None] = mapped_column(String(200), nullable=True)
     linkedin: Mapped[str | None] = mapped_column(String(500), nullable=True)
     summary: Mapped[str | None] = mapped_column(String(2000), nullable=True)
-    tech_stack_id: Mapped[str | None] = mapped_column(
-        String(36),
-        ForeignKey("tech_stacks.id", ondelete="SET NULL"),
-        nullable=True,
-        index=True,
-    )
     creativity_factor: Mapped[float] = mapped_column(
         Float, default=lambda: random.random(), nullable=False
     )
@@ -42,6 +36,9 @@ class Profile(Base):
     show_skills: Mapped[bool] = mapped_column(Boolean, default=True, nullable=False)
     check_clearance: Mapped[bool] = mapped_column(Boolean, default=False, nullable=False)
     security_clearance: Mapped[str | None] = mapped_column(String(50), nullable=True)
+    foundry_endpoint: Mapped[str | None] = mapped_column(String(500), nullable=True)
+    foundry_api_key: Mapped[str | None] = mapped_column(Text, nullable=True)
+    foundry_model_id: Mapped[str | None] = mapped_column(String(200), nullable=True)
     created_at: Mapped[datetime] = mapped_column(
         DateTime, default=datetime.utcnow
     )

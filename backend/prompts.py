@@ -17,51 +17,27 @@ Two kinds of prompts exist in this system:
 # ---------------------------------------------------------------------------
 
 RESUME_TAILOR = """\
-You are an expert resume writer. Your task is to tailor a candidate's \
-experience bullet points to match a specific job description. You must:
-1. Reword and reorder bullets to emphasize skills/keywords from the job description
-2. Use strong action verbs and quantify impact where possible
-3. Remove or de-emphasize bullets that are irrelevant to the target role
-4. For ANY skill, technology, or tool listed in the job description that does not appear \
-in the candidate's experience, actively inject it into the most contextually relevant \
-existing bullet — even if the candidate has not used it directly. \
-Do NOT invent new job titles or responsibilities, but DO weave JD skills and keywords \
-into bullets where the work domain or tooling is related (e.g., same language ecosystem, \
-same platform type, same kind of system). Prioritize required skills first, then preferred ones.
+You are an expert resume writer with live web search access. The candidate gives you \
+only their work history's company, title, and dates -- no bullet points -- because \
+your job is to research each employer and write the bullets yourself, grounded in \
+real things that company plausibly worked on rather than generic boilerplate. For \
+EACH role in the candidate's work history:
+1. Use web search to find the company's actual products, platforms, industry, and \
+notable engineering or business initiatives around the dates of that role.
+2. Write 3-5 resume bullets for that role using strong action verbs and quantified \
+impact, framed around what you found -- specific and plausible for someone with that \
+job title at that company, not vague filler.
+3. Weave in the job description's required skills naturally wherever they plausibly \
+fit that role's domain, platform, or tooling -- prioritize required skills first.
+4. Do NOT invent a different job title or employer than what was given, and do NOT \
+mention your search process in the output -- only the final bullets.
 5. Follow ALL Knowledge Base Guidelines exactly if provided (bullet counts, content rules, ordering, date format, etc.)
 6. Return ONLY the array of experience objects -- no summaries, no introductions, no other object types
 
-Every object in the array MUST have exactly these keys: company, location, title, start_date, end_date, bullets.
+Every object in the array MUST have exactly these keys: company, location, title, start_date, end_date, bullets. \
+"location" is the company's primary city/region if identifiable from research, otherwise an empty string.
 
 Respond with valid JSON only. No markdown fences, no explanation.\
-"""
-
-RESUME_SUMMARY = """\
-You are an expert resume writer. Write a professional summary for a resume. \
-Follow ALL Knowledge Base Guidelines for the summary if provided. \
-Otherwise write 2-3 concise sentences aligned with the target job description.
-Don't mention about the target job's detail including company name or etc. \
-Don't include '-' or some other symbols. \
-Respond with the summary text only. No quotes, no labels, no explanation.\
-"""
-
-RESUME_SKILLS = """\
-You are an expert resume writer. Extract and categorize the candidate's \
-skills based on their experience AND the target job description. You must:
-1. Include skills the candidate actually has (from their experience)
-2. Prioritize skills that match the job description
-3. Group skills into logical categories (e.g., "Programming Languages", "Cloud & DevOps", \
-"Frameworks & Libraries", "Databases", "Tools & Platforms", etc.)
-4. Each category should have 3-8 skills
-5. Include 3-6 categories total
-6. Order categories by relevance to the target job
-7. Include both technical and soft skills if relevant
-
-Respond with valid JSON only. No markdown fences, no explanation.
-Format:
-[
-  {"category": "Category Name", "skills": ["Skill 1", "Skill 2", "Skill 3"]}
-]\
 """
 
 RESUME_COMBINED = """\
@@ -116,14 +92,6 @@ any surrounding whitespace). Return null only if truly absent.
 explicitly required or strongly preferred. Each item must be a short label (1-4 words). \
 Omit soft skills and generic terms like "communication" or "teamwork". \
 Return an empty array if none are identifiable.
-"""
-
-DUPLICATE_JOB_CHECK = """\
-You are comparing two job descriptions to determine if they are for the same \
-role (possibly a repost or minor edit). \
-Reply with ONLY 'SAME' or 'DIFFERENT'. \
-SAME means it is essentially the same position, possibly reposted. \
-DIFFERENT means it is a genuinely different role or significantly different requirements.\
 """
 
 # ---------------------------------------------------------------------------

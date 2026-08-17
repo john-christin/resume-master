@@ -8,6 +8,7 @@ from sqlalchemy.orm import Session, selectinload
 from auth import get_approved_user
 from config import settings
 from database import get_db
+from models.ai_usage_event import AIUsageEvent
 from models.application import Application
 from models.call import Call
 from models.user import User
@@ -32,7 +33,6 @@ def _app_to_summary(app: Application, db: Session, include_cost: bool = True) ->
         "cover_letter_path": app.cover_letter_path,
         "profile_name": app.profile_name,
         "location": app.location,
-        "tech_stack_name": app.tech_stack_name,
         "call_scheduled": app.call_scheduled,
         "call_id": app.call.id if app.call else None,
         "call_stage": app.call.stage if app.call else None,
@@ -55,7 +55,6 @@ def list_applications(
     search: str | None = None,
     sort_by: str = "created_at",
     sort_dir: str = "desc",
-    tech_stack_id: str | None = None,
     call_status: str | None = None,
     profile_name: str | None = None,
     username: str | None = None,
@@ -71,11 +70,6 @@ def list_applications(
         stmt = stmt.where(Application.user_id == current_user.id)
         count_stmt = count_stmt.where(Application.user_id == current_user.id)
     # caller and admin see all
-
-    # Tech stack filter
-    if tech_stack_id:
-        stmt = stmt.where(Application.tech_stack_id == tech_stack_id)
-        count_stmt = count_stmt.where(Application.tech_stack_id == tech_stack_id)
 
     # Call status filter
     if call_status == "no_call":
@@ -161,6 +155,24 @@ def get_application(
     # Build response dict and attach profile snapshot
     data = {c.name: getattr(application, c.name) for c in application.__table__.columns}
     data["user_username"] = application.user.username if application.user else None
+
+    usage_events = db.scalars(
+        select(AIUsageEvent)
+        .where(AIUsageEvent.application_id == application.id)
+        .order_by(AIUsageEvent.created_at)
+    ).all()
+    data["usage_breakdown"] = [
+        {
+            "part": e.part,
+            "role": e.role,
+            "provider": e.provider,
+            "model_id": e.model_id,
+            "prompt_tokens": e.prompt_tokens,
+            "completion_tokens": e.completion_tokens,
+            "cost": e.cost,
+        }
+        for e in usage_events
+    ]
 
     if application.profile_id:
         from models.profile import Profile

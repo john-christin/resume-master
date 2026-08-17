@@ -11,19 +11,9 @@ export interface Education {
 export interface Experience {
   id?: string;
   company: string;
-  location?: string;
   title: string;
-  description: string;
   start_date: string;
   end_date?: string;
-}
-
-export interface TechStack {
-  id: string;
-  name: string;
-  description?: string | null;
-  is_active: boolean;
-  created_at: string;
 }
 
 export interface SectionItem {
@@ -124,13 +114,15 @@ export interface Profile {
   email?: string;
   linkedin?: string;
   summary?: string;
-  tech_stack_id?: string | null;
   creativity_factor?: number;
   custom_prompt?: string | null;
   doc_style_id?: string | null;
   show_skills: boolean;
   check_clearance: boolean;
   security_clearance?: string | null;
+  foundry_endpoint?: string | null;
+  foundry_api_key_set?: boolean;
+  foundry_model_id?: string | null;
   educations: Education[];
   experiences: Experience[];
   is_owner: boolean;
@@ -147,13 +139,15 @@ export interface ProfileCreate {
   email?: string;
   linkedin?: string;
   summary?: string;
-  tech_stack_id?: string | null;
   creativity_factor?: number;
   custom_prompt?: string | null;
   doc_style_id?: string | null;
   show_skills?: boolean;
   check_clearance?: boolean;
   security_clearance?: string | null;
+  foundry_endpoint?: string | null;
+  foundry_api_key?: string | null;
+  foundry_model_id?: string | null;
   educations: Education[];
   experiences: Experience[];
 }
@@ -292,7 +286,6 @@ export interface ApplicationSummary {
   cover_letter_path?: string;
   profile_name?: string;
   location?: string;
-  tech_stack_name?: string | null;
   call_scheduled?: boolean;
   call_id?: string;
   call_stage?: string | null;
@@ -305,12 +298,23 @@ export interface ApplicationSummary {
   created_at: string;
 }
 
+export interface UsageBreakdownItem {
+  part: string;
+  role: string;
+  provider: string;
+  model_id: string;
+  prompt_tokens: number;
+  completion_tokens: number;
+  cost: number;
+}
+
 export interface ApplicationDetail extends ApplicationSummary {
   job_description: string;
   tailored_bullets?: string;
   cover_letter_text?: string;
   salary_range?: string | null;
   required_skills?: string[];
+  usage_breakdown?: UsageBreakdownItem[];
   profile_email?: string | null;
   profile_phone?: string | null;
   profile_location?: string | null;
@@ -342,7 +346,6 @@ export interface KnowledgeBase {
   name: string;
   content: string;
   is_active: boolean;
-  tech_stack_id?: string | null;
   created_at: string;
   updated_at?: string;
 }
@@ -364,10 +367,19 @@ export interface AIModelConfig {
   api_version?: string;
   input_price_per_1k: number;
   output_price_per_1k: number;
-  is_active: boolean;
-  role?: string | null; // "primary" | "utility" | null
   created_at: string;
   updated_at?: string;
+}
+
+export interface ModelUsageStat {
+  role: string;
+  provider: string;
+  model_id: string;
+  display_name: string | null;
+  call_count: number;
+  prompt_tokens: number;
+  completion_tokens: number;
+  cost: number;
 }
 
 export interface ActiveModel {
@@ -375,7 +387,14 @@ export interface ActiveModel {
   display_name: string;
   provider: string;
   model_id: string;
-  role: string | null;
+}
+
+export interface RoleAssignment {
+  role: string; // "resume" | "cover_letter" | "jd_parse" | "chat" | "utility"
+  ai_model_config_id: string | null;
+  display_name: string | null;
+  provider: string | null;
+  model_id: string | null;
 }
 
 export interface AppChatMessage {

@@ -96,48 +96,42 @@ class AIModelConfigResponse(BaseModel):
     api_version: str | None = None
     input_price_per_1k: float = 0.0
     output_price_per_1k: float = 0.0
-    is_active: bool
-    role: str | None = None  # "primary" | "utility" | None
     created_at: datetime
     updated_at: datetime | None = None
 
 
-class ActivateModelRequest(BaseModel):
-    role: str = "primary"  # "primary" | "utility"
+class RoleAssignmentResponse(BaseModel):
+    role: str  # "resume" | "cover_letter" | "jd_parse" | "chat" | "utility"
+    ai_model_config_id: str | None = None
+    display_name: str | None = None
+    provider: str | None = None
+    model_id: str | None = None
 
 
-class TechStackCreate(BaseModel):
-    name: str
-    description: str | None = None
+class RoleAssignmentUpdate(BaseModel):
+    ai_model_config_id: str | None = None  # null clears the role's assignment
 
 
-class TechStackUpdate(BaseModel):
-    name: str | None = None
-    description: str | None = None
-    is_active: bool | None = None
-
-
-class TechStackResponse(BaseModel):
-    id: str
-    name: str
-    description: str | None = None
-    is_active: bool
-    created_at: datetime
-
-    model_config = {"from_attributes": True}
+class ModelUsageStat(BaseModel):
+    role: str
+    provider: str
+    model_id: str
+    display_name: str | None = None
+    call_count: int
+    prompt_tokens: int
+    completion_tokens: int
+    cost: float
 
 
 class KnowledgeBaseCreate(BaseModel):
     name: str
     content: str
-    tech_stack_id: str | None = None
 
 
 class KnowledgeBaseUpdate(BaseModel):
     name: str | None = None
     content: str | None = None
     is_active: bool | None = None
-    tech_stack_id: str | None = None
 
 
 class KnowledgeBaseResponse(BaseModel):
@@ -145,7 +139,6 @@ class KnowledgeBaseResponse(BaseModel):
     name: str
     content: str
     is_active: bool
-    tech_stack_id: str | None = None
     created_at: datetime
     updated_at: datetime | None = None
 

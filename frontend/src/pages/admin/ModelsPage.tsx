@@ -1,17 +1,16 @@
 import axios from "axios";
-import { AlertCircle, Bot, Cpu, Loader2, MessageSquare, Plus, Wand2 } from "lucide-react";
+import { AlertCircle, Bot, Loader2, Plus } from "lucide-react";
 import PageHeader from "../../components/shared/PageHeader";
 import { useEffect, useState } from "react";
 import {
-  activateModel,
   createModel,
-  deactivateModel,
   deleteModel,
   getModels,
-  getSystemSettings,
+  getRoleAssignments,
+  setRoleAssignment,
   testModel,
   updateModel,
-  updateSystemSetting,
+  type AIModelRole,
 } from "../../api/admin";
 import LoadingSpinner from "../../components/LoadingSpinner";
 import { Alert, AlertDescription } from "../../components/ui/alert";
@@ -33,16 +32,38 @@ import {
   SelectTrigger,
   SelectValue,
 } from "../../components/ui/select";
-import type { AIModelConfig } from "../../types";
+import type { AIModelConfig, RoleAssignment } from "../../types";
+
+const ROLE_OPTIONS: { value: AIModelRole; label: string }[] = [
+  { value: "resume", label: "Resume" },
+  { value: "cover_letter", label: "Cover Letter" },
+  { value: "jd_parse", label: "JD Parse" },
+  { value: "chat", label: "Chat" },
+  { value: "utility", label: "Utility" },
+];
+
+const ROLE_DOT_COLOR: Record<string, string> = {
+  resume: "bg-emerald-500",
+  cover_letter: "bg-purple-500",
+  jd_parse: "bg-amber-500",
+  chat: "bg-blue-500",
+  utility: "bg-slate-400",
+};
+
+const ROLE_BADGE_VARIANT: Record<string, "success" | "purple" | "warning" | "info" | "secondary"> = {
+  resume: "success",
+  cover_letter: "purple",
+  jd_parse: "warning",
+  chat: "info",
+  utility: "secondary",
+};
 
 export default function ModelsPage() {
   const [models, setModels] = useState<AIModelConfig[]>([]);
+  const [assignments, setAssignments] = useState<RoleAssignment[]>([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
-
-  const [defaultChatModelId, setDefaultChatModelId] = useState<string>("");
-  const [defaultResumeModelId, setDefaultResumeModelId] = useState<string>("");
-  const [settingsSaving, setSettingsSaving] = useState(false);
+  const [assigning, setAssigning] = useState<string | null>(null);
 
   const [modalOpen, setModalOpen] = useState(false);
   const [editingId, setEditingId] = useState<string | null>(null);
@@ -61,12 +82,9 @@ export default function ModelsPage() {
 
   const load = async () => {
     try {
-      const [modelsRes, settingsRes] = await Promise.all([getModels(), getSystemSettings()]);
+      const [modelsRes, assignmentsRes] = await Promise.all([getModels(), getRoleAssignments()]);
       setModels(modelsRes.data);
-      for (const s of settingsRes.data) {
-        if (s.key === "default_chat_model_id") setDefaultChatModelId(s.value ?? "");
-        if (s.key === "default_resume_model_id") setDefaultResumeModelId(s.value ?? "");
-      }
+      setAssignments(assignmentsRes.data);
     } catch {
       setError("Failed to load models");
     } finally {
@@ -76,17 +94,15 @@ export default function ModelsPage() {
 
   useEffect(() => { load(); }, []);
 
-  const handleSaveDefaultSettings = async () => {
-    setSettingsSaving(true);
+  const handleAssign = async (role: AIModelRole, modelConfigId: string | null) => {
+    setAssigning(role);
     try {
-      await Promise.all([
-        updateSystemSetting("default_chat_model_id", defaultChatModelId || null),
-        updateSystemSetting("default_resume_model_id", defaultResumeModelId || null),
-      ]);
+      await setRoleAssignment(role, modelConfigId);
+      await load();
     } catch {
-      setError("Failed to save default model settings");
+      setError(`Failed to update the ${role} assignment`);
     } finally {
-      setSettingsSaving(false);
+      setAssigning(null);
     }
   };
 
@@ -192,9 +208,6 @@ export default function ModelsPage() {
     }
   };
 
-  const primary = models.find((m) => m.is_active && m.role === "primary");
-  const utility = models.find((m) => m.is_active && m.role === "utility");
-
   if (loading) return <LoadingSpinner message="Loading AI models..." />;
 
   return (
@@ -212,92 +225,42 @@ export default function ModelsPage() {
         </Alert>
       )}
 
-      {/* Active model status */}
-      <div className="space-y-2">
-        {primary ? (
-          <Alert variant="success">
-            <Cpu className="h-4 w-4" />
-            <AlertDescription>
-              <span className="font-semibold">Primary</span> — {primary.display_name}{" "}
-              <span className="text-muted-foreground text-xs">
-                ({primary.provider} / {primary.model_id})
-              </span>
-            </AlertDescription>
-          </Alert>
-        ) : (
-          <Alert variant="warning">
-            <AlertCircle className="h-4 w-4" />
-            <AlertDescription>No primary model configured. Using environment variable fallback.</AlertDescription>
-          </Alert>
-        )}
-        {utility ? (
-          <Alert variant="info">
-            <Cpu className="h-4 w-4" />
-            <AlertDescription>
-              <span className="font-semibold">Utility</span> — {utility.display_name}{" "}
-              <span className="text-muted-foreground text-xs">
-                ({utility.provider} / {utility.model_id})
-              </span>
-            </AlertDescription>
-          </Alert>
-        ) : (
-          <Alert>
-            <AlertDescription className="text-muted-foreground">
-              No utility model configured — extraction tasks will use the primary model.
-            </AlertDescription>
-          </Alert>
-        )}
-      </div>
-
-      {/* Default Models */}
+      {/* Role assignments — pick which model serves each function. The same
+          model can be picked for more than one role. */}
       <Card>
-        <CardContent className="pt-4 space-y-4">
-          <p className="text-sm font-semibold text-foreground">Default Models</p>
-          <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
-            <div className="space-y-1.5">
-              <label className="text-xs font-medium text-muted-foreground flex items-center gap-1.5">
-                <MessageSquare className="h-3.5 w-3.5" /> Default Chat Model
-              </label>
-              <Select value={defaultChatModelId || "none"} onValueChange={(v) => setDefaultChatModelId(v === "none" ? "" : v)}>
-                <SelectTrigger className="h-8 text-xs">
-                  <SelectValue placeholder="Use utility model" />
-                </SelectTrigger>
-                <SelectContent>
-                  <SelectItem value="none" className="text-xs">Use utility model (default)</SelectItem>
-                  {models.map((m) => (
-                    <SelectItem key={m.id} value={m.id} className="text-xs">
-                      {m.display_name}
-                      <span className="ml-1.5 text-muted-foreground">· {m.provider}</span>
+        <CardContent className="pt-4 space-y-3">
+          <p className="text-sm font-semibold text-foreground">Role Assignments</p>
+          {ROLE_OPTIONS.map(({ value, label }) => {
+            const a = assignments.find((x) => x.role === value);
+            return (
+              <div key={value} className="flex items-center gap-3">
+                <div className="w-32 shrink-0 flex items-center gap-2">
+                  <span className={`w-2 h-2 rounded-full shrink-0 ${ROLE_DOT_COLOR[value]}`} />
+                  <span className="text-sm font-medium">{label}</span>
+                </div>
+                <Select
+                  value={a?.ai_model_config_id ?? "none"}
+                  disabled={assigning === value}
+                  onValueChange={(v) => handleAssign(value, v === "none" ? null : v)}
+                >
+                  <SelectTrigger className="h-8 text-xs w-[280px]">
+                    <SelectValue />
+                  </SelectTrigger>
+                  <SelectContent>
+                    <SelectItem value="none" className="text-xs">
+                      None{value !== "resume" ? " — falls back to Resume" : ""}
                     </SelectItem>
-                  ))}
-                </SelectContent>
-              </Select>
-            </div>
-            <div className="space-y-1.5">
-              <label className="text-xs font-medium text-muted-foreground flex items-center gap-1.5">
-                <Wand2 className="h-3.5 w-3.5" /> Default Resume Creation Model
-              </label>
-              <Select value={defaultResumeModelId || "none"} onValueChange={(v) => setDefaultResumeModelId(v === "none" ? "" : v)}>
-                <SelectTrigger className="h-8 text-xs">
-                  <SelectValue placeholder="Use primary model" />
-                </SelectTrigger>
-                <SelectContent>
-                  <SelectItem value="none" className="text-xs">Use primary model (default)</SelectItem>
-                  {models.map((m) => (
-                    <SelectItem key={m.id} value={m.id} className="text-xs">
-                      {m.display_name}
-                      <span className="ml-1.5 text-muted-foreground">· {m.provider}</span>
-                    </SelectItem>
-                  ))}
-                </SelectContent>
-              </Select>
-            </div>
-          </div>
-          <div className="flex justify-end">
-            <Button size="sm" onClick={handleSaveDefaultSettings} disabled={settingsSaving}>
-              {settingsSaving ? <><Loader2 className="h-3.5 w-3.5 animate-spin mr-1.5" />Saving…</> : "Save Defaults"}
-            </Button>
-          </div>
+                    {models.map((m) => (
+                      <SelectItem key={m.id} value={m.id} className="text-xs">
+                        {m.display_name}
+                        <span className="ml-1.5 text-muted-foreground">· {m.provider}</span>
+                      </SelectItem>
+                    ))}
+                  </SelectContent>
+                </Select>
+              </div>
+            );
+          })}
         </CardContent>
       </Card>
 
@@ -310,22 +273,14 @@ export default function ModelsPage() {
         </Card>
       ) : (
         <div className="space-y-3">
-          {models.map((m) => (
-            <Card
-              key={m.id}
-              className={m.is_active ? "border-emerald-300 dark:border-emerald-700" : ""}
-            >
-              <CardContent className="pt-4 flex items-center justify-between gap-4 flex-wrap">
-                <div className="flex items-center gap-3 min-w-0">
-                  <div
-                    className={`w-2.5 h-2.5 rounded-full shrink-0 ${
-                      m.role === "primary"
-                        ? "bg-emerald-500"
-                        : m.role === "utility"
-                          ? "bg-blue-500"
-                          : "bg-muted-foreground/30"
-                    }`}
-                  />
+          {models.map((m) => {
+            const rolesForModel = assignments.filter((a) => a.ai_model_config_id === m.id);
+            return (
+              <Card
+                key={m.id}
+                className={rolesForModel.length > 0 ? "border-emerald-300 dark:border-emerald-700" : ""}
+              >
+                <CardContent className="pt-4 flex items-center justify-between gap-4 flex-wrap">
                   <div className="min-w-0">
                     <div className="flex items-center gap-2 flex-wrap">
                       <span className="font-semibold">{m.display_name}</span>
@@ -348,8 +303,11 @@ export default function ModelsPage() {
                               ? "Anthropic"
                               : "Google"}
                       </Badge>
-                      {m.role === "primary" && <Badge variant="success">Primary</Badge>}
-                      {m.role === "utility" && <Badge variant="info">Utility</Badge>}
+                      {rolesForModel.map((a) => (
+                        <Badge key={a.role} variant={ROLE_BADGE_VARIANT[a.role] ?? "secondary"}>
+                          {ROLE_OPTIONS.find((r) => r.value === a.role)?.label ?? a.role}
+                        </Badge>
+                      ))}
                     </div>
                     <p className="text-xs text-muted-foreground mt-0.5">
                       {m.model_id}
@@ -358,80 +316,35 @@ export default function ModelsPage() {
                         ` · $${m.input_price_per_1k}/1K in, $${m.output_price_per_1k}/1K out`}
                     </p>
                   </div>
-                </div>
-                <div className="flex items-center gap-2 flex-wrap shrink-0">
-                  {m.role !== "primary" && (
-                    <Button
-                      size="sm"
-                      variant="success"
-                      onClick={async () => {
-                        try {
-                          await activateModel(m.id, "primary");
-                          await load();
-                        } catch {
-                          setError("Failed to set as primary");
-                        }
-                      }}
-                    >
-                      Set Primary
+                  <div className="flex items-center gap-2 flex-wrap shrink-0">
+                    <Button size="sm" variant="outline" onClick={() => openModal(m)}>
+                      Edit
                     </Button>
-                  )}
-                  {m.role !== "utility" && (
-                    <Button
-                      size="sm"
-                      variant="info"
-                      onClick={async () => {
-                        try {
-                          await activateModel(m.id, "utility");
-                          await load();
-                        } catch {
-                          setError("Failed to set as utility");
-                        }
-                      }}
-                    >
-                      Set Utility
-                    </Button>
-                  )}
-                  {m.is_active && (
-                    <Button
-                      size="sm"
-                      variant="secondary"
-                      onClick={async () => {
-                        try {
-                          await deactivateModel(m.id);
-                          await load();
-                        } catch {
-                          setError("Failed to deactivate model");
-                        }
-                      }}
-                    >
-                      Deactivate
-                    </Button>
-                  )}
-                  <Button size="sm" variant="outline" onClick={() => openModal(m)}>
-                    Edit
-                  </Button>
-                  {!m.is_active && (
-                    <Button
-                      size="sm"
-                      variant="destructive"
-                      onClick={async () => {
-                        if (!window.confirm(`Delete model "${m.display_name}"?`)) return;
-                        try {
-                          await deleteModel(m.id);
-                          await load();
-                        } catch {
-                          setError("Failed to delete model");
-                        }
-                      }}
-                    >
-                      Delete
-                    </Button>
-                  )}
-                </div>
-              </CardContent>
-            </Card>
-          ))}
+                    {rolesForModel.length === 0 && (
+                      <Button
+                        size="sm"
+                        variant="destructive"
+                        onClick={async () => {
+                          if (!window.confirm(`Delete model "${m.display_name}"?`)) return;
+                          try {
+                            await deleteModel(m.id);
+                            await load();
+                          } catch (err) {
+                            let msg = "Failed to delete model";
+                            if (axios.isAxiosError(err) && err.response?.data?.detail)
+                              msg = String(err.response.data.detail);
+                            setError(msg);
+                          }
+                        }}
+                      >
+                        Delete
+                      </Button>
+                    )}
+                  </div>
+                </CardContent>
+              </Card>
+            );
+          })}
         </div>
       )}
 

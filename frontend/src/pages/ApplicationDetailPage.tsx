@@ -3,6 +3,8 @@ import {
   ArrowLeft,
   Building2,
   CheckCircle2,
+  ChevronDown,
+  ChevronUp,
   Copy,
   Download,
   FileText,
@@ -56,6 +58,14 @@ async function smartDownload(url: string, filename: string): Promise<void> {
   document.body.removeChild(a);
 }
 
+const PART_LABELS: Record<string, string> = {
+  tailor_resume: "Resume Tailoring",
+  resume_content: "Summary & Skills",
+  cover_letter: "Cover Letter",
+  jd_extraction: "JD Parsing",
+  chat: "Interview Chat",
+};
+
 function CopyBtn({ value }: { value: string }) {
   const [copied, setCopied] = useState(false);
   return (
@@ -105,6 +115,7 @@ export default function ApplicationDetailPage() {
   const [error, setError] = useState<string | null>(null);
   const [formatPicker, setFormatPicker] = useState<FormatPicker | null>(null);
   const [toast, setToast] = useState<string | null>(null);
+  const [showCostBreakdown, setShowCostBreakdown] = useState(false);
 
   useEffect(() => {
     if (!toast) return;
@@ -251,12 +262,6 @@ export default function ApplicationDetailPage() {
                 <span>{detail.profile_name}</span>
               </div>
             )}
-            {detail.tech_stack_name && (
-              <div>
-                <p className="text-xs font-semibold text-muted-foreground uppercase mb-1">Tech Stack</p>
-                <Badge variant="purple">{detail.tech_stack_name}</Badge>
-              </div>
-            )}
             {detail.location && (
               <div>
                 <p className="text-xs font-semibold text-muted-foreground uppercase mb-1">Work Mode</p>
@@ -272,7 +277,22 @@ export default function ApplicationDetailPage() {
             {showCost && detail.total_cost != null && (
               <div>
                 <p className="text-xs font-semibold text-muted-foreground uppercase mb-1">Cost</p>
-                <span>${detail.total_cost.toFixed(4)}</span>
+                {(detail.usage_breakdown?.length ?? 0) > 0 ? (
+                  <button
+                    type="button"
+                    className="flex items-center gap-1 hover:underline"
+                    onClick={() => setShowCostBreakdown((v) => !v)}
+                  >
+                    <span>${detail.total_cost.toFixed(4)}</span>
+                    {showCostBreakdown ? (
+                      <ChevronUp className="h-3.5 w-3.5 text-muted-foreground" />
+                    ) : (
+                      <ChevronDown className="h-3.5 w-3.5 text-muted-foreground" />
+                    )}
+                  </button>
+                ) : (
+                  <span>${detail.total_cost.toFixed(4)}</span>
+                )}
               </div>
             )}
             {detail.salary_range && (
@@ -285,6 +305,35 @@ export default function ApplicationDetailPage() {
               </div>
             )}
           </div>
+
+          {showCostBreakdown && (detail.usage_breakdown?.length ?? 0) > 0 && (
+            <div className="rounded-md border border-border overflow-x-auto">
+              <table className="w-full text-xs">
+                <thead>
+                  <tr className="border-b border-border text-muted-foreground">
+                    <th className="text-left font-semibold px-3 py-1.5">Part</th>
+                    <th className="text-left font-semibold px-3 py-1.5">Model</th>
+                    <th className="text-right font-semibold px-3 py-1.5">Tokens</th>
+                    <th className="text-right font-semibold px-3 py-1.5">Cost</th>
+                  </tr>
+                </thead>
+                <tbody>
+                  {detail.usage_breakdown!.map((u, i) => (
+                    <tr key={i} className="border-b border-border last:border-0">
+                      <td className="px-3 py-1.5">{PART_LABELS[u.part] ?? u.part}</td>
+                      <td className="px-3 py-1.5 text-muted-foreground">
+                        {u.provider} / {u.model_id}
+                      </td>
+                      <td className="px-3 py-1.5 text-right">
+                        {(u.prompt_tokens + u.completion_tokens).toLocaleString()}
+                      </td>
+                      <td className="px-3 py-1.5 text-right">${u.cost.toFixed(4)}</td>
+                    </tr>
+                  ))}
+                </tbody>
+              </table>
+            </div>
+          )}
 
           {/* Required Skills */}
           {(detail.required_skills?.length ?? 0) > 0 && (

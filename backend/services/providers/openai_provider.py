@@ -1,7 +1,9 @@
 from ..providers.base import LLMResponse
 
 
-def call_openai(messages, max_tokens, temperature, config) -> LLMResponse:
+def call_openai(messages, max_tokens, temperature, config, tools=None) -> LLMResponse:
+    # `tools` (web-search grounding) is Anthropic-specific today — accepted
+    # here for a uniform call_provider() signature, ignored otherwise.
     from openai import OpenAI
 
     kwargs = {"api_key": config["api_key"]}
@@ -22,7 +24,7 @@ def call_openai(messages, max_tokens, temperature, config) -> LLMResponse:
     )
 
 
-def call_azure_openai(messages, max_tokens, temperature, config) -> LLMResponse:
+def call_azure_openai(messages, max_tokens, temperature, config, tools=None) -> LLMResponse:
     from openai import AzureOpenAI
     from config import settings
 

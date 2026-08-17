@@ -7,7 +7,6 @@ export const getApplications = (
   search?: string,
   sortBy: string = "created_at",
   sortDir: string = "desc",
-  techStackId?: string,
   callStatus?: string,
   profileName?: string,
   username?: string,
@@ -19,7 +18,6 @@ export const getApplications = (
     sort_dir: sortDir,
   });
   if (search) params.set("search", search);
-  if (techStackId) params.set("tech_stack_id", techStackId);
   if (callStatus) params.set("call_status", callStatus);
   if (profileName) params.set("profile_name", profileName);
   if (username) params.set("username", username);

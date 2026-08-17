@@ -1,7 +1,9 @@
 from ..providers.base import LLMResponse
 
 
-def call_google(messages, max_tokens, temperature, config) -> LLMResponse:
+def call_google(messages, max_tokens, temperature, config, tools=None) -> LLMResponse:
+    # `tools` (web-search grounding) is Anthropic-specific today — accepted
+    # here for a uniform call_provider() signature, ignored otherwise.
     import google.generativeai as genai
 
     genai.configure(api_key=config["api_key"])

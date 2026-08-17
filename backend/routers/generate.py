@@ -13,15 +13,13 @@ from sqlalchemy.orm import Session
 from auth import require_role
 from config import settings
 from database import SessionLocal, get_db
-from models.ai_model_config import AIModelConfig
+from models.ai_usage_event import AIUsageEvent
 from models.application import Application
 from models.banned_company import BannedCompany
 from models.doc_style import DocStyle
 from models.knowledge_base import KnowledgeBase
-from models.tech_stack import TechStack
 from models.profile import Profile
 from models.profile_share import profile_shares
-from models.token_pricing import TokenPricing
 from models.user import User
 from schemas.doc_style import StyleConfig
 from schemas.generate import (
@@ -48,52 +46,6 @@ from services.pdf_service import convert_to_pdf
 router = APIRouter(tags=["generate"])
 
 _bidder_or_admin = require_role("admin", "bidder")
-
-
-def _get_current_pricing(db: Session) -> tuple[float, float]:
-    """Return (input_price_per_1k, output_price_per_1k).
-
-    Uses primary model pricing first, then any active model, falls back
-    to global TokenPricing.
-    """
-    # Check primary model pricing first (bulk of tokens)
-    primary = db.scalars(
-        select(AIModelConfig).where(
-            AIModelConfig.is_active.is_(True),
-            AIModelConfig.role == "primary",
-        )
-    ).first()
-    if primary and (
-        primary.input_price_per_1k > 0 or primary.output_price_per_1k > 0
-    ):
-        return primary.input_price_per_1k, primary.output_price_per_1k
-
-    # Fallback: any active model
-    active_model = db.scalars(
-        select(AIModelConfig).where(AIModelConfig.is_active.is_(True))
-    ).first()
-    if active_model and (
-        active_model.input_price_per_1k > 0
-        or active_model.output_price_per_1k > 0
-    ):
-        return active_model.input_price_per_1k, active_model.output_price_per_1k
-
-    # Fall back to global pricing
-    pricing = db.scalars(
-        select(TokenPricing).order_by(TokenPricing.effective_from.desc())
-    ).first()
-    if not pricing:
-        return 0.0, 0.0
-    return pricing.input_price_per_1k, pricing.output_price_per_1k
-
-
-def _calculate_cost(
-    prompt_tokens: int, completion_tokens: int, db: Session
-) -> float:
-    input_price, output_price = _get_current_pricing(db)
-    return (prompt_tokens / 1000 * input_price) + (
-        completion_tokens / 1000 * output_price
-    )
 
 
 def _get_accessible_profile(
@@ -146,30 +98,6 @@ async def _generate_single(
             reason = m.description or f'"{m.banned_name}" is on the banned companies list.'
             raise HTTPException(status_code=422, detail=reason)
 
-    # Cross-profile reference: find similar applications from other profiles
-    reference_bullets = None
-    if company:
-        cross_profile_app = db.scalars(
-            select(Application)
-            .where(
-                Application.company.ilike(company),
-                Application.profile_id != profile.id,
-                Application.tailored_bullets.isnot(None),
-            )
-            .order_by(Application.created_at.desc())
-        ).first()
-
-        if cross_profile_app:
-            similarity = ai_service.text_similarity(
-                job_description, cross_profile_app.job_description
-            )
-            if similarity > 0.6:
-                try:
-                    reference_bullets = json.loads(
-                        cross_profile_app.tailored_bullets
-                    )
-                except (json.JSONDecodeError, TypeError):
-                    reference_bullets = None
 
     # Extract job location / work mode from JD
     job_location, loc_usage = ai_service.extract_job_location_with_usage(
@@ -182,9 +110,7 @@ async def _generate_single(
     experiences = [
         {
             "company": exp.company,
-            "location": exp.location,
             "title": exp.title,
-            "description": exp.description,
             "start_date": exp.start_date,
             "end_date": exp.end_date,
         }
@@ -202,25 +128,10 @@ async def _generate_single(
         for edu in profile.educations
     ]
 
-    # Load active knowledge bases: general (no stack) + stack-specific
-    tech_stack_id = profile.tech_stack_id
-    tech_stack_name: str | None = None
-    if tech_stack_id:
-        ts = db.get(TechStack, tech_stack_id)
-        tech_stack_name = ts.name if ts else None
-
-    kb_filter = KnowledgeBase.is_active.is_(True)
-    if tech_stack_id:
-        from sqlalchemy import or_
-        kb_filter = kb_filter & or_(
-            KnowledgeBase.tech_stack_id.is_(None),
-            KnowledgeBase.tech_stack_id == tech_stack_id,
-        )
-    else:
-        kb_filter = kb_filter & KnowledgeBase.tech_stack_id.is_(None)
-
+    # Load active knowledge bases — all active entries apply globally now
+    # that tech-stack scoping has been removed.
     active_kbs = db.scalars(
-        select(KnowledgeBase).where(kb_filter)
+        select(KnowledgeBase).where(KnowledgeBase.is_active.is_(True))
     ).all()
     kb_parts = [f"### {kb.name}\n{kb.content}" for kb in active_kbs]
 
@@ -232,20 +143,27 @@ async def _generate_single(
 
     creativity_factor = getattr(profile, "creativity_factor", 0.3)
 
-    # Tailor resume + generate summary/skills + cover letter + JD extraction concurrently
+    # JD extraction runs first — the resume-bullet writer needs its
+    # required_skills as an input, so it can no longer run fully concurrently
+    # with the other three calls the way the old "reword existing bullets"
+    # flow did.
     try:
-        (tailored, resume_usage), (content_result, content_usage), (cover_letter_text, cl_usage), jd_info = await asyncio.gather(
+        jd_info = await asyncio.to_thread(ai_service.extract_jd_info, job_description)
+        required_skills = jd_info.get("required_skills") or []
+
+        # Tailor (web-search-grounded) resume + generate summary/skills + cover letter concurrently
+        (tailored, resume_usage), (content_result, content_usage), (cover_letter_text, cl_usage) = await asyncio.gather(
             asyncio.to_thread(
                 ai_service.tailor_resume,
                 user_name=profile.name,
                 experiences=experiences,
-                educations=educations,
                 job_description=job_description,
                 job_title=job_title,
                 company=company,
-                reference_bullets=reference_bullets,
+                required_skills=required_skills,
                 knowledge_base=kb_content,
                 creativity_factor=creativity_factor,
+                profile_id=profile.id,
             ),
             asyncio.to_thread(
                 ai_service.generate_resume_content,
@@ -258,6 +176,7 @@ async def _generate_single(
                 company=company,
                 knowledge_base=kb_content,
                 creativity_factor=creativity_factor,
+                profile_id=profile.id,
             ),
             asyncio.to_thread(
                 ai_service.generate_cover_letter,
@@ -271,7 +190,6 @@ async def _generate_single(
                 knowledge_base=kb_content,
                 creativity_factor=creativity_factor,
             ),
-            asyncio.to_thread(ai_service.extract_jd_info, job_description),
         )
     except Exception as e:
         log_service.log_bg(
@@ -293,8 +211,16 @@ async def _generate_single(
     summary_text = content_result["summary"]
     skills_data = content_result.get("skills", [])
 
-    # Calculate cost
-    cost = _calculate_cost(total_prompt, total_completion, db)
+    # Cost is the sum of what each call already computed for itself at the
+    # model it actually ran on — not a single blended price applied after
+    # the fact (see ai_service._call_llm).
+    usage_parts = [
+        ("tailor_resume", "resume", resume_usage),
+        ("resume_content", "resume", content_usage),
+        ("cover_letter", "cover_letter", cl_usage),
+        ("jd_extraction", "jd_parse", jd_usage),
+    ]
+    cost = sum(u.get("cost", 0.0) for _, _, u in usage_parts)
 
     # Create application record
     application = Application(
@@ -307,8 +233,6 @@ async def _generate_single(
         job_url=job_url,
         job_description=job_description,
         resume_type=resume_type,
-        tech_stack_id=tech_stack_id,
-        tech_stack_name=tech_stack_name,
         tailored_bullets=json.dumps(tailored),
         cover_letter_text=cover_letter_text,
         salary_range=jd_info.get("salary_range"),
@@ -319,6 +243,24 @@ async def _generate_single(
     )
     db.add(application)
     db.flush()
+
+    for part, role, usage in usage_parts:
+        if not usage.get("provider"):
+            continue  # call never actually ran (e.g. JD parse failed before billing)
+        db.add(AIUsageEvent(
+            application_id=application.id,
+            user_id=current_user.id,
+            role=role,
+            part=part,
+            provider=usage["provider"],
+            model_id=usage["model_id"],
+            ai_model_config_id=usage.get("model_config_id"),
+            prompt_tokens=usage.get("prompt_tokens", 0),
+            completion_tokens=usage.get("completion_tokens", 0),
+            input_price_per_1k=usage.get("input_price_per_1k", 0.0),
+            output_price_per_1k=usage.get("output_price_per_1k", 0.0),
+            cost=usage.get("cost", 0.0),
+        ))
 
     # Load doc style for this profile
     doc_style: StyleConfig | None = None

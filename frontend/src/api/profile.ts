@@ -3,7 +3,6 @@ import type {
   Profile,
   ProfileCreate,
   ProfileShareUser,
-  TechStack,
   UserSearchResult,
 } from "../types";
 
@@ -36,6 +35,3 @@ export const listUsers = () =>
 
 export const searchUsers = (q: string) =>
   api.get<UserSearchResult[]>(`/api/users/search?q=${encodeURIComponent(q)}`);
-
-export const getTechStacksPublic = () =>
-  api.get<TechStack[]>("/api/tech-stacks");

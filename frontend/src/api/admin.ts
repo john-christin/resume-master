@@ -1,5 +1,7 @@
 import api from "./client";
-import type { AIModelConfig, BannedCompany, KnowledgeBase, TechStack, TokenPricing, UserListItem } from "../types";
+import type { AIModelConfig, BannedCompany, KnowledgeBase, ModelUsageStat, RoleAssignment, TokenPricing, UserListItem } from "../types";
+
+export type AIModelRole = "resume" | "cover_letter" | "jd_parse" | "chat" | "utility";
 
 export const getUsers = (status?: string, search?: string) => {
   const params = new URLSearchParams();
@@ -123,31 +125,16 @@ export const setPricing = (inputPrice: number, outputPrice: number) =>
 export const recalculateCosts = () =>
   api.post<{ detail: string }>("/api/admin/pricing/recalculate");
 
-// Tech Stacks
-export const getTechStacks = () =>
-  api.get<TechStack[]>("/api/admin/tech-stacks");
-
-export const createTechStack = (name: string, description?: string) =>
-  api.post<TechStack>("/api/admin/tech-stacks", { name, description });
-
-export const updateTechStack = (
-  id: string,
-  data: { name?: string; description?: string; is_active?: boolean }
-) => api.put<TechStack>(`/api/admin/tech-stacks/${id}`, data);
-
-export const deleteTechStack = (id: string) =>
-  api.delete(`/api/admin/tech-stacks/${id}`);
-
 // Knowledge Base
 export const getKnowledgeBases = () =>
   api.get<KnowledgeBase[]>("/api/admin/knowledge-bases");
 
-export const createKnowledgeBase = (name: string, content: string, tech_stack_id?: string | null) =>
-  api.post<KnowledgeBase>("/api/admin/knowledge-bases", { name, content, tech_stack_id: tech_stack_id ?? null });
+export const createKnowledgeBase = (name: string, content: string) =>
+  api.post<KnowledgeBase>("/api/admin/knowledge-bases", { name, content });
 
 export const updateKnowledgeBase = (
   id: string,
-  data: { name?: string; content?: string; is_active?: boolean; tech_stack_id?: string | null }
+  data: { name?: string; content?: string; is_active?: boolean }
 ) => api.put<KnowledgeBase>(`/api/admin/knowledge-bases/${id}`, data);
 
 export const deleteKnowledgeBase = (id: string) =>
@@ -195,11 +182,11 @@ export const updateModel = (
 export const deleteModel = (id: string) =>
   api.delete(`/api/admin/models/${id}`);
 
-export const activateModel = (id: string, role: string = "primary") =>
-  api.post<AIModelConfig>(`/api/admin/models/${id}/activate`, { role });
+export const getRoleAssignments = () =>
+  api.get<RoleAssignment[]>("/api/admin/role-assignments");
 
-export const deactivateModel = (id: string) =>
-  api.post<AIModelConfig>(`/api/admin/models/${id}/deactivate`);
+export const setRoleAssignment = (role: AIModelRole, modelConfigId: string | null) =>
+  api.put<RoleAssignment>(`/api/admin/role-assignments/${role}`, { ai_model_config_id: modelConfigId });
 
 // Dashboard stat types
 export interface AdminOverview {
@@ -274,6 +261,9 @@ export const getAdminDailyCallStats = (from?: string, to?: string) =>
 export const getAdminPerUserDailyCallStats = (from?: string, to?: string) =>
   api.get<UserDailyPoint[]>(`/api/admin/stats/per-user-daily-calls${_buildDateParams(from, to)}`);
 
+export const getAdminUsageByModel = (from?: string, to?: string) =>
+  api.get<ModelUsageStat[]>(`/api/admin/stats/usage-by-model${_buildDateParams(from, to)}`);
+
 // ── Banned Companies ──────────────────────────────────────────────────────────
 
 export const getBannedCompanies = () =>
@@ -287,16 +277,3 @@ export const updateBannedCompany = (id: string, data: { name?: string; descripti
 
 export const deleteBannedCompany = (id: string) =>
   api.delete(`/api/admin/banned-companies/${id}`);
-
-// ── System Settings ───────────────────────────────────────────────────────────
-
-export interface SystemSetting {
-  key: string;
-  value: string | null;
-}
-
-export const getSystemSettings = () =>
-  api.get<SystemSetting[]>("/api/admin/settings");
-
-export const updateSystemSetting = (key: string, value: string | null) =>
-  api.put<SystemSetting>(`/api/admin/settings/${key}`, { value });

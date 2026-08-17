@@ -8,7 +8,6 @@ from auth import get_approved_user
 from database import get_db
 from models.application import Application
 from models.profile import Profile
-from models.tech_stack import TechStack
 from models.user import User
 from pydantic import BaseModel
 
@@ -28,11 +27,6 @@ class MyProfileStat(BaseModel):
     cost: float
 
 
-class MyStackStat(BaseModel):
-    stack_name: str
-    count: int
-
-
 class MySummary(BaseModel):
     today_count: int
     week_count: int
@@ -46,7 +40,6 @@ class MyStatsResponse(BaseModel):
     daily: list[MyDailyPoint]
     daily_calls: list[MyDailyPoint]
     profiles: list[MyProfileStat]
-    stacks: list[MyStackStat]
 
 
 @router.get("/me", response_model=MyStatsResponse)
@@ -149,22 +142,4 @@ def get_my_stats(
     calls_daily_rows = db.execute(calls_daily_stmt).all()
     daily_calls = [MyDailyPoint(date=str(r[0]), count=r[1], cost=0.0) for r in calls_daily_rows]
 
-    # Per-tech-stack breakdown
-    stack_stmt = (
-        select(
-            func.coalesce(TechStack.name, "General").label("stack_name"),
-            func.count(Application.id),
-        )
-        .outerjoin(TechStack, TechStack.id == Application.tech_stack_id)
-        .where(Application.user_id == current_user.id)
-        .group_by(func.coalesce(TechStack.name, "General"))
-        .order_by(func.count(Application.id).desc())
-    )
-    if from_date:
-        stack_stmt = stack_stmt.where(Application.created_at >= from_date)
-    if to_date:
-        stack_stmt = stack_stmt.where(Application.created_at < to_date + timedelta(days=1))
-    stack_rows = db.execute(stack_stmt).all()
-    stacks = [MyStackStat(stack_name=r[0], count=r[1]) for r in stack_rows]
-
-    return MyStatsResponse(summary=summary, daily=daily, daily_calls=daily_calls, profiles=profiles, stacks=stacks)
+    return MyStatsResponse(summary=summary, daily=daily, daily_calls=daily_calls, profiles=profiles)

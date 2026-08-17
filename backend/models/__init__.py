@@ -1,5 +1,4 @@
 from models.user import User
-from models.tech_stack import TechStack
 from models.profile import Profile
 from models.profile_share import profile_shares
 from models.education import Education
@@ -8,8 +7,9 @@ from models.application import Application
 from models.token_pricing import TokenPricing
 from models.knowledge_base import KnowledgeBase
 from models.ai_model_config import AIModelConfig
+from models.ai_usage_event import AIUsageEvent
+from models.role_model_assignment import RoleModelAssignment
 from models.batch_job import BatchJob
 from models.chat_message import ChatMessage
 from models.call import Call
 from models.call_stage import CallStage
-from models.system_setting import SystemSetting

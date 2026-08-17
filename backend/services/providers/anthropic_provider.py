@@ -1,7 +1,7 @@
 from ..providers.base import LLMResponse
 
 
-def call_anthropic(messages, max_tokens, temperature, config) -> LLMResponse:
+def call_anthropic(messages, max_tokens, temperature, config, tools=None) -> LLMResponse:
     system_text = ""
     chat_messages = []
     for msg in messages:
@@ -11,8 +11,8 @@ def call_anthropic(messages, max_tokens, temperature, config) -> LLMResponse:
             chat_messages.append(msg)
 
     if config.get("endpoint"):
-        # Azure AI Foundry: use raw httpx because the SDK sends an
-        # anthropic-version header that Azure doesn't support.
+        # Azure/Microsoft Foundry: use raw httpx because the SDK sends an
+        # anthropic-version header that Foundry doesn't support.
         import httpx
 
         body: dict = {
@@ -23,6 +23,8 @@ def call_anthropic(messages, max_tokens, temperature, config) -> LLMResponse:
         }
         if system_text:
             body["system"] = system_text
+        if tools:
+            body["tools"] = tools
 
         endpoint = config["endpoint"].rstrip("/")
         resp = httpx.post(
@@ -37,7 +39,12 @@ def call_anthropic(messages, max_tokens, temperature, config) -> LLMResponse:
         )
         resp.raise_for_status()
         data = resp.json()
-        text = data["content"][0]["text"].strip() if data.get("content") else ""
+        # With web-search tools enabled, content interleaves server_tool_use /
+        # web_search_tool_result blocks before the final text — concatenate
+        # only the text blocks rather than assuming content[0] is the answer.
+        text = "".join(
+            b.get("text", "") for b in data.get("content", []) if b.get("type") == "text"
+        ).strip()
         return LLMResponse(
             content=text,
             prompt_tokens=data["usage"]["input_tokens"],
@@ -55,10 +62,16 @@ def call_anthropic(messages, max_tokens, temperature, config) -> LLMResponse:
     }
     if system_text:
         kwargs["system"] = system_text
+    if tools:
+        kwargs["tools"] = tools
 
     response = client.messages.create(**kwargs)
+    # Same interleaving concern as the raw-httpx branch above.
+    text = "".join(
+        b.text for b in response.content if getattr(b, "type", None) == "text"
+    ).strip()
     return LLMResponse(
-        content=response.content[0].text.strip(),
+        content=text,
         prompt_tokens=response.usage.input_tokens,
         completion_tokens=response.usage.output_tokens,
     )

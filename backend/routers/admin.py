@@ -8,18 +8,17 @@ from auth import require_role
 from database import get_db
 from services import log_service
 from models.ai_model_config import AIModelConfig
+from models.ai_usage_event import AIUsageEvent
 from models.application import Application
 from models.banned_company import BannedCompany
 from services import ai_service
 from models.knowledge_base import KnowledgeBase
 from models.profile import Profile
-from models.system_setting import SystemSetting
-from models.tech_stack import TechStack
+from models.role_model_assignment import RoleModelAssignment
 from models.system_log import SystemLog
 from models.token_pricing import TokenPricing
 from models.user import User
 from schemas.admin import (
-    ActivateModelRequest,
     AdminOverview,
     AIModelConfigCreate,
     AIModelConfigResponse,
@@ -32,14 +31,14 @@ from schemas.admin import (
     KnowledgeBaseCreate,
     KnowledgeBaseResponse,
     KnowledgeBaseUpdate,
+    ModelUsageStat,
     PricingRequest,
     PricingResponse,
     ProfileStat,
     ProfileStatPoint,
+    RoleAssignmentResponse,
+    RoleAssignmentUpdate,
     SystemLogItem,
-    TechStackCreate,
-    TechStackResponse,
-    TechStackUpdate,
     UserApproveRequest,
     UserCallStat,
     UserCostStat,
@@ -463,6 +462,49 @@ def get_per_user_daily_calls(
     return [UserDailyPoint(date=str(r[0]), user_id=r[1], username=r[2], count=r[3], cost=0.0) for r in rows]
 
 
+@router.get("/stats/usage-by-model", response_model=list[ModelUsageStat])
+def get_usage_by_model(
+    from_date: datetime | None = Query(None),
+    to_date: datetime | None = Query(None),
+    current_user: User = Depends(_admin_only),
+    db: Session = Depends(get_db),
+):
+    """Aggregate AI usage/cost by role + model, for the admin usage dashboard."""
+    stmt = (
+        select(
+            AIUsageEvent.role,
+            AIUsageEvent.provider,
+            AIUsageEvent.model_id,
+            func.max(AIModelConfig.display_name),
+            func.count(AIUsageEvent.id),
+            func.coalesce(func.sum(AIUsageEvent.prompt_tokens), 0),
+            func.coalesce(func.sum(AIUsageEvent.completion_tokens), 0),
+            func.coalesce(func.sum(AIUsageEvent.cost), 0),
+        )
+        .outerjoin(AIModelConfig, AIModelConfig.id == AIUsageEvent.ai_model_config_id)
+        .group_by(AIUsageEvent.role, AIUsageEvent.provider, AIUsageEvent.model_id)
+        .order_by(func.sum(AIUsageEvent.cost).desc())
+    )
+    if from_date:
+        stmt = stmt.where(AIUsageEvent.created_at >= from_date)
+    if to_date:
+        stmt = stmt.where(AIUsageEvent.created_at < to_date + timedelta(days=1))
+    rows = db.execute(stmt).all()
+    return [
+        ModelUsageStat(
+            role=r[0],
+            provider=r[1],
+            model_id=r[2],
+            display_name=r[3],
+            call_count=r[4],
+            prompt_tokens=r[5],
+            completion_tokens=r[6],
+            cost=float(r[7]),
+        )
+        for r in rows
+    ]
+
+
 @router.get("/stats", response_model=DashboardStats)
 def get_dashboard_stats(
     from_date: datetime | None = Query(None),
@@ -715,7 +757,7 @@ def create_knowledge_base(
     current_user: User = Depends(_admin_only),
     db: Session = Depends(get_db),
 ):
-    kb = KnowledgeBase(name=data.name, content=data.content, tech_stack_id=data.tech_stack_id)
+    kb = KnowledgeBase(name=data.name, content=data.content)
     db.add(kb)
     db.commit()
     db.refresh(kb)
@@ -738,8 +780,6 @@ def update_knowledge_base(
         kb.content = data.content
     if data.is_active is not None:
         kb.is_active = data.is_active
-    if data.tech_stack_id is not None:
-        kb.tech_stack_id = data.tech_stack_id
     db.commit()
     db.refresh(kb)
     return kb
@@ -758,71 +798,6 @@ def delete_knowledge_base(
     db.commit()
 
 
-# --- Tech Stack CRUD ---
-
-
-@router.get("/tech-stacks", response_model=list[TechStackResponse])
-def list_tech_stacks(
-    current_user: User = Depends(_admin_only),
-    db: Session = Depends(get_db),
-):
-    return db.scalars(
-        select(TechStack).order_by(TechStack.created_at.asc())
-    ).all()
-
-
-@router.post("/tech-stacks", response_model=TechStackResponse, status_code=201)
-def create_tech_stack(
-    data: TechStackCreate,
-    current_user: User = Depends(_admin_only),
-    db: Session = Depends(get_db),
-):
-    existing = db.scalars(
-        select(TechStack).where(TechStack.name == data.name)
-    ).first()
-    if existing:
-        raise HTTPException(status_code=400, detail="Tech stack with this name already exists")
-    ts = TechStack(name=data.name, description=data.description)
-    db.add(ts)
-    db.commit()
-    db.refresh(ts)
-    return ts
-
-
-@router.put("/tech-stacks/{ts_id}", response_model=TechStackResponse)
-def update_tech_stack(
-    ts_id: str,
-    data: TechStackUpdate,
-    current_user: User = Depends(_admin_only),
-    db: Session = Depends(get_db),
-):
-    ts = db.get(TechStack, ts_id)
-    if not ts:
-        raise HTTPException(status_code=404, detail="Tech stack not found")
-    if data.name is not None:
-        ts.name = data.name
-    if data.description is not None:
-        ts.description = data.description
-    if data.is_active is not None:
-        ts.is_active = data.is_active
-    db.commit()
-    db.refresh(ts)
-    return ts
-
-
-@router.delete("/tech-stacks/{ts_id}", status_code=204)
-def delete_tech_stack(
-    ts_id: str,
-    current_user: User = Depends(_admin_only),
-    db: Session = Depends(get_db),
-):
-    ts = db.get(TechStack, ts_id)
-    if not ts:
-        raise HTTPException(status_code=404, detail="Tech stack not found")
-    db.delete(ts)
-    db.commit()
-
-
 # --- AI Model Config CRUD ---
 
 
@@ -837,8 +812,6 @@ def _model_to_response(m: AIModelConfig) -> AIModelConfigResponse:
         api_version=m.api_version,
         input_price_per_1k=m.input_price_per_1k,
         output_price_per_1k=m.output_price_per_1k,
-        is_active=m.is_active,
-        role=m.role,
         created_at=m.created_at,
         updated_at=m.updated_at,
     )
@@ -947,61 +920,90 @@ def delete_model(
     model = db.get(AIModelConfig, model_id)
     if not model:
         raise HTTPException(status_code=404, detail="Model config not found")
-    if model.is_active:
+    assigned_roles = db.scalars(
+        select(RoleModelAssignment.role).where(
+            RoleModelAssignment.ai_model_config_id == model_id
+        )
+    ).all()
+    if assigned_roles:
         raise HTTPException(
-            status_code=400, detail="Cannot delete the active model"
+            status_code=400,
+            detail=f"Cannot delete a model assigned to a role: {', '.join(assigned_roles)}",
         )
     db.delete(model)
     db.commit()
 
 
-@router.post("/models/{model_id}/activate", response_model=AIModelConfigResponse)
-def activate_model(
-    model_id: str,
-    body: ActivateModelRequest | None = None,
+_ROLES = ("resume", "cover_letter", "jd_parse", "chat", "utility")
+
+
+@router.get("/role-assignments", response_model=list[RoleAssignmentResponse])
+def get_role_assignments(
     current_user: User = Depends(_admin_only),
     db: Session = Depends(get_db),
 ):
-    model = db.get(AIModelConfig, model_id)
-    if not model:
-        raise HTTPException(status_code=404, detail="Model config not found")
+    assignments = {
+        a.role: a
+        for a in db.scalars(select(RoleModelAssignment)).all()
+    }
+    models_by_id = {m.id: m for m in db.scalars(select(AIModelConfig)).all()}
 
-    role = (body.role if body else None) or "primary"
-    if role not in ("primary", "utility"):
-        raise HTTPException(status_code=400, detail="Role must be 'primary' or 'utility'")
+    result = []
+    for role in _ROLES:
+        a = assignments.get(role)
+        m = models_by_id.get(a.ai_model_config_id) if a else None
+        result.append(RoleAssignmentResponse(
+            role=role,
+            ai_model_config_id=m.id if m else None,
+            display_name=m.display_name if m else None,
+            provider=m.provider if m else None,
+            model_id=m.model_id if m else None,
+        ))
+    return result
 
-    # Deactivate others with the same role
-    same_role = db.scalars(
-        select(AIModelConfig).where(
-            AIModelConfig.role == role,
-            AIModelConfig.is_active.is_(True),
+
+@router.put("/role-assignments/{role}", response_model=RoleAssignmentResponse)
+def set_role_assignment(
+    role: str,
+    data: RoleAssignmentUpdate,
+    current_user: User = Depends(_admin_only),
+    db: Session = Depends(get_db),
+):
+    if role not in _ROLES:
+        raise HTTPException(
+            status_code=400, detail=f"Role must be one of: {', '.join(_ROLES)}"
         )
-    ).all()
-    for m in same_role:
-        m.is_active = False
-        m.role = None
 
-    model.is_active = True
-    model.role = role
-    db.commit()
-    db.refresh(model)
-    return _model_to_response(model)
+    existing = db.get(RoleModelAssignment, role)
 
+    if data.ai_model_config_id is None:
+        if existing:
+            db.delete(existing)
+            db.commit()
+            ai_service.clear_extraction_cache()
+        return RoleAssignmentResponse(
+            role=role, ai_model_config_id=None, display_name=None,
+            provider=None, model_id=None,
+        )
 
-@router.post("/models/{model_id}/deactivate", response_model=AIModelConfigResponse)
-def deactivate_model(
-    model_id: str,
-    current_user: User = Depends(_admin_only),
-    db: Session = Depends(get_db),
-):
-    model = db.get(AIModelConfig, model_id)
+    model = db.get(AIModelConfig, data.ai_model_config_id)
     if not model:
         raise HTTPException(status_code=404, detail="Model config not found")
-    model.is_active = False
-    model.role = None
+
+    if existing:
+        existing.ai_model_config_id = model.id
+    else:
+        db.add(RoleModelAssignment(role=role, ai_model_config_id=model.id))
     db.commit()
-    db.refresh(model)
-    return _model_to_response(model)
+    # Stale cached extraction results (keyed only by JD text, not by model)
+    # would otherwise keep returning whichever model served them before
+    # this reassignment.
+    ai_service.clear_extraction_cache()
+
+    return RoleAssignmentResponse(
+        role=role, ai_model_config_id=model.id, display_name=model.display_name,
+        provider=model.provider, model_id=model.model_id,
+    )
 
 
 # --- System Logs ---
@@ -1117,55 +1119,3 @@ def delete_banned_company(
         raise HTTPException(status_code=404, detail="Not found")
     db.delete(entry)
     db.commit()
-
-
-# ---------------------------------------------------------------------------
-# System Settings
-# ---------------------------------------------------------------------------
-
-from pydantic import BaseModel as _BaseModel
-
-
-class SystemSettingResponse(_BaseModel):
-    key: str
-    value: str | None
-
-
-class SystemSettingUpdate(_BaseModel):
-    value: str | None
-
-
-ALLOWED_SETTING_KEYS = {"default_chat_model_id", "default_resume_model_id"}
-
-
-@router.get("/settings", response_model=list[SystemSettingResponse])
-def get_system_settings(
-    current_user: User = Depends(_admin_only),
-    db: Session = Depends(get_db),
-):
-    rows = db.scalars(select(SystemSetting)).all()
-    result = {r.key: r.value for r in rows}
-    return [
-        SystemSettingResponse(key=k, value=result.get(k))
-        for k in ALLOWED_SETTING_KEYS
-    ]
-
-
-@router.put("/settings/{key}", response_model=SystemSettingResponse)
-def update_system_setting(
-    key: str,
-    data: SystemSettingUpdate,
-    current_user: User = Depends(_admin_only),
-    db: Session = Depends(get_db),
-):
-    if key not in ALLOWED_SETTING_KEYS:
-        raise HTTPException(status_code=400, detail=f"Unknown setting key: {key}")
-    row = db.get(SystemSetting, key)
-    if row is None:
-        row = SystemSetting(key=key, value=data.value)
-        db.add(row)
-    else:
-        row.value = data.value
-    db.commit()
-    db.refresh(row)
-    return SystemSettingResponse(key=row.key, value=row.value)

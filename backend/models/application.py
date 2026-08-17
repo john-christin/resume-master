@@ -32,13 +32,6 @@ class Application(Base):
     job_url: Mapped[str | None] = mapped_column(Text, nullable=True)
     job_description: Mapped[str] = mapped_column(Text)
     resume_type: Mapped[str | None] = mapped_column(String(100), nullable=True)
-    tech_stack_id: Mapped[str | None] = mapped_column(
-        String(36),
-        ForeignKey("tech_stacks.id", ondelete="SET NULL"),
-        nullable=True,
-        index=True,
-    )
-    tech_stack_name: Mapped[str | None] = mapped_column(String(200), nullable=True)
     tailored_bullets: Mapped[str | None] = mapped_column(Text, nullable=True)
     cover_letter_text: Mapped[str | None] = mapped_column(Text, nullable=True)
     salary_range: Mapped[str | None] = mapped_column(String(200), nullable=True)

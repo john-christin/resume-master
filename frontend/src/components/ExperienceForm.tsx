@@ -3,7 +3,6 @@ import type { Experience } from "../types";
 import { Button } from "./ui/button";
 import { Input } from "./ui/input";
 import { Label } from "./ui/label";
-import { Textarea } from "./ui/textarea";
 
 interface Props {
   experiences: Experience[];
@@ -13,9 +12,7 @@ interface Props {
 
 const emptyExperience: Experience = {
   company: "",
-  location: "",
   title: "",
-  description: "",
   start_date: "",
   end_date: "",
 };
@@ -88,15 +85,6 @@ export default function ExperienceForm({
               />
             </div>
             <div className="space-y-1.5">
-              <Label className="text-xs">Location</Label>
-              <Input
-                placeholder="New York, NY"
-                value={exp.location || ""}
-                onChange={(e) => update(index, "location", e.target.value)}
-                readOnly={readOnly}
-              />
-            </div>
-            <div className="space-y-1.5">
               <Label className="text-xs">Job Title *</Label>
               <Input
                 placeholder="Software Engineer"
@@ -127,19 +115,6 @@ export default function ExperienceForm({
                 />
               </div>
             </div>
-          </div>
-
-          <div className="space-y-1.5">
-            <Label className="text-xs">Description *</Label>
-            <Textarea
-              placeholder={"- Built microservices handling 10K req/sec\n- Led migration to event-driven architecture"}
-              value={exp.description}
-              onChange={(e) => update(index, "description", e.target.value)}
-              rows={6}
-              readOnly={readOnly}
-              required
-              className="resize-y"
-            />
           </div>
         </div>
       ))}
