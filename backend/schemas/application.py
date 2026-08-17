@@ -14,7 +14,6 @@ class ApplicationSummary(BaseModel):
     cover_letter_path: str | None = None
     profile_name: str | None = None
     location: str | None = None
-    tech_stack_name: str | None = None
     user_username: str | None = None
     prompt_tokens: int | None = None
     completion_tokens: int | None = None
@@ -29,12 +28,23 @@ class ApplicationSummary(BaseModel):
     model_config = {"from_attributes": True}
 
 
+class UsageBreakdownItem(BaseModel):
+    part: str
+    role: str
+    provider: str
+    model_id: str
+    prompt_tokens: int
+    completion_tokens: int
+    cost: float
+
+
 class ApplicationDetail(ApplicationSummary):
     job_description: str
     tailored_bullets: str | None = None
     cover_letter_text: str | None = None
     salary_range: str | None = None
     required_skills: list[str] = []
+    usage_breakdown: list[UsageBreakdownItem] = []
     # Profile snapshot fields (populated at query time)
     profile_email: str | None = None
     profile_phone: str | None = None

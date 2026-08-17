@@ -10,9 +10,7 @@ from models.education import Education
 from models.experience import Experience
 from models.profile import Profile
 from models.profile_share import profile_shares
-from models.tech_stack import TechStack
 from models.user import User
-from schemas.admin import TechStackResponse
 from schemas.profile import (
     ProfileCreate,
     ProfileResponse,
@@ -26,17 +24,6 @@ router = APIRouter(tags=["profiles"])
 _bidder_or_admin = require_role("admin", "bidder")
 
 
-@router.get("/api/tech-stacks", response_model=list[TechStackResponse])
-def list_tech_stacks_public(
-    current_user: User = Depends(_bidder_or_admin),
-    db: Session = Depends(get_db),
-):
-    """Return active tech stacks for profile-form dropdowns."""
-    return db.scalars(
-        select(TechStack).where(TechStack.is_active.is_(True)).order_by(TechStack.name.asc())
-    ).all()
-
-
 def _profile_to_response(profile: Profile, current_user_id: str) -> dict:
     """Convert a Profile ORM object to a response dict with ownership flags."""
     data = {
@@ -48,13 +35,15 @@ def _profile_to_response(profile: Profile, current_user_id: str) -> dict:
         "email": profile.email,
         "linkedin": profile.linkedin,
         "summary": profile.summary,
-        "tech_stack_id": profile.tech_stack_id,
         "creativity_factor": profile.creativity_factor,
         "custom_prompt": profile.custom_prompt,
         "doc_style_id": profile.doc_style_id,
         "show_skills": profile.show_skills,
         "check_clearance": profile.check_clearance,
         "security_clearance": profile.security_clearance,
+        "foundry_endpoint": profile.foundry_endpoint,
+        "foundry_api_key_set": bool(profile.foundry_api_key),
+        "foundry_model_id": profile.foundry_model_id,
         "educations": profile.educations,
         "experiences": profile.experiences,
         "is_owner": profile.owner_id == current_user_id,
@@ -148,13 +137,15 @@ def create_profile(
         email=data.email,
         linkedin=data.linkedin,
         summary=data.summary,
-        tech_stack_id=data.tech_stack_id or None,
         creativity_factor=data.creativity_factor,
         custom_prompt=data.custom_prompt or None,
         doc_style_id=data.doc_style_id or None,
         show_skills=data.show_skills,
         check_clearance=data.check_clearance,
         security_clearance=data.security_clearance or None,
+        foundry_endpoint=data.foundry_endpoint or None,
+        foundry_api_key=data.foundry_api_key or None,
+        foundry_model_id=data.foundry_model_id or None,
     )
 
     for edu in data.educations:
@@ -199,13 +190,18 @@ def update_profile(
     profile.email = data.email
     profile.linkedin = data.linkedin
     profile.summary = data.summary
-    profile.tech_stack_id = data.tech_stack_id or None
     profile.creativity_factor = data.creativity_factor
     profile.custom_prompt = data.custom_prompt or None
     profile.doc_style_id = data.doc_style_id or None
     profile.show_skills = data.show_skills
     profile.check_clearance = data.check_clearance
     profile.security_clearance = data.security_clearance or None
+    profile.foundry_endpoint = data.foundry_endpoint or None
+    profile.foundry_model_id = data.foundry_model_id or None
+    if data.foundry_api_key:
+        # Masked in responses — only overwrite when a real value is submitted,
+        # so leaving the field blank on an edit doesn't wipe an existing key.
+        profile.foundry_api_key = data.foundry_api_key
 
     profile.educations.clear()
     for edu in data.educations:

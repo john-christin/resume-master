@@ -30,7 +30,7 @@ import {
 import { deleteCall, updateCall } from "../api/calls";
 import { getCallStages } from "../api/callStages";
 import CallFormDialog from "../components/kanban/CallFormDialog";
-import { getProfiles, getTechStacksPublic } from "../api/profile";
+import { getProfiles } from "../api/profile";
 import { getUsers } from "../api/admin";
 import { getUserRole } from "../auth";
 import ApplicationChatSidebar from "../components/ApplicationChatSidebar";
@@ -72,7 +72,6 @@ import type {
   CallStageConfig,
   PaginatedApplications,
   Profile,
-  TechStack,
   UserListItem,
 } from "../types";
 
@@ -244,8 +243,6 @@ export default function History() {
   const [sortBy, setSortBy] = useState("created_at");
   const [sortDir, setSortDir] = useState("desc");
   const [searchInput, setSearchInput] = useState("");
-  const [techStackFilter, setTechStackFilter] = useState("");
-  const [techStacks, setTechStacks] = useState<TechStack[]>([]);
   const [callStatusFilter, setCallStatusFilter] = useState("");
   const [profileFilter, setProfileFilter] = useState("");
   const [profiles, setProfiles] = useState<Profile[]>([]);
@@ -280,12 +277,6 @@ export default function History() {
   }, [toast]);
 
   useEffect(() => {
-    getTechStacksPublic()
-      .then((res) => setTechStacks(res.data))
-      .catch(() => {});
-  }, []);
-
-  useEffect(() => {
     getProfiles(true)
       .then((res) => setProfiles(res.data))
       .catch(() => {});
@@ -314,7 +305,6 @@ export default function History() {
         search || undefined,
         sortBy,
         sortDir,
-        techStackFilter || undefined,
         callStatusFilter || undefined,
         profileFilter || undefined,
         usernameFilter || undefined,
@@ -329,7 +319,7 @@ export default function History() {
 
   useEffect(() => {
     loadApplications();
-  }, [page, pageSize, search, sortBy, sortDir, techStackFilter, callStatusFilter, profileFilter, usernameFilter]);
+  }, [page, pageSize, search, sortBy, sortDir, callStatusFilter, profileFilter, usernameFilter]);
 
   useEffect(() => {
     if (expandAppIdFromNav && data) {
@@ -541,22 +531,6 @@ export default function History() {
             </Button>
           )}
         </form>
-        {techStacks.length > 0 && (
-          <Select
-            value={techStackFilter || "all"}
-            onValueChange={(v) => { setTechStackFilter(v === "all" ? "" : v); setPage(1); }}
-          >
-            <SelectTrigger className="w-[160px]">
-              <SelectValue placeholder="All Tech Stacks" />
-            </SelectTrigger>
-            <SelectContent>
-              <SelectItem value="all">All Tech Stacks</SelectItem>
-              {techStacks.map((ts) => (
-                <SelectItem key={ts.id} value={ts.id}>{ts.name}</SelectItem>
-              ))}
-            </SelectContent>
-          </Select>
-        )}
         <Select
           value={callStatusFilter || "all"}
           onValueChange={(v) => { setCallStatusFilter(v === "all" ? "" : v); setPage(1); }}
@@ -852,16 +826,6 @@ export default function History() {
                             ) : expandedDetail ? (
                               <div className="space-y-3">
                                 <div className="flex flex-wrap gap-4 text-sm">
-                                  {expandedDetail.tech_stack_name && (
-                                    <div>
-                                      <p className="text-xs font-semibold text-muted-foreground uppercase mb-1">
-                                        Tech Stack
-                                      </p>
-                                      <Badge variant="purple">
-                                        {expandedDetail.tech_stack_name}
-                                      </Badge>
-                                    </div>
-                                  )}
                                   {expandedDetail.location && (
                                     <div>
                                       <p className="text-xs font-semibold text-muted-foreground uppercase mb-1">

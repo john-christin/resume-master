@@ -1,8 +1,14 @@
 services:
   backend:
     build: ./backend
-    network_mode: host
     env_file: .env
+    environment:
+      # Override .env: reach the host's Postgres from inside the container
+      DATABASE_URL: postgresql+psycopg2://root:john_root@host.docker.internal:5432/resume_master
+    extra_hosts:
+      - "host.docker.internal:host-gateway"
+    ports:
+      - "8000:8000"
     volumes:
       - ./backend:/app
       - uploads:/app/uploads
@@ -10,9 +16,10 @@ services:
 
   frontend:
     build: ./frontend
-    network_mode: host
     depends_on:
       - backend
+    ports:
+      - "5173:5173"
     volumes:
       - ./frontend:/app
       - /app/node_modules

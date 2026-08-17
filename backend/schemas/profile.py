@@ -16,9 +16,7 @@ class EducationSchema(BaseModel):
 class ExperienceSchema(BaseModel):
     id: str | None = None
     company: str
-    location: str | None = None
     title: str
-    description: str
     start_date: str
     end_date: str | None = None
 
@@ -30,13 +28,15 @@ class ProfileCreate(BaseModel):
     email: str | None = None
     linkedin: str | None = None
     summary: str | None = None
-    tech_stack_id: str | None = None
     creativity_factor: float = 0.7
     custom_prompt: str | None = None
     doc_style_id: str | None = None
     show_skills: bool = True
     check_clearance: bool = False
     security_clearance: str | None = None
+    foundry_endpoint: str | None = None
+    foundry_api_key: str | None = None
+    foundry_model_id: str | None = None
     educations: list[EducationSchema] = []
     experiences: list[ExperienceSchema] = []
 
@@ -50,13 +50,15 @@ class ProfileResponse(BaseModel):
     email: str | None = None
     linkedin: str | None = None
     summary: str | None = None
-    tech_stack_id: str | None = None
     creativity_factor: float = 0.7
     custom_prompt: str | None = None
     doc_style_id: str | None = None
     show_skills: bool = True
     check_clearance: bool = False
     security_clearance: str | None = None
+    foundry_endpoint: str | None = None
+    foundry_api_key_set: bool = False
+    foundry_model_id: str | None = None
     educations: list[EducationSchema] = []
     experiences: list[ExperienceSchema] = []
     is_owner: bool = False

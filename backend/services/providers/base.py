@@ -7,6 +7,12 @@ class LLMResponse:
     content: str
     prompt_tokens: int
     completion_tokens: int
+    cost: float = 0.0
+    provider: str = ""
+    model_id: str = ""
+    model_config_id: str | None = None
+    input_price_per_1k: float = 0.0
+    output_price_per_1k: float = 0.0
 
 
 # Populated after provider modules are imported (avoids circular imports)
@@ -28,13 +34,13 @@ def _ensure_providers_loaded():
     })
 
 
-def call_provider(messages, max_tokens, temperature, config) -> LLMResponse:
+def call_provider(messages, max_tokens, temperature, config, tools=None) -> LLMResponse:
     _ensure_providers_loaded()
     provider = config["provider"]
     handler = _PROVIDER_MAP.get(provider)
     if not handler:
         raise RuntimeError(f"Unsupported AI provider: {provider}")
-    return handler(messages, max_tokens, temperature, config)
+    return handler(messages, max_tokens, temperature, config, tools=tools)
 
 
 def test_model_connection(config: dict) -> str:

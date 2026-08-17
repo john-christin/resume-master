@@ -16,9 +16,6 @@ import {
   Bar,
   BarChart,
   Cell,
-  Legend,
-  Pie,
-  PieChart,
   ResponsiveContainer,
   Tooltip,
   XAxis,
@@ -26,7 +23,7 @@ import {
 } from "recharts";
 import { getApplications } from "../api/applications";
 import { getMyStats } from "../api/stats";
-import type { MyProfileStat, MyStackStat, MyStatsResponse } from "../api/stats";
+import type { MyProfileStat, MyStatsResponse } from "../api/stats";
 import LoadingSpinner from "../components/LoadingSpinner";
 import PageHeader from "../components/shared/PageHeader";
 import StatCard from "../components/shared/StatCard";
@@ -116,7 +113,6 @@ export default function BidderDashboard() {
   const dailyData =
     stats?.daily.map((d) => ({ date: d.date.slice(5), count: d.count })) ?? [];
   const profileData: MyProfileStat[] = stats?.profiles ?? [];
-  const stackData: MyStackStat[] = stats?.stacks ?? [];
   const callData =
     stats?.daily_calls?.map((d) => ({ date: d.date.slice(5), count: d.count })) ?? [];
 
@@ -249,79 +245,38 @@ export default function BidderDashboard() {
           </CardContent>
         </Card>
 
-        <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
-          {/* By Profile — horizontal bars */}
-          <Card>
-            <CardHeader className="pb-2">
-              <CardTitle className="text-base font-semibold">By Profile</CardTitle>
-              <p className="text-xs text-muted-foreground">Applications per profile</p>
-            </CardHeader>
-            <CardContent>
-              {profileData.length === 0 ? (
-                <div className="flex items-center justify-center h-44 text-muted-foreground text-sm">No data.</div>
-              ) : (
-                <ResponsiveContainer width="100%" height={Math.max(180, profileData.length * 40)}>
-                  <BarChart
-                    data={profileData.map((p) => ({
-                      name: p.name.length > 16 ? p.name.slice(0, 14) + "…" : p.name,
-                      count: p.count,
-                    }))}
-                    layout="vertical"
-                    margin={{ top: 4, right: 32, left: 8, bottom: 0 }}
-                  >
-                    <XAxis type="number" {...axisProps} allowDecimals={false} />
-                    <YAxis type="category" dataKey="name" {...axisProps} width={100} />
-                    <Tooltip content={<ChartTooltip />} cursor={{ fill: "hsl(var(--muted))", opacity: 0.4 }} />
-                    <Bar dataKey="count" name="Applications" radius={[0, 6, 6, 0]} maxBarSize={28}>
-                      {profileData.map((_, i) => (
-                        <Cell key={i} fill={COLORS[i % COLORS.length]} />
-                      ))}
-                    </Bar>
-                  </BarChart>
-                </ResponsiveContainer>
-              )}
-            </CardContent>
-          </Card>
-
-          {/* By Tech Stack — donut */}
-          <Card>
-            <CardHeader className="pb-2">
-              <CardTitle className="text-base font-semibold">By Tech Stack</CardTitle>
-              <p className="text-xs text-muted-foreground">Distribution across stacks</p>
-            </CardHeader>
-            <CardContent>
-              {stackData.length === 0 ? (
-                <div className="flex items-center justify-center h-44 text-muted-foreground text-sm">No data.</div>
-              ) : (
-                <ResponsiveContainer width="100%" height={220}>
-                  <PieChart>
-                    <Pie
-                      data={stackData.map((s) => ({ name: s.stack_name, value: s.count }))}
-                      cx="50%"
-                      cy="50%"
-                      innerRadius={55}
-                      outerRadius={85}
-                      paddingAngle={3}
-                      dataKey="value"
-                      labelLine={false}
-                      stroke="none"
-                    >
-                      {stackData.map((_, i) => (
-                        <Cell key={i} fill={COLORS[i % COLORS.length]} />
-                      ))}
-                    </Pie>
-                    <Tooltip content={<ChartTooltip />} />
-                    <Legend
-                      iconType="circle"
-                      iconSize={8}
-                      wrapperStyle={{ fontSize: 12, paddingTop: 8 }}
-                    />
-                  </PieChart>
-                </ResponsiveContainer>
-              )}
-            </CardContent>
-          </Card>
-        </div>
+        {/* By Profile — horizontal bars */}
+        <Card>
+          <CardHeader className="pb-2">
+            <CardTitle className="text-base font-semibold">By Profile</CardTitle>
+            <p className="text-xs text-muted-foreground">Applications per profile</p>
+          </CardHeader>
+          <CardContent>
+            {profileData.length === 0 ? (
+              <div className="flex items-center justify-center h-44 text-muted-foreground text-sm">No data.</div>
+            ) : (
+              <ResponsiveContainer width="100%" height={Math.max(180, profileData.length * 40)}>
+                <BarChart
+                  data={profileData.map((p) => ({
+                    name: p.name.length > 16 ? p.name.slice(0, 14) + "…" : p.name,
+                    count: p.count,
+                  }))}
+                  layout="vertical"
+                  margin={{ top: 4, right: 32, left: 8, bottom: 0 }}
+                >
+                  <XAxis type="number" {...axisProps} allowDecimals={false} />
+                  <YAxis type="category" dataKey="name" {...axisProps} width={100} />
+                  <Tooltip content={<ChartTooltip />} cursor={{ fill: "hsl(var(--muted))", opacity: 0.4 }} />
+                  <Bar dataKey="count" name="Applications" radius={[0, 6, 6, 0]} maxBarSize={28}>
+                    {profileData.map((_, i) => (
+                      <Cell key={i} fill={COLORS[i % COLORS.length]} />
+                    ))}
+                  </Bar>
+                </BarChart>
+              </ResponsiveContainer>
+            )}
+          </CardContent>
+        </Card>
 
         {/* Daily Calls — Area chart */}
         {callData.length > 0 && (

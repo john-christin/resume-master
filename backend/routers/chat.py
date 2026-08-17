@@ -1,4 +1,5 @@
 import asyncio
+import json
 from fastapi import APIRouter, Depends, HTTPException
 from pydantic import BaseModel
 from sqlalchemy import select
@@ -7,6 +8,7 @@ from sqlalchemy.orm import Session
 from auth import get_approved_user, get_current_user
 from database import get_db
 from models.ai_model_config import AIModelConfig
+from models.ai_usage_event import AIUsageEvent
 from models.application import Application
 from models.chat_message import ChatMessage
 from models.user import User
@@ -58,7 +60,6 @@ class ActiveModelItem(BaseModel):
     display_name: str
     provider: str
     model_id: str
-    role: str | None
 
 
 class AppChatSendRequest(BaseModel):
@@ -96,14 +97,34 @@ def _build_system_prompt(app: Application, db: Session) -> str:
     else:
         profile = None
 
-    if profile:
+    # Prefer this application's own AI-authored, company/role-grounded
+    # bullets over the profile's bare company+title+dates — the tailored
+    # bullets are already exactly what's on the generated resume for this job.
+    tailored = None
+    if app.tailored_bullets:
+        try:
+            tailored = json.loads(app.tailored_bullets)
+        except (ValueError, TypeError):
+            tailored = None
+
+    if tailored:
+        exp_lines = []
+        for exp in tailored:
+            dates = f"{exp.get('start_date', '')} – {exp.get('end_date') or 'Present'}"
+            exp_lines.append(f"- {exp.get('title', '')} at {exp.get('company', '')} ({dates})")
+            for bullet in exp.get("bullets", []):
+                exp_lines.append(f"  - {bullet}")
+        experiences_text = "\n".join(exp_lines) or "None listed."
+    elif profile:
         exp_lines = []
         for exp in profile.experiences:
             dates = f"{exp.start_date or ''} – {exp.end_date or 'Present'}"
-            desc = f": {exp.description}" if exp.description else ""
-            exp_lines.append(f"- {exp.title} at {exp.company} ({dates}){desc}")
+            exp_lines.append(f"- {exp.title} at {exp.company} ({dates})")
         experiences_text = "\n".join(exp_lines) or "None listed."
+    else:
+        experiences_text = "Not available."
 
+    if profile:
         edu_lines = []
         for edu in profile.educations:
             parts = " ".join(filter(None, [edu.degree, edu.field]))
@@ -111,7 +132,6 @@ def _build_system_prompt(app: Application, db: Session) -> str:
         educations_text = "\n".join(edu_lines) or "None listed."
         candidate_name = profile.name
     else:
-        experiences_text = "Not available."
         educations_text = "Not available."
         candidate_name = app.profile_name or "Candidate"
 
@@ -132,10 +152,14 @@ def list_active_models(
     current_user: User = Depends(get_approved_user),
     db: Session = Depends(get_db),
 ):
+    """List every configured model, for the manual per-message override picker.
+
+    Not filtered to role-assigned models — this picker is an explicit
+    bypass of the role system, so an unassigned model should still be
+    selectable here.
+    """
     models = db.scalars(
-        select(AIModelConfig)
-        .where(AIModelConfig.is_active.is_(True))
-        .order_by(AIModelConfig.created_at)
+        select(AIModelConfig).order_by(AIModelConfig.created_at)
     ).all()
     return [
         ActiveModelItem(
@@ -143,7 +167,6 @@ def list_active_models(
             display_name=m.display_name,
             provider=m.provider,
             model_id=m.model_id,
-            role=m.role,
         )
         for m in models
     ]
@@ -214,7 +237,7 @@ async def send_application_chat(
         ai_messages,
         512,
         0.7,
-        "utility",
+        "chat",
         req.model_config_id,
     )
 
@@ -225,6 +248,20 @@ async def send_application_chat(
         content=result.content,
     )
     db.add(assistant_msg)
+    db.add(AIUsageEvent(
+        application_id=app_id,
+        user_id=current_user.id,
+        role="chat",
+        part="chat",
+        provider=result.provider,
+        model_id=result.model_id,
+        ai_model_config_id=result.model_config_id,
+        prompt_tokens=result.prompt_tokens,
+        completion_tokens=result.completion_tokens,
+        input_price_per_1k=result.input_price_per_1k,
+        output_price_per_1k=result.output_price_per_1k,
+        cost=result.cost,
+    ))
     db.commit()
     db.refresh(assistant_msg)
 
@@ -251,11 +288,12 @@ async def chat(
 ):
     profile = _get_accessible_profile(req.profile_id, current_user, db)
 
+    # No stored Application/tailored_bullets in this generic, pre-generation
+    # endpoint — only bare company/title/dates are available as context.
     exp_lines = []
     for exp in profile.experiences:
         dates = f"{exp.start_date or ''} – {exp.end_date or 'Present'}"
-        desc = f": {exp.description}" if exp.description else ""
-        exp_lines.append(f"- {exp.title} at {exp.company} ({dates}){desc}")
+        exp_lines.append(f"- {exp.title} at {exp.company} ({dates})")
     experiences_text = "\n".join(exp_lines) or "None listed."
 
     edu_lines = []
@@ -283,8 +321,24 @@ async def chat(
         messages,
         512,
         0.7,
-        "utility",
+        "chat",
     )
+
+    db.add(AIUsageEvent(
+        application_id=None,
+        user_id=current_user.id,
+        role="chat",
+        part="chat",
+        provider=result.provider,
+        model_id=result.model_id,
+        ai_model_config_id=result.model_config_id,
+        prompt_tokens=result.prompt_tokens,
+        completion_tokens=result.completion_tokens,
+        input_price_per_1k=result.input_price_per_1k,
+        output_price_per_1k=result.output_price_per_1k,
+        cost=result.cost,
+    ))
+    db.commit()
 
     return ChatResponse(
         message=result.content,

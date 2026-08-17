@@ -18,8 +18,8 @@ export default defineConfig({
       host: "localhost",
     },
     proxy: {
-      "/api": "http://localhost:8000",
-      "/uploads": "http://localhost:8000",
+      "/api": "http://backend:8000",
+      "/uploads": "http://backend:8000",
     },
   },
 });

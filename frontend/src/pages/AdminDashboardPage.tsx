@@ -26,6 +26,7 @@ import {
   getAdminPerProfile,
   getAdminPerUserDaily,
   getAdminPerUserDailyCallStats,
+  getAdminUsageByModel,
   getAdminUserCosts,
 } from "../api/admin";
 import type {
@@ -35,6 +36,7 @@ import type {
   UserCostStat,
   UserDailyPoint,
 } from "../api/admin";
+import type { ModelUsageStat } from "../types";
 import LoadingSpinner from "../components/LoadingSpinner";
 import PageHeader from "../components/shared/PageHeader";
 import StatCard from "../components/shared/StatCard";
@@ -57,6 +59,14 @@ const COLORS = [
 ];
 
 type Preset = "7d" | "30d" | "90d" | "custom";
+
+const ROLE_LABELS: Record<string, string> = {
+  resume: "Resume",
+  cover_letter: "Cover Letter",
+  jd_parse: "JD Parse",
+  chat: "Chat",
+  utility: "Utility",
+};
 
 function getPresetDates(preset: Preset, customFrom: string, customTo: string) {
   const today = new Date();
@@ -96,6 +106,7 @@ export default function AdminDashboardPage() {
   const [userCosts, setUserCosts] = useState<UserCostStat[]>([]);
   const [dailyCalls, setDailyCalls] = useState<DailyStatPoint[]>([]);
   const [perUserDailyCalls, setPerUserDailyCalls] = useState<UserDailyPoint[]>([]);
+  const [usageByModel, setUsageByModel] = useState<ModelUsageStat[]>([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
 
@@ -113,7 +124,7 @@ export default function AdminDashboardPage() {
     setLoading(true);
     setError(null);
     try {
-      const [ovRes, dailyRes, puRes, ppRes, ucRes, dcRes, pucRes] = await Promise.all([
+      const [ovRes, dailyRes, puRes, ppRes, ucRes, dcRes, pucRes, umRes] = await Promise.all([
         getAdminOverview(),
         getAdminDailyStats(f, t),
         getAdminPerUserDaily(f, t),
@@ -121,6 +132,7 @@ export default function AdminDashboardPage() {
         getAdminUserCosts(),
         getAdminDailyCallStats(f, t),
         getAdminPerUserDailyCallStats(f, t),
+        getAdminUsageByModel(f, t),
       ]);
       setOverview(ovRes.data);
       setDaily(dailyRes.data);
@@ -129,6 +141,7 @@ export default function AdminDashboardPage() {
       setUserCosts(ucRes.data);
       setDailyCalls(dcRes.data);
       setPerUserDailyCalls(pucRes.data);
+      setUsageByModel(umRes.data);
     } catch {
       setError("Failed to load dashboard data");
     } finally {
@@ -588,6 +601,47 @@ export default function AdminDashboardPage() {
                       <TableCell className="text-right">${u.week_cost.toFixed(4)}</TableCell>
                       <TableCell className="text-right">{u.month_count}</TableCell>
                       <TableCell className="text-right font-medium">${u.month_cost.toFixed(4)}</TableCell>
+                    </TableRow>
+                  ))
+                )}
+              </TableBody>
+            </Table>
+          </CardContent>
+        </Card>
+
+        {/* Usage & Cost by Model */}
+        <Card>
+          <CardHeader className="pb-2">
+            <CardTitle className="text-base font-semibold">Usage &amp; Cost by Model</CardTitle>
+            <p className="text-xs text-muted-foreground">AI spend broken down by task role and model, for the selected range</p>
+          </CardHeader>
+          <CardContent className="p-0">
+            <Table>
+              <TableHeader className="bg-muted/30">
+                <TableRow>
+                  <TableHead className="text-xs font-semibold uppercase tracking-wide">Role</TableHead>
+                  <TableHead className="text-xs font-semibold uppercase tracking-wide">Model</TableHead>
+                  <TableHead className="text-right text-xs font-semibold uppercase tracking-wide">Calls</TableHead>
+                  <TableHead className="text-right text-xs font-semibold uppercase tracking-wide">Tokens</TableHead>
+                  <TableHead className="text-right text-xs font-semibold uppercase tracking-wide">Cost</TableHead>
+                </TableRow>
+              </TableHeader>
+              <TableBody>
+                {usageByModel.length === 0 ? (
+                  <TableRow>
+                    <TableCell colSpan={5} className="text-center text-muted-foreground py-8">No AI usage in this range.</TableCell>
+                  </TableRow>
+                ) : (
+                  usageByModel.map((u, i) => (
+                    <TableRow key={i}>
+                      <TableCell className="font-medium">{ROLE_LABELS[u.role] ?? u.role}</TableCell>
+                      <TableCell className="text-muted-foreground">
+                        {u.display_name ?? u.model_id}
+                        <span className="ml-1.5 text-xs">· {u.provider}</span>
+                      </TableCell>
+                      <TableCell className="text-right">{u.call_count}</TableCell>
+                      <TableCell className="text-right">{(u.prompt_tokens + u.completion_tokens).toLocaleString()}</TableCell>
+                      <TableCell className="text-right font-medium">${u.cost.toFixed(4)}</TableCell>
                     </TableRow>
                   ))
                 )}

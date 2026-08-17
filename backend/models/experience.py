@@ -1,6 +1,6 @@
 import uuid
 
-from sqlalchemy import ForeignKey, String, Text
+from sqlalchemy import ForeignKey, String
 from sqlalchemy.orm import Mapped, mapped_column, relationship
 
 from database import Base
@@ -16,9 +16,7 @@ class Experience(Base):
         ForeignKey("profiles.id", ondelete="CASCADE"), index=True
     )
     company: Mapped[str] = mapped_column(String(300))
-    location: Mapped[str | None] = mapped_column(String(200), nullable=True)
     title: Mapped[str] = mapped_column(String(300))
-    description: Mapped[str] = mapped_column(Text)
     start_date: Mapped[str] = mapped_column(String(50))
     end_date: Mapped[str | None] = mapped_column(String(50), nullable=True)
 

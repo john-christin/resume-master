@@ -17,82 +17,124 @@ def _jd_hash(text: str) -> str:
     return hashlib.md5(text.strip().lower().encode()).hexdigest()
 
 
-# In-memory cache for extraction results (saves AI calls in batch mode)
+# In-memory cache for extraction results (saves AI calls in batch mode).
+# Keyed only by JD content hash, with no awareness of which model is
+# currently assigned to a role — so it must be cleared whenever a role
+# assignment changes, or a re-tested JD will silently return a stale
+# result from whichever model served it before the reassignment.
 _extraction_cache: dict[str, tuple] = {}
 _CACHE_MAX_SIZE = 200
 
+
+def clear_extraction_cache() -> None:
+    _extraction_cache.clear()
+
 from prompts import (
     COVER_LETTER as COVER_LETTER_SYSTEM_PROMPT,
-    DUPLICATE_JOB_CHECK,
     RESUME_COMBINED as COMBINED_CONTENT_SYSTEM_PROMPT,
-    RESUME_SKILLS as SKILLS_SYSTEM_PROMPT,
-    RESUME_SUMMARY as SUMMARY_SYSTEM_PROMPT,
     RESUME_TAILOR as RESUME_SYSTEM_PROMPT,
 )
 
 
-def _get_active_model_config(role: str = "primary"):
-    """Load an AI model config from DB by role.
+def _get_active_model_config(role: str = "resume", profile_id: str | None = None):
+    """Load whichever model is assigned to a role, via role_model_assignments.
 
     Args:
-        role: "primary" for quality-critical tasks,
-              "utility" for cheap extraction tasks.
-              Falls back to primary if no utility model is configured.
+        role: "resume" for resume tailoring/content (quality-critical),
+              "cover_letter" for cover letter generation,
+              "jd_parse" for job-description extraction,
+              "chat" for interview-prep chat,
+              "utility" for miscellaneous cheap tasks.
+              Every role except "resume" falls back to "resume" if
+              unconfigured, so nothing breaks before an admin sets up the
+              new roles. The same model can be assigned to multiple roles
+              at once (that's the whole point of the mapping table).
+        profile_id: If given and role == "resume", and the profile has its
+              own Microsoft Foundry-hosted Claude key attached, that key is
+              used instead of the global role assignment — the profile's
+              own Azure resource is billed rather than the shared platform
+              key. Falls through to the global assignment otherwise.
     """
     from models.ai_model_config import AIModelConfig
+    from models.profile import Profile
+    from models.role_model_assignment import RoleModelAssignment
+
+    def _lookup(db, for_role: str):
+        return db.scalars(
+            select(AIModelConfig)
+            .join(
+                RoleModelAssignment,
+                RoleModelAssignment.ai_model_config_id == AIModelConfig.id,
+            )
+            .where(RoleModelAssignment.role == for_role)
+        ).first()
 
     db = SessionLocal()
     try:
-        # Try to find model with the requested role
-        config = db.scalars(
-            select(AIModelConfig).where(
-                AIModelConfig.is_active.is_(True),
-                AIModelConfig.role == role,
-            )
-        ).first()
+        if profile_id and role == "resume":
+            profile = db.get(Profile, profile_id)
+            if profile and profile.foundry_api_key:
+                return {
+                    "id": None,
+                    "provider": "anthropic",
+                    "model_id": profile.foundry_model_id,
+                    "api_key": profile.foundry_api_key,
+                    "endpoint": profile.foundry_endpoint,
+                    "api_version": None,
+                    "input_price_per_1k": 0.0,
+                    "output_price_per_1k": 0.0,
+                }
 
-        # Fallback: if no utility model, use primary
-        if not config and role == "utility":
-            config = db.scalars(
-                select(AIModelConfig).where(
-                    AIModelConfig.is_active.is_(True),
-                    AIModelConfig.role == "primary",
-                )
-            ).first()
+        config = _lookup(db, role)
 
-        # Legacy fallback: active model without role set
-        if not config:
-            config = db.scalars(
-                select(AIModelConfig).where(AIModelConfig.is_active.is_(True))
-            ).first()
+        # Fallback: any non-resume role uses the resume model if unconfigured
+        if not config and role != "resume":
+            config = _lookup(db, "resume")
 
         if config:
             return {
+                "id": config.id,
                 "provider": config.provider,
                 "model_id": config.model_id,
                 "api_key": config.api_key,
                 "endpoint": config.endpoint,
                 "api_version": config.api_version,
+                "input_price_per_1k": config.input_price_per_1k,
+                "output_price_per_1k": config.output_price_per_1k,
             }
     finally:
         db.close()
     return None
 
 
+# Server-side web search tool — only meaningful for Anthropic-family
+# providers; other providers' call_*() functions accept and ignore `tools`.
+_WEB_SEARCH_TOOLS = [{"type": "web_search_20260209", "name": "web_search"}]
+
+
 def _call_llm(
     messages: list[dict],
     max_tokens: int = 1024,
     temperature: float = 0.7,
-    tier: str = "primary",
+    tier: str = "resume",
     model_config_id: str | None = None,
+    profile_id: str | None = None,
 ) -> LLMResponse:
     """Route to the correct provider based on active model config.
 
     Args:
-        tier: "primary" for quality-critical tasks (resume tailoring,
-              summary, skills, cover letter), "utility" for cheap
-              extraction tasks (company name, location, duplicate check).
+        tier: "resume" (tailoring + summary/skills), "cover_letter",
+              "jd_parse" (JD extraction), "chat" (interview prep),
+              or "utility" (misc cheap tasks).
         model_config_id: If provided, use this specific model config instead of tier lookup.
+        profile_id: Threaded to _get_active_model_config for the per-profile
+              Foundry-key override (see there). Ignored when model_config_id
+              is given — an explicit model choice always wins.
+
+    Cost is computed here, immediately, from the same config that served
+    the call — not re-derived later from a separately-fetched "current
+    active model" price, which could reflect a different model than the
+    one that actually ran if the active config changed in between.
     """
     if model_config_id:
         from models.ai_model_config import AIModelConfig
@@ -100,30 +142,47 @@ def _call_llm(
         try:
             m = db.get(AIModelConfig, model_config_id)
             config = {
+                "id": m.id,
                 "provider": m.provider,
                 "model_id": m.model_id,
                 "api_key": m.api_key,
                 "endpoint": m.endpoint,
                 "api_version": m.api_version,
+                "input_price_per_1k": m.input_price_per_1k,
+                "output_price_per_1k": m.output_price_per_1k,
             } if m else None
         finally:
             db.close()
     else:
-        config = _get_active_model_config(role=tier)
+        config = _get_active_model_config(role=tier, profile_id=profile_id)
 
     if not config:
         # Fallback to env-var Azure config for backwards compatibility
         config = {
+            "id": None,
             "provider": "azure_openai",
             "model_id": settings.azure_openai_deployment,
             "api_key": settings.azure_openai_api_key,
             "endpoint": settings.azure_openai_endpoint,
             "api_version": settings.azure_openai_api_version,
+            "input_price_per_1k": settings.default_input_price_per_1k,
+            "output_price_per_1k": settings.default_output_price_per_1k,
         }
+
+    tools = _WEB_SEARCH_TOOLS if tier == "resume" and config["provider"] == "anthropic" else None
 
     start = time.monotonic()
     try:
-        result = call_provider(messages, max_tokens, temperature, config)
+        result = call_provider(messages, max_tokens, temperature, config, tools=tools)
+        result.cost = (
+            result.prompt_tokens / 1000 * config["input_price_per_1k"]
+            + result.completion_tokens / 1000 * config["output_price_per_1k"]
+        )
+        result.provider = config["provider"]
+        result.model_id = config["model_id"]
+        result.model_config_id = config.get("id")
+        result.input_price_per_1k = config["input_price_per_1k"]
+        result.output_price_per_1k = config["output_price_per_1k"]
         duration_ms = int((time.monotonic() - start) * 1000)
         log_service.log_bg(
             log_service.INFO, log_service.AI_CALL,
@@ -134,6 +193,7 @@ def _call_llm(
                 "tier": tier,
                 "prompt_tokens": result.prompt_tokens,
                 "completion_tokens": result.completion_tokens,
+                "cost": result.cost,
                 "max_tokens": max_tokens,
                 "temperature": temperature,
             },
@@ -196,66 +256,14 @@ def _normalize_ai_text(text: str) -> str:
 
 
 def _format_experiences(experiences: list[dict]) -> str:
+    """Format company/title/dates only — candidates no longer author bullets."""
     parts = []
     for exp in experiences:
         end = exp.get("end_date") or "Present"
-        location = exp.get("location") or ""
-        header = f"Company: {exp['company']}"
-        if location:
-            header += f", {location}"
-        header += f" | Title: {exp['title']} | {exp['start_date']} to {end}"
-        bullets = "\n".join(
-            f"- {line.strip()}"
-            for line in exp["description"].split("\n")
-            if line.strip()
+        parts.append(
+            f"Company: {exp['company']} | Title: {exp['title']} | {exp['start_date']} to {end}"
         )
-        parts.append(f"{header}\n{bullets}")
-    return "\n\n".join(parts)
-
-
-def text_similarity(text1: str, text2: str) -> float:
-    """Compute Jaccard similarity on word sets (0.0 to 1.0)."""
-    words1 = set(re.findall(r"\w+", text1.lower()))
-    words2 = set(re.findall(r"\w+", text2.lower()))
-    if not words1 or not words2:
-        return 0.0
-    intersection = words1 & words2
-    union = words1 | words2
-    return len(intersection) / len(union)
-
-
-def ai_check_same_role(jd1: str, jd2: str) -> tuple[bool, dict]:
-    """Use AI to determine if two job descriptions are for the same role.
-
-    Returns (is_same_role, usage_dict).
-    """
-    usage = {"prompt_tokens": 0, "completion_tokens": 0}
-    try:
-        resp = _call_llm(
-            messages=[
-                {"role": "system", "content": DUPLICATE_JOB_CHECK},
-                {
-                    "role": "user",
-                    "content": f"## Job Description 1\n{jd1[:1500]}\n\n## Job Description 2\n{jd2[:1500]}",
-                },
-            ],
-            max_tokens=10,
-            temperature=0.0,
-            tier="utility",
-        )
-        usage = {
-            "prompt_tokens": resp.prompt_tokens,
-            "completion_tokens": resp.completion_tokens,
-        }
-        return resp.content.upper() == "SAME", usage
-    except Exception as exc:
-        logger.warning("AI duplicate check failed", exc_info=True)
-        log_service.log_bg(
-            log_service.WARNING, log_service.AI_CALL,
-            "AI duplicate check failed — returning False",
-            **log_service.exc_to_log_kwargs(exc),
-        )
-        return False, usage
+    return "\n".join(parts)
 
 
 def detect_work_mode(job_description: str) -> str | None:
@@ -312,131 +320,6 @@ def extract_job_location_with_usage(
     return _cache_and_return("Not Mentioned")
 
 
-def extract_company_name(job_description: str) -> str | None:
-    """Try to extract company name from job description."""
-    patterns = [
-        r"(?:About|Join)\s+([A-Z][A-Za-z0-9\s&.,'-]{1,50}?)(?:\s*[\n\r]|\s+is\b|\s+—|\s+-)",
-        r"([A-Z][A-Za-z0-9\s&.,'-]{1,50}?)\s+is\s+(?:seeking|hiring|looking|a\s+leading|a\s+global|an?\s+)",
-        r"Company:\s*([^\n]{2,50})",
-        r"(?:at|@)\s+([A-Z][A-Za-z0-9\s&.,'-]{1,50}?)(?:\.|,|\n|$)",
-    ]
-
-    for pattern in patterns:
-        match = re.search(pattern, job_description)
-        if match:
-            name = match.group(1).strip().rstrip(".,")
-            if 2 <= len(name) <= 50 and name.lower() not in {
-                "the company",
-                "our company",
-                "we",
-                "our",
-            }:
-                return name
-
-    # AI fallback
-    try:
-        resp = _call_llm(
-            messages=[
-                {
-                    "role": "system",
-                    "content": "Extract the company name from the job description. "
-                    "Reply with ONLY the company name, nothing else. "
-                    "If you cannot determine the company name, reply with UNKNOWN.",
-                },
-                {"role": "user", "content": job_description[:2000]},
-            ],
-            max_tokens=50,
-            temperature=0.0,
-            tier="utility",
-        )
-        result = resp.content
-        if result and result.upper() != "UNKNOWN":
-            return result
-    except Exception as exc:
-        logger.warning("Company extraction AI call failed", exc_info=True)
-        log_service.log_bg(
-            log_service.WARNING, log_service.AI_CALL,
-            "Company extraction AI call failed — returning None",
-            **log_service.exc_to_log_kwargs(exc),
-        )
-
-    return None
-
-
-def extract_company_name_with_usage(
-    job_description: str,
-) -> tuple[str | None, dict]:
-    """Extract company name, returning (name, usage_dict)."""
-    cache_key = f"company:{_jd_hash(job_description)}"
-    if cache_key in _extraction_cache:
-        return _extraction_cache[cache_key]
-
-    usage = {"prompt_tokens": 0, "completion_tokens": 0}
-
-    patterns = [
-        r"(?:About|Join)\s+([A-Z][A-Za-z0-9\s&.,'-]{1,50}?)(?:\s*[\n\r]|\s+is\b|\s+—|\s+-)",
-        r"([A-Z][A-Za-z0-9\s&.,'-]{1,50}?)\s+is\s+(?:seeking|hiring|looking|a\s+leading|a\s+global|an?\s+)",
-        r"Company:\s*([^\n]{2,50})",
-        r"(?:at|@)\s+([A-Z][A-Za-z0-9\s&.,'-]{1,50}?)(?:\.|,|\n|$)",
-    ]
-
-    for pattern in patterns:
-        match = re.search(pattern, job_description)
-        if match:
-            name = match.group(1).strip().rstrip(".,")
-            if 2 <= len(name) <= 50 and name.lower() not in {
-                "the company",
-                "our company",
-                "we",
-                "our",
-            }:
-                result = (name, usage)
-                _extraction_cache[cache_key] = result
-                return result
-
-    # AI fallback
-    try:
-        resp = _call_llm(
-            messages=[
-                {
-                    "role": "system",
-                    "content": "Extract the company name from the job description. "
-                    "Reply with ONLY the company name, nothing else. "
-                    "If you cannot determine the company name, reply with UNKNOWN.",
-                },
-                {"role": "user", "content": job_description[:2000]},
-            ],
-            max_tokens=50,
-            temperature=0.0,
-            tier="utility",
-        )
-        usage = {
-            "prompt_tokens": resp.prompt_tokens,
-            "completion_tokens": resp.completion_tokens,
-        }
-        ai_result = resp.content
-        if ai_result and ai_result.upper() != "UNKNOWN":
-            result = (ai_result, usage)
-            _extraction_cache[cache_key] = result
-            return result
-    except Exception as exc:
-        logger.warning("Company extraction AI call failed", exc_info=True)
-        log_service.log_bg(
-            log_service.WARNING, log_service.AI_CALL,
-            "Company extraction AI call failed — returning None",
-            **log_service.exc_to_log_kwargs(exc),
-        )
-
-    result = (None, usage)
-    _extraction_cache[cache_key] = result
-    if len(_extraction_cache) > _CACHE_MAX_SIZE:
-        # Evict oldest entries
-        keys = list(_extraction_cache.keys())
-        for k in keys[: len(keys) - _CACHE_MAX_SIZE]:
-            _extraction_cache.pop(k, None)
-    return result
-
-
 def extract_jd_info(job_description: str) -> dict:
     """Extract salary range and required skills from a job description.
 
@@ -448,7 +331,9 @@ def extract_jd_info(job_description: str) -> dict:
     if cache_key in _extraction_cache:
         return _extraction_cache[cache_key]
 
-    fallback = {"salary_range": None, "required_skills": [], "usage": {"prompt_tokens": 0, "completion_tokens": 0}}
+    empty_usage = {"prompt_tokens": 0, "completion_tokens": 0, "cost": 0.0, "provider": "", "model_id": ""}
+    fallback = {"salary_range": None, "required_skills": [], "usage": empty_usage}
+
     try:
         resp = _call_llm(
             messages=[
@@ -457,8 +342,26 @@ def extract_jd_info(job_description: str) -> dict:
             ],
             max_tokens=512,
             temperature=0.0,
-            tier="utility",
+            tier="jd_parse",
         )
+    except Exception as exc:
+        logger.warning("JD info extraction call failed: %s", exc)
+        _extraction_cache[cache_key] = fallback
+        return fallback
+
+    # The call already succeeded and was billed — keep its usage/cost even
+    # if the response turns out not to be parseable JSON below.
+    usage = {
+        "prompt_tokens": resp.prompt_tokens,
+        "completion_tokens": resp.completion_tokens,
+        "cost": resp.cost,
+        "provider": resp.provider,
+        "model_id": resp.model_id,
+        "model_config_id": resp.model_config_id,
+        "input_price_per_1k": resp.input_price_per_1k,
+        "output_price_per_1k": resp.output_price_per_1k,
+    }
+    try:
         import json as _json
         raw = resp.content.strip()
         # Strip markdown fences if present
@@ -470,11 +373,11 @@ def extract_jd_info(job_description: str) -> dict:
         result = {
             "salary_range": data.get("salary_range") or None,
             "required_skills": data.get("required_skills") or [],
-            "usage": {"prompt_tokens": resp.prompt_tokens, "completion_tokens": resp.completion_tokens},
+            "usage": usage,
         }
     except Exception as exc:
-        logger.warning("JD info extraction failed: %s", exc)
-        result = fallback
+        logger.warning("JD info extraction parse failed: %s", exc)
+        result = {"salary_range": None, "required_skills": [], "usage": usage}
 
     _extraction_cache[cache_key] = result
     if len(_extraction_cache) > _CACHE_MAX_SIZE:
@@ -482,57 +385,6 @@ def extract_jd_info(job_description: str) -> dict:
         for k in keys[: len(keys) - _CACHE_MAX_SIZE]:
             _extraction_cache.pop(k, None)
     return result
-
-
-def generate_summary(
-    user_name: str,
-    experiences: list[dict],
-    job_description: str,
-    job_title: str,
-    company: str | None = None,
-    knowledge_base: str | None = None,
-) -> tuple[str, dict]:
-    """Call LLM to generate a tailored professional summary."""
-    formatted_exp = _format_experiences(experiences)
-    company_str = company or "the company"
-    jd_trimmed = _truncate_jd(job_description)
-
-    kb_section = ""
-    if knowledge_base:
-        kb_section = f"""
-
-## Knowledge Base Guidelines (MUST FOLLOW)
-{knowledge_base}
-"""
-
-    user_prompt = f"""## Candidate: {user_name}
-
-## Candidate Experience
-{formatted_exp}
-
-## Target Position
-Title: {job_title} at {company_str}
-
-## Job Description
-{jd_trimmed}
-{kb_section}
-Write a 2-3 sentence professional summary for this candidate's resume, \
-tailored to the target position."""
-
-    resp = _call_llm(
-        messages=[
-            {"role": "system", "content": SUMMARY_SYSTEM_PROMPT},
-            {"role": "user", "content": user_prompt},
-        ],
-        max_tokens=300,
-        temperature=0.7,
-    )
-
-    usage = {
-        "prompt_tokens": resp.prompt_tokens,
-        "completion_tokens": resp.completion_tokens,
-    }
-    return _normalize_ai_text(resp.content), usage
 
 
 def _effective_temperature(creativity_factor: float) -> float:
@@ -558,6 +410,7 @@ def generate_resume_content(
     company: str | None = None,
     knowledge_base: str | None = None,
     creativity_factor: float = 0.3,
+    profile_id: str | None = None,
 ) -> tuple[dict, dict]:
     """Generate summary and skills in a single LLM call.
 
@@ -599,7 +452,11 @@ Use a {style} writing style throughout.
 
 Generate the summary, skills, and cover letter as a single JSON object."""
 
-    total_usage = {"prompt_tokens": 0, "completion_tokens": 0}
+    total_usage = {
+        "prompt_tokens": 0, "completion_tokens": 0, "cost": 0.0,
+        "provider": "", "model_id": "", "model_config_id": None,
+        "input_price_per_1k": 0.0, "output_price_per_1k": 0.0,
+    }
 
     for attempt in range(2):
         resp = _call_llm(
@@ -609,10 +466,18 @@ Generate the summary, skills, and cover letter as a single JSON object."""
             ],
             max_tokens=8192,
             temperature=temperature,
+            tier="resume",
+            profile_id=profile_id,
         )
 
         total_usage["prompt_tokens"] += resp.prompt_tokens
         total_usage["completion_tokens"] += resp.completion_tokens
+        total_usage["cost"] += resp.cost
+        total_usage["provider"] = resp.provider
+        total_usage["model_id"] = resp.model_id
+        total_usage["model_config_id"] = resp.model_config_id
+        total_usage["input_price_per_1k"] = resp.input_price_per_1k
+        total_usage["output_price_per_1k"] = resp.output_price_per_1k
 
         content = resp.content
         # Strip markdown code fences if present
@@ -650,34 +515,29 @@ Generate the summary, skills, and cover letter as a single JSON object."""
 def tailor_resume(
     user_name: str,
     experiences: list[dict],
-    educations: list[dict],
     job_description: str,
     job_title: str,
     company: str | None = None,
-    reference_bullets: list[dict] | None = None,
+    required_skills: list[str] | None = None,
     knowledge_base: str | None = None,
     creativity_factor: float = 0.3,
+    profile_id: str | None = None,
 ) -> tuple[list[dict], dict]:
-    """Call LLM to tailor resume bullets to a job description."""
+    """Call LLM to research each employer via web search and write grounded resume bullets.
+
+    Candidates no longer author bullets themselves — `experiences` carries
+    only company/title/dates, and the model researches each employer (via
+    the web_search tool enabled in _call_llm for the "resume" tier) to write
+    bullets grounded in real, plausible work rather than reworded boilerplate.
+    """
     formatted_exp = _format_experiences(experiences)
     company_str = company or "the company"
 
-    reference_section = ""
-    if reference_bullets:
-        ref_parts = []
-        for exp in reference_bullets:
-            bullets = "\n".join(f"- {b}" for b in exp.get("bullets", []))
-            ref_parts.append(
-                f"Company: {exp.get('company', '')} | Title: {exp.get('title', '')}\n{bullets}"
-            )
-        reference_section = f"""
-
-## Reference Bullets (from a colleague's application for the same role)
-Use similar framing, metrics style, and technical depth for the bullets below.
-Adapt to THIS candidate's actual experience — do NOT copy verbatim or fabricate.
-
-{chr(10).join(ref_parts)}
-"""
+    skills_section = ""
+    if required_skills:
+        skills_section = (
+            "\n\n## Job Description Required Skills\n" + ", ".join(required_skills)
+        )
 
     kb_section = ""
     if knowledge_base:
@@ -691,13 +551,13 @@ Adapt to THIS candidate's actual experience — do NOT copy verbatim or fabricat
     style = _style_hint(creativity_factor)
     temperature = _effective_temperature(creativity_factor)
 
-    user_prompt = f"""## Candidate's Experience
+    user_prompt = f"""## Candidate's Work History (company, title, dates only — no prior bullets)
 {formatted_exp}
 
 ## Target Job Description
 Title: {job_title} at {company_str}
-{jd_trimmed}
-{reference_section}{kb_section}
+{jd_trimmed}{skills_section}
+{kb_section}
 ## Writing Style
 Use a {style} writing style for the bullet points.
 
@@ -713,7 +573,11 @@ Use a {style} writing style for the bullet points.
   }}
 ]"""
 
-    total_usage = {"prompt_tokens": 0, "completion_tokens": 0}
+    total_usage = {
+        "prompt_tokens": 0, "completion_tokens": 0, "cost": 0.0,
+        "provider": "", "model_id": "", "model_config_id": None,
+        "input_price_per_1k": 0.0, "output_price_per_1k": 0.0,
+    }
 
     for attempt in range(2):
         resp = _call_llm(
@@ -723,10 +587,18 @@ Use a {style} writing style for the bullet points.
             ],
             max_tokens=8192,
             temperature=temperature,
+            tier="resume",
+            profile_id=profile_id,
         )
 
         total_usage["prompt_tokens"] += resp.prompt_tokens
         total_usage["completion_tokens"] += resp.completion_tokens
+        total_usage["cost"] += resp.cost
+        total_usage["provider"] = resp.provider
+        total_usage["model_id"] = resp.model_id
+        total_usage["model_config_id"] = resp.model_config_id
+        total_usage["input_price_per_1k"] = resp.input_price_per_1k
+        total_usage["output_price_per_1k"] = resp.output_price_per_1k
 
         content = resp.content
         # Strip markdown code fences if present
@@ -808,90 +680,17 @@ Write the cover letter body only (Dear Hiring Manager through sign-off)."""
         ],
         max_tokens=2048,
         temperature=temperature,
+        tier="cover_letter",
     )
 
     usage = {
         "prompt_tokens": resp.prompt_tokens,
         "completion_tokens": resp.completion_tokens,
+        "cost": resp.cost,
+        "provider": resp.provider,
+        "model_id": resp.model_id,
+        "model_config_id": resp.model_config_id,
+        "input_price_per_1k": resp.input_price_per_1k,
+        "output_price_per_1k": resp.output_price_per_1k,
     }
     return _normalize_ai_text(resp.content), usage
-
-
-def generate_skills(
-    user_name: str,
-    experiences: list[dict],
-    job_description: str,
-    job_title: str,
-    company: str | None = None,
-    knowledge_base: str | None = None,
-) -> tuple[list[dict], dict]:
-    """Call LLM to generate categorized skills from experience + JD.
-
-    Returns (skills_list, usage_dict) where skills_list is
-    [{"category": "...", "skills": ["...", ...]}, ...].
-    """
-    formatted_exp = _format_experiences(experiences)
-    company_str = company or "the company"
-    jd_trimmed = _truncate_jd(job_description)
-
-    kb_section = ""
-    if knowledge_base:
-        kb_section = f"""
-
-## Knowledge Base Guidelines (MUST FOLLOW)
-{knowledge_base}
-"""
-
-    user_prompt = f"""## Candidate: {user_name}
-
-## Candidate Experience
-{formatted_exp}
-
-## Target Position
-Title: {job_title} at {company_str}
-
-## Job Description
-{jd_trimmed}
-{kb_section}
-Extract and categorize the candidate's skills based on their experience \
-and the target job description."""
-
-    total_usage = {"prompt_tokens": 0, "completion_tokens": 0}
-
-    for attempt in range(2):
-        resp = _call_llm(
-            messages=[
-                {"role": "system", "content": SKILLS_SYSTEM_PROMPT},
-                {"role": "user", "content": user_prompt},
-            ],
-            max_tokens=1024,
-            temperature=0.7,
-        )
-
-        total_usage["prompt_tokens"] += resp.prompt_tokens
-        total_usage["completion_tokens"] += resp.completion_tokens
-
-        content = resp.content
-        # Strip markdown code fences if present
-        if content.startswith("```"):
-            content = re.sub(r"^```(?:json)?\s*\n?", "", content)
-            content = re.sub(r"\n?```\s*$", "", content)
-        try:
-            result = json.loads(content)
-            if isinstance(result, list):
-                return result, total_usage
-            raise ValueError("Expected a JSON array")
-        except (json.JSONDecodeError, ValueError) as e:
-            if attempt == 0:
-                logger.warning(
-                    "Skills JSON parse failed on attempt 1, retrying: %s", e
-                )
-                user_prompt = (
-                    f"Your previous response was not valid JSON. "
-                    f"Please respond with valid JSON only.\n\n{user_prompt}"
-                )
-            else:
-                logger.error("Skills JSON parse failed on attempt 2: %s", e)
-                raise RuntimeError(
-                    f"Failed to parse AI skills response: {e}"
-                ) from e

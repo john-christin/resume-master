@@ -10,7 +10,6 @@ import ModelsPage from "./pages/admin/ModelsPage";
 import PendingPage from "./pages/admin/PendingPage";
 import PricingPage from "./pages/admin/PricingPage";
 import DocStylesPage from "./pages/admin/DocStylesPage";
-import TechStacksPage from "./pages/admin/TechStacksPage";
 import UsersPage from "./pages/admin/UsersPage";
 import BatchJobStatus from "./pages/BatchJobStatus";
 import BidderDashboard from "./pages/BidderDashboard";
@@ -84,7 +83,6 @@ function App() {
               <Route path="/admin/pending" element={<PendingPage />} />
               <Route path="/admin/users" element={<UsersPage />} />
               <Route path="/admin/pricing" element={<PricingPage />} />
-              <Route path="/admin/stacks" element={<TechStacksPage />} />
               <Route path="/admin/doc-styles" element={<DocStylesPage />} />
               <Route path="/admin/kb" element={<KnowledgeBasePage />} />
               <Route path="/admin/models" element={<ModelsPage />} />
