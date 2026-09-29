@@ -130,12 +130,14 @@ async def _generate_single(
         for edu in profile.educations
     ]
 
-    # Load active knowledge bases — all active entries apply globally now
-    # that tech-stack scoping has been removed.
-    active_kbs = db.scalars(
-        select(KnowledgeBase).where(KnowledgeBase.is_active.is_(True))
-    ).all()
-    kb_parts = [f"### {kb.name}\n{kb.content}" for kb in active_kbs]
+    # Load active knowledge bases. Global KBs are skipped when the profile
+    # has use_global_kb=False, so only the profile's own custom_prompt applies.
+    kb_parts = []
+    if profile.use_global_kb:
+        active_kbs = db.scalars(
+            select(KnowledgeBase).where(KnowledgeBase.is_active.is_(True))
+        ).all()
+        kb_parts = [f"### {kb.name}\n{kb.content}" for kb in active_kbs]
 
     # Profile-level prompt is always appended last so it takes precedence
     if profile.custom_prompt:

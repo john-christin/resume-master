@@ -39,6 +39,7 @@ def _profile_to_response(profile: Profile, current_user_id: str) -> dict:
         "custom_prompt": profile.custom_prompt,
         "doc_style_id": profile.doc_style_id,
         "show_skills": profile.show_skills,
+        "use_global_kb": profile.use_global_kb,
         "check_clearance": profile.check_clearance,
         "security_clearance": profile.security_clearance,
         "educations": profile.educations,
@@ -138,6 +139,7 @@ def create_profile(
         custom_prompt=data.custom_prompt or None,
         doc_style_id=data.doc_style_id or None,
         show_skills=data.show_skills,
+        use_global_kb=data.use_global_kb,
         check_clearance=data.check_clearance,
         security_clearance=data.security_clearance or None,
     )
@@ -188,6 +190,7 @@ def update_profile(
     profile.custom_prompt = data.custom_prompt or None
     profile.doc_style_id = data.doc_style_id or None
     profile.show_skills = data.show_skills
+    profile.use_global_kb = data.use_global_kb
     profile.check_clearance = data.check_clearance
     profile.security_clearance = data.security_clearance or None
 

@@ -119,6 +119,7 @@ export interface Profile {
   custom_prompt?: string | null;
   doc_style_id?: string | null;
   show_skills: boolean;
+  use_global_kb: boolean;
   check_clearance: boolean;
   security_clearance?: string | null;
   educations: Education[];
@@ -141,6 +142,7 @@ export interface ProfileCreate {
   custom_prompt?: string | null;
   doc_style_id?: string | null;
   show_skills?: boolean;
+  use_global_kb?: boolean;
   check_clearance?: boolean;
   security_clearance?: string | null;
   educations: Education[];

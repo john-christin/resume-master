@@ -46,6 +46,7 @@ const emptyProfile: ProfileCreate = {
   custom_prompt: null,
   doc_style_id: null,
   show_skills: true,
+  use_global_kb: true,
   check_clearance: false,
   security_clearance: null,
   educations: [],
@@ -85,6 +86,7 @@ export default function ProfileEdit() {
           custom_prompt: p.custom_prompt ?? null,
           doc_style_id: p.doc_style_id ?? null,
           show_skills: p.show_skills ?? true,
+          use_global_kb: p.use_global_kb ?? true,
           check_clearance: p.check_clearance ?? false,
           security_clearance: p.security_clearance ?? null,
           educations: p.educations,
@@ -262,6 +264,20 @@ export default function ProfileEdit() {
               <Switch
                 checked={profile.show_skills ?? true}
                 onCheckedChange={(v) => setProfile({ ...profile, show_skills: v })}
+                disabled={readOnly}
+              />
+            </div>
+
+            <div className="flex items-center justify-between rounded-lg border p-3">
+              <div>
+                <Label className="text-sm font-medium">Use Global Knowledge Base</Label>
+                <p className="text-xs text-muted-foreground mt-0.5">
+                  Apply system-wide knowledge base rules during generation. Turn off to use only this profile's own instructions.
+                </p>
+              </div>
+              <Switch
+                checked={profile.use_global_kb ?? true}
+                onCheckedChange={(v) => setProfile({ ...profile, use_global_kb: v })}
                 disabled={readOnly}
               />
             </div>
