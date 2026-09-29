@@ -182,6 +182,30 @@ export const updateModel = (
 export const deleteModel = (id: string) =>
   api.delete(`/api/admin/models/${id}`);
 
+// API Key Pool
+export interface ApiKeyPoolItem {
+  id: string;
+  label: string | null;
+  api_key_masked: string;
+  is_active: boolean;
+  created_at: string;
+}
+
+export const getPoolKeys = (configId: string) =>
+  api.get<ApiKeyPoolItem[]>(`/api/admin/model-configs/${configId}/keys`);
+
+export const addPoolKey = (configId: string, apiKey: string, label?: string) =>
+  api.post<ApiKeyPoolItem>(`/api/admin/model-configs/${configId}/keys`, { api_key: apiKey, label: label || null });
+
+export const togglePoolKey = (configId: string, keyId: string, isActive: boolean) =>
+  api.patch<ApiKeyPoolItem>(`/api/admin/model-configs/${configId}/keys/${keyId}`, { is_active: isActive });
+
+export const deletePoolKey = (configId: string, keyId: string) =>
+  api.delete(`/api/admin/model-configs/${configId}/keys/${keyId}`);
+
+export const testPoolKey = (configId: string, keyId: string) =>
+  api.post<{ success: boolean; reply: string }>(`/api/admin/model-configs/${configId}/keys/${keyId}/test`);
+
 export const getRoleAssignments = () =>
   api.get<RoleAssignment[]>("/api/admin/role-assignments");
 

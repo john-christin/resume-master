@@ -23,6 +23,7 @@ class User(Base):
     approved_by: Mapped[str | None] = mapped_column(
         String(36), nullable=True
     )
+    queue_running: Mapped[bool] = mapped_column(default=False, server_default="false")
     created_at: Mapped[datetime] = mapped_column(
         DateTime, default=datetime.utcnow
     )
@@ -36,5 +37,8 @@ class User(Base):
         secondary="profile_shares", back_populates="shared_with"
     )
     applications: Mapped[list["Application"]] = relationship(
+        back_populates="user", cascade="all, delete-orphan"
+    )
+    queue_tasks: Mapped[list["QueueTask"]] = relationship(
         back_populates="user", cascade="all, delete-orphan"
     )

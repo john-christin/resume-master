@@ -3,6 +3,7 @@ import type { Experience } from "../types";
 import { Button } from "./ui/button";
 import { Input } from "./ui/input";
 import { Label } from "./ui/label";
+import { Textarea } from "./ui/textarea";
 
 interface Props {
   experiences: Experience[];
@@ -15,6 +16,7 @@ const emptyExperience: Experience = {
   title: "",
   start_date: "",
   end_date: "",
+  description: "",
 };
 
 export default function ExperienceForm({
@@ -115,6 +117,17 @@ export default function ExperienceForm({
                 />
               </div>
             </div>
+          </div>
+          <div className="space-y-1.5">
+            <Label className="text-xs">Description</Label>
+            <Textarea
+              placeholder="Describe your responsibilities and achievements at this company. The AI will use this to generate tailored resume bullets."
+              value={exp.description || ""}
+              onChange={(e) => update(index, "description", e.target.value)}
+              readOnly={readOnly}
+              rows={4}
+              className="resize-y text-sm"
+            />
           </div>
         </div>
       ))}

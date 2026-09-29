@@ -16,8 +16,10 @@ from database import SessionLocal
 from models.doc_style import DocStyle
 from models.token_pricing import TokenPricing
 from routers import admin, applications, auth, batch_jobs, call_stages, calls, chat, doc_styles, generate, profile, stats, user_settings
+from routers.queue import router as queue_router, ext_router
 from services import log_service
 from services.batch_worker import start_worker
+from services.queue_worker import start_queue_worker
 from utils import get_client_ip
 
 logger = logging.getLogger(__name__)
@@ -246,6 +248,7 @@ async def lifespan(app: FastAPI):
     if removed:
         logger.info("Cleaned up %d log entries older than 15 days", removed)
     await start_worker()
+    await start_queue_worker()
     yield
 
 
@@ -277,6 +280,8 @@ app.include_router(admin.router)
 app.include_router(stats.router)
 app.include_router(doc_styles.router)
 app.include_router(user_settings.router)
+app.include_router(queue_router)
+app.include_router(ext_router)
 
 
 @app.get("/api/health")

@@ -1,16 +1,22 @@
 import axios from "axios";
-import { AlertCircle, Bot, Loader2, Plus } from "lucide-react";
+import { AlertCircle, Bot, CheckCircle, Eye, EyeOff, FlaskConical, Key, Loader2, Plus, Trash2, XCircle } from "lucide-react";
 import PageHeader from "../../components/shared/PageHeader";
 import { useEffect, useState } from "react";
 import {
+  addPoolKey,
   createModel,
   deleteModel,
+  deletePoolKey,
   getModels,
+  getPoolKeys,
   getRoleAssignments,
   setRoleAssignment,
   testModel,
+  testPoolKey,
+  togglePoolKey,
   updateModel,
   type AIModelRole,
+  type ApiKeyPoolItem,
 } from "../../api/admin";
 import LoadingSpinner from "../../components/LoadingSpinner";
 import { Alert, AlertDescription } from "../../components/ui/alert";
@@ -79,6 +85,87 @@ export default function ModelsPage() {
   const [testing, setTesting] = useState(false);
   const [testError, setTestError] = useState<string | null>(null);
   const [testSuccess, setTestSuccess] = useState(false);
+
+  // Key pool panel
+  const [keysModelId, setKeysModelId] = useState<string | null>(null);
+  const [keysModelName, setKeysModelName] = useState("");
+  const [poolKeys, setPoolKeys] = useState<ApiKeyPoolItem[]>([]);
+  const [poolLoading, setPoolLoading] = useState(false);
+  const [newKeyValue, setNewKeyValue] = useState("");
+  const [newKeyLabel, setNewKeyLabel] = useState("");
+  const [addingKey, setAddingKey] = useState(false);
+  const [poolError, setPoolError] = useState<string | null>(null);
+  const [keyTestStates, setKeyTestStates] = useState<Record<string, { loading: boolean; ok?: boolean; error?: string }>>({});
+
+  const openKeysPanel = async (modelId: string, modelName: string) => {
+    setKeysModelId(modelId);
+    setKeysModelName(modelName);
+    setPoolError(null);
+    setNewKeyValue("");
+    setNewKeyLabel("");
+    setKeyTestStates({});
+    setPoolLoading(true);
+    try {
+      const res = await getPoolKeys(modelId);
+      setPoolKeys(res.data);
+    } catch {
+      setPoolError("Failed to load keys");
+    } finally {
+      setPoolLoading(false);
+    }
+  };
+
+  const handleTestKey = async (keyId: string) => {
+    if (!keysModelId) return;
+    setKeyTestStates((prev) => ({ ...prev, [keyId]: { loading: true } }));
+    try {
+      await testPoolKey(keysModelId, keyId);
+      setKeyTestStates((prev) => ({ ...prev, [keyId]: { loading: false, ok: true } }));
+    } catch (err) {
+      let msg = "Test failed";
+      if (axios.isAxiosError(err) && err.response?.data?.detail) msg = String(err.response.data.detail);
+      setKeyTestStates((prev) => ({ ...prev, [keyId]: { loading: false, ok: false, error: msg } }));
+    }
+  };
+
+  const handleAddKey = async () => {
+    if (!keysModelId || !newKeyValue.trim()) return;
+    setAddingKey(true);
+    setPoolError(null);
+    try {
+      const res = await addPoolKey(keysModelId, newKeyValue.trim(), newKeyLabel.trim() || undefined);
+      setPoolKeys((prev) => [...prev, res.data]);
+      setNewKeyValue("");
+      setNewKeyLabel("");
+    } catch (err) {
+      let msg = "Failed to add key";
+      if (axios.isAxiosError(err) && err.response?.data?.detail) msg = String(err.response.data.detail);
+      setPoolError(msg);
+    } finally {
+      setAddingKey(false);
+    }
+  };
+
+  const handleToggleKey = async (keyId: string, isActive: boolean) => {
+    if (!keysModelId) return;
+    try {
+      const res = await togglePoolKey(keysModelId, keyId, isActive);
+      setPoolKeys((prev) => prev.map((k) => (k.id === keyId ? res.data : k)));
+    } catch {
+      setPoolError("Failed to update key");
+    }
+  };
+
+  const handleDeleteKey = async (keyId: string) => {
+    if (!keysModelId) return;
+    if (!window.confirm("Remove this key from the pool?")) return;
+    try {
+      await deletePoolKey(keysModelId, keyId);
+      setPoolKeys((prev) => prev.filter((k) => k.id !== keyId));
+    } catch {
+      setPoolError("Failed to delete key");
+    }
+  };
 
   const load = async () => {
     try {
@@ -317,6 +404,10 @@ export default function ModelsPage() {
                     </p>
                   </div>
                   <div className="flex items-center gap-2 flex-wrap shrink-0">
+                    <Button size="sm" variant="outline" onClick={() => openKeysPanel(m.id, m.display_name)}>
+                      <Key className="h-3.5 w-3.5" />
+                      Keys
+                    </Button>
                     <Button size="sm" variant="outline" onClick={() => openModal(m)}>
                       Edit
                     </Button>
@@ -347,6 +438,122 @@ export default function ModelsPage() {
           })}
         </div>
       )}
+
+      {/* Key Pool Dialog */}
+      <Dialog open={!!keysModelId} onOpenChange={(open) => !open && setKeysModelId(null)}>
+        <DialogContent className="max-w-xl max-h-[90vh] overflow-y-auto">
+          <DialogHeader>
+            <DialogTitle className="flex items-center gap-2">
+              <Key className="h-4 w-4" />
+              API Key Pool — {keysModelName}
+            </DialogTitle>
+          </DialogHeader>
+
+          <p className="text-xs text-muted-foreground -mt-1">
+            Queue jobs are assigned keys in round-robin order. On a 401/429 error the worker automatically retries with the next key.
+          </p>
+
+          {poolError && (
+            <Alert variant="destructive">
+              <AlertCircle className="h-4 w-4" />
+              <AlertDescription>{poolError}</AlertDescription>
+            </Alert>
+          )}
+
+          {/* Existing keys */}
+          {poolLoading ? (
+            <div className="flex items-center gap-2 text-muted-foreground text-sm py-4">
+              <Loader2 className="h-4 w-4 animate-spin" />
+              Loading keys…
+            </div>
+          ) : poolKeys.length === 0 ? (
+            <p className="text-sm text-muted-foreground py-2">No pool keys added yet. The model's primary key is always used as the final fallback.</p>
+          ) : (
+            <div className="space-y-2">
+              {poolKeys.map((k) => {
+                const ts = keyTestStates[k.id];
+                return (
+                  <div key={k.id} className="rounded-md border bg-muted/30">
+                    <div className="flex items-center gap-2 p-2.5">
+                      <div className="flex-1 min-w-0">
+                        <p className="text-xs font-mono truncate">{k.api_key_masked}</p>
+                        {k.label && <p className="text-xs text-muted-foreground truncate">{k.label}</p>}
+                      </div>
+                      <button
+                        type="button"
+                        title="Test key"
+                        disabled={ts?.loading}
+                        onClick={() => handleTestKey(k.id)}
+                        className="shrink-0 text-muted-foreground hover:text-foreground transition-colors disabled:opacity-50"
+                      >
+                        {ts?.loading ? (
+                          <Loader2 className="h-4 w-4 animate-spin" />
+                        ) : ts?.ok === true ? (
+                          <CheckCircle className="h-4 w-4 text-emerald-500" />
+                        ) : ts?.ok === false ? (
+                          <XCircle className="h-4 w-4 text-destructive" />
+                        ) : (
+                          <FlaskConical className="h-4 w-4" />
+                        )}
+                      </button>
+                      <button
+                        type="button"
+                        title={k.is_active ? "Disable" : "Enable"}
+                        onClick={() => handleToggleKey(k.id, !k.is_active)}
+                        className="shrink-0 text-muted-foreground hover:text-foreground transition-colors"
+                      >
+                        {k.is_active ? <Eye className="h-4 w-4 text-emerald-500" /> : <EyeOff className="h-4 w-4" />}
+                      </button>
+                      <button
+                        type="button"
+                        title="Delete key"
+                        onClick={() => handleDeleteKey(k.id)}
+                        className="shrink-0 text-muted-foreground hover:text-destructive transition-colors"
+                      >
+                        <Trash2 className="h-4 w-4" />
+                      </button>
+                    </div>
+                    {ts && !ts.loading && ts.ok === false && ts.error && (
+                      <p className="px-2.5 pb-2 text-xs text-destructive break-all">{ts.error}</p>
+                    )}
+                  </div>
+                );
+              })}
+            </div>
+          )}
+
+          {/* Add new key */}
+          <div className="space-y-3 pt-2 border-t">
+            <p className="text-xs font-semibold">Add a Key</p>
+            <div className="space-y-1.5">
+              <Label className="text-xs">API Key</Label>
+              <Input
+                type="password"
+                placeholder="sk-ant-…"
+                value={newKeyValue}
+                onChange={(e) => setNewKeyValue(e.target.value)}
+              />
+            </div>
+            <div className="space-y-1.5">
+              <Label className="text-xs">Label (optional)</Label>
+              <Input
+                placeholder="e.g. Account B"
+                value={newKeyLabel}
+                onChange={(e) => setNewKeyLabel(e.target.value)}
+              />
+            </div>
+            <Button
+              type="button"
+              size="sm"
+              disabled={!newKeyValue.trim() || addingKey}
+              onClick={handleAddKey}
+            >
+              {addingKey ? <Loader2 className="h-3.5 w-3.5 animate-spin" /> : <Plus className="h-3.5 w-3.5" />}
+              Add Key
+            </Button>
+          </div>
+        </DialogContent>
+      </Dialog>
 
       <Dialog open={modalOpen} onOpenChange={setModalOpen}>
         <DialogContent className="max-w-2xl max-h-[90vh] overflow-y-auto">

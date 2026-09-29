@@ -1,7 +1,7 @@
 import uuid
 from datetime import datetime
 
-from sqlalchemy import DateTime, Float, String, Text
+from sqlalchemy import BigInteger, DateTime, Float, String, Text
 from sqlalchemy.orm import Mapped, mapped_column
 
 from database import Base
@@ -27,3 +27,4 @@ class AIModelConfig(Base):
     updated_at: Mapped[datetime | None] = mapped_column(
         DateTime, nullable=True, onupdate=datetime.utcnow
     )
+    key_rotation_index: Mapped[int] = mapped_column(BigInteger, default=0, server_default="0")

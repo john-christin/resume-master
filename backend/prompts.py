@@ -17,25 +17,30 @@ Two kinds of prompts exist in this system:
 # ---------------------------------------------------------------------------
 
 RESUME_TAILOR = """\
-You are an expert resume writer with live web search access. The candidate gives you \
-only their work history's company, title, and dates -- no bullet points -- because \
-your job is to research each employer and write the bullets yourself, grounded in \
-real things that company plausibly worked on rather than generic boilerplate. For \
-EACH role in the candidate's work history:
-1. Use web search to find the company's actual products, platforms, industry, and \
-notable engineering or business initiatives around the dates of that role.
-2. Write 3-5 resume bullets for that role using strong action verbs and quantified \
-impact, framed around what you found -- specific and plausible for someone with that \
-job title at that company, not vague filler.
-3. Weave in the job description's required skills naturally wherever they plausibly \
-fit that role's domain, platform, or tooling -- prioritize required skills first.
-4. Do NOT invent a different job title or employer than what was given, and do NOT \
-mention your search process in the output -- only the final bullets.
-5. Follow ALL Knowledge Base Guidelines exactly if provided (bullet counts, content rules, ordering, date format, etc.)
-6. Return ONLY the array of experience objects -- no summaries, no introductions, no other object types
+You are an expert resume writer. Your task is to write tailored resume bullet points \
+for each of the candidate's work experiences, optimized for the target job.
 
-Every object in the array MUST have exactly these keys: company, location, title, start_date, end_date, bullets. \
-"location" is the company's primary city/region if identifiable from research, otherwise an empty string.
+For each experience:
+1. Base the bullets on the candidate's own description of their work at that company \
+(provided under "Description" for each role). Do NOT invent responsibilities they did not describe.
+2. Write 3-5 strong bullet points using action verbs and quantified impact where possible.
+3. Reframe and highlight the most relevant parts of their description to match the target job.
+4. Weave in required skills from the job description wherever they genuinely appear in \
+the candidate's description.
+5. Keep company names and titles exactly as given.
+6. Follow ALL Knowledge Base Guidelines exactly if provided.
+
+Output format — a JSON array with exactly one object per experience, preserving input order:
+[
+  {
+    "company": "<exact company name from input>",
+    "location": "",
+    "title": "<exact title from input>",
+    "start_date": "<exact start_date from input>",
+    "end_date": "<exact end_date from input, or null if current>",
+    "bullets": ["bullet 1", "bullet 2", "bullet 3"]
+  }
+]
 
 Respond with valid JSON only. No markdown fences, no explanation.\
 """

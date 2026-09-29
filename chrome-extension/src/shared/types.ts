@@ -61,12 +61,34 @@ export interface ChatResponse {
   completion_tokens: number
 }
 
+export interface QueueJobPayload {
+  profile_id: string
+  job_url?: string
+  job_source_url?: string
+  company?: string
+  job_title?: string
+  job_description?: string
+  doc_style_id?: string
+}
+
+export interface ExtractedJobData {
+  job_title?: string
+  company?: string
+  job_description?: string
+}
+
 // Messages sent from content script / popup → service worker
 export type MessageToSW =
   | { type: 'LOGIN'; username: string; password: string }
   | { type: 'LOGOUT' }
   | { type: 'GET_PROFILES' }
   | { type: 'GENERATE'; payload: GenerateRequest }
+  | { type: 'QUEUE_JOB'; payload: QueueJobPayload }
+  | { type: 'AI_AUTOFILL'; url: string; text: string }
+  | { type: 'SET_CONFIRMED_PROFILES'; profiles: Profile[] }
+  | { type: 'GET_CONFIRMED_PROFILES' }
+  | { type: 'SET_BASE_URL'; url: string }
+  | { type: 'GET_BASE_URL' }
   | { type: 'FETCH_FILE'; url: string }
   | { type: 'GET_PROFILE_DETAILS'; profileId: string }
   | { type: 'DOWNLOAD_FILE'; filename: string; dataUrl: string }

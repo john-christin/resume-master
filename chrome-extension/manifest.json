@@ -1,11 +1,13 @@
 {
   "manifest_version": 3,
   "name": "AurexViper Resume Assistant",
-  "version": "1.0.0",
+  "version": "2.0.0",
   "description": "Generate tailored resumes and cover letters directly from any job page",
-  "permissions": ["storage", "downloads"],
+  "permissions": ["storage", "downloads", "scripting", "activeTab"],
   "host_permissions": [
-    "https://aurexviper.pro/*"
+    "https://aurexviper.pro/*",
+    "https://*/*",
+    "http://localhost/*"
   ],
   "action": {
     "default_popup": "popup.html",

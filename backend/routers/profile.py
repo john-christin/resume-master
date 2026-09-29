@@ -41,9 +41,6 @@ def _profile_to_response(profile: Profile, current_user_id: str) -> dict:
         "show_skills": profile.show_skills,
         "check_clearance": profile.check_clearance,
         "security_clearance": profile.security_clearance,
-        "foundry_endpoint": profile.foundry_endpoint,
-        "foundry_api_key_set": bool(profile.foundry_api_key),
-        "foundry_model_id": profile.foundry_model_id,
         "educations": profile.educations,
         "experiences": profile.experiences,
         "is_owner": profile.owner_id == current_user_id,
@@ -143,9 +140,6 @@ def create_profile(
         show_skills=data.show_skills,
         check_clearance=data.check_clearance,
         security_clearance=data.security_clearance or None,
-        foundry_endpoint=data.foundry_endpoint or None,
-        foundry_api_key=data.foundry_api_key or None,
-        foundry_model_id=data.foundry_model_id or None,
     )
 
     for edu in data.educations:
@@ -196,12 +190,6 @@ def update_profile(
     profile.show_skills = data.show_skills
     profile.check_clearance = data.check_clearance
     profile.security_clearance = data.security_clearance or None
-    profile.foundry_endpoint = data.foundry_endpoint or None
-    profile.foundry_model_id = data.foundry_model_id or None
-    if data.foundry_api_key:
-        # Masked in responses — only overwrite when a real value is submitted,
-        # so leaving the field blank on an edit doesn't wipe an existing key.
-        profile.foundry_api_key = data.foundry_api_key
 
     profile.educations.clear()
     for edu in data.educations:

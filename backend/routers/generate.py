@@ -80,6 +80,7 @@ async def _generate_single(
     resume_type: str | None,
     current_user: User,
     db: Session,
+    pool_key_id: str | None = None,
 ) -> GenerateResponse:
     """Core generation logic for a single job description."""
     total_prompt = 0
@@ -113,6 +114,7 @@ async def _generate_single(
             "title": exp.title,
             "start_date": exp.start_date,
             "end_date": exp.end_date,
+            "description": exp.description,
         }
         for exp in profile.experiences
     ]
@@ -164,6 +166,7 @@ async def _generate_single(
                 knowledge_base=kb_content,
                 creativity_factor=creativity_factor,
                 profile_id=profile.id,
+                pool_key_id=pool_key_id,
             ),
             asyncio.to_thread(
                 ai_service.generate_resume_content,
@@ -177,6 +180,7 @@ async def _generate_single(
                 knowledge_base=kb_content,
                 creativity_factor=creativity_factor,
                 profile_id=profile.id,
+                pool_key_id=pool_key_id,
             ),
             asyncio.to_thread(
                 ai_service.generate_cover_letter,
@@ -189,6 +193,7 @@ async def _generate_single(
                 company=company,
                 knowledge_base=kb_content,
                 creativity_factor=creativity_factor,
+                pool_key_id=pool_key_id,
             ),
         )
     except Exception as e:
@@ -351,6 +356,14 @@ async def _generate_single(
         },
     )
 
+    # Collect the pool key that actually ran the job (may differ from assigned
+    # key if a failover happened during one of the concurrent LLM calls).
+    winning_pool_key_id = (
+        resume_usage.get("used_pool_key_id")
+        or content_usage.get("used_pool_key_id")
+        or cl_usage.get("used_pool_key_id")
+    )
+
     return GenerateResponse(
         application_id=application.id,
         profile_name=profile.name,
@@ -362,6 +375,7 @@ async def _generate_single(
         prompt_tokens=total_prompt,
         completion_tokens=total_completion,
         cost=cost,
+        used_pool_key_id=winning_pool_key_id,
     )
 
 

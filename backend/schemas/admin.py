@@ -194,6 +194,23 @@ class UserCallStat(BaseModel):
     not_scheduled: int
 
 
+class ApiKeyPoolCreate(BaseModel):
+    api_key: str
+    label: str | None = None
+
+
+class ApiKeyPoolToggle(BaseModel):
+    is_active: bool
+
+
+class ApiKeyPoolItem(BaseModel):
+    id: str
+    label: str | None = None
+    api_key_masked: str
+    is_active: bool
+    created_at: datetime
+
+
 class SystemLogItem(BaseModel):
     id: str
     level: str

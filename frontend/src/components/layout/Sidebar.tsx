@@ -8,6 +8,7 @@ import {
   FileText,
   History,
   LayoutDashboard,
+  ListOrdered,
   Phone,
   ScrollText,
   Search,
@@ -36,6 +37,7 @@ const BIDDER_NAV: NavItem[] = [
   { path: "/dashboard", label: "Dashboard", icon: <LayoutDashboard className="h-4 w-4" /> },
   { path: "/profiles", label: "Profiles", icon: <FileText className="h-4 w-4" /> },
   { path: "/generate", label: "Generate", icon: <Wand2 className="h-4 w-4" /> },
+  { path: "/queue", label: "Queue", icon: <ListOrdered className="h-4 w-4" /> },
   { path: "/history", label: "History", icon: <History className="h-4 w-4" /> },
   { path: "/calls", label: "Calls", icon: <Phone className="h-4 w-4" /> },
 ];
@@ -49,6 +51,7 @@ const ADMIN_MAIN_NAV: NavItem[] = [
   { path: "/admin/dashboard", label: "Dashboard", icon: <LayoutDashboard className="h-4 w-4" /> },
   { path: "/profiles", label: "Profiles", icon: <FileText className="h-4 w-4" /> },
   { path: "/generate", label: "Generate", icon: <Wand2 className="h-4 w-4" /> },
+  { path: "/queue", label: "Queue", icon: <ListOrdered className="h-4 w-4" /> },
   { path: "/history", label: "History", icon: <History className="h-4 w-4" /> },
   { path: "/calls", label: "Calls", icon: <Phone className="h-4 w-4" /> },
 ];

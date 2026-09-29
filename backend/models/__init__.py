@@ -13,3 +13,8 @@ from models.batch_job import BatchJob
 from models.chat_message import ChatMessage
 from models.call import Call
 from models.call_stage import CallStage
+from models.doc_style import DocStyle
+from models.banned_company import BannedCompany
+from models.system_log import SystemLog
+from models.queue import QueueTask
+from models.api_key_pool import ApiKeyPool

@@ -19,6 +19,7 @@ class ExperienceSchema(BaseModel):
     title: str
     start_date: str
     end_date: str | None = None
+    description: str | None = None
 
 
 class ProfileCreate(BaseModel):
@@ -34,9 +35,6 @@ class ProfileCreate(BaseModel):
     show_skills: bool = True
     check_clearance: bool = False
     security_clearance: str | None = None
-    foundry_endpoint: str | None = None
-    foundry_api_key: str | None = None
-    foundry_model_id: str | None = None
     educations: list[EducationSchema] = []
     experiences: list[ExperienceSchema] = []
 
@@ -56,9 +54,6 @@ class ProfileResponse(BaseModel):
     show_skills: bool = True
     check_clearance: bool = False
     security_clearance: str | None = None
-    foundry_endpoint: str | None = None
-    foundry_api_key_set: bool = False
-    foundry_model_id: str | None = None
     educations: list[EducationSchema] = []
     experiences: list[ExperienceSchema] = []
     is_owner: bool = False

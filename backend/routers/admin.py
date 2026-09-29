@@ -23,6 +23,9 @@ from schemas.admin import (
     AIModelConfigCreate,
     AIModelConfigResponse,
     AIModelConfigUpdate,
+    ApiKeyPoolCreate,
+    ApiKeyPoolItem,
+    ApiKeyPoolToggle,
     BannedCompanyCreate,
     BannedCompanyResponse,
     BannedCompanyUpdate,
@@ -932,6 +935,135 @@ def delete_model(
         )
     db.delete(model)
     db.commit()
+
+
+def _mask_key(key: str) -> str:
+    """Return last-4 characters masked like ••••••••abcd."""
+    suffix = key[-4:] if len(key) >= 4 else key
+    return f"••••••••{suffix}"
+
+
+@router.get("/model-configs/{config_id}/keys", response_model=list[ApiKeyPoolItem])
+def list_pool_keys(
+    config_id: str,
+    current_user: User = Depends(_admin_only),
+    db: Session = Depends(get_db),
+):
+    from models.api_key_pool import ApiKeyPool
+    config = db.get(AIModelConfig, config_id)
+    if not config:
+        raise HTTPException(status_code=404, detail="Model config not found")
+    rows = db.scalars(
+        select(ApiKeyPool)
+        .where(ApiKeyPool.model_config_id == config_id)
+        .order_by(ApiKeyPool.created_at.asc())
+    ).all()
+    return [
+        ApiKeyPoolItem(
+            id=r.id,
+            label=r.label,
+            api_key_masked=_mask_key(r.api_key),
+            is_active=r.is_active,
+            created_at=r.created_at,
+        )
+        for r in rows
+    ]
+
+
+@router.post("/model-configs/{config_id}/keys", response_model=ApiKeyPoolItem, status_code=201)
+def add_pool_key(
+    config_id: str,
+    data: ApiKeyPoolCreate,
+    current_user: User = Depends(_admin_only),
+    db: Session = Depends(get_db),
+):
+    from models.api_key_pool import ApiKeyPool
+    config = db.get(AIModelConfig, config_id)
+    if not config:
+        raise HTTPException(status_code=404, detail="Model config not found")
+    row = ApiKeyPool(
+        model_config_id=config_id,
+        api_key=data.api_key.strip(),
+        label=data.label,
+    )
+    db.add(row)
+    db.commit()
+    db.refresh(row)
+    return ApiKeyPoolItem(
+        id=row.id,
+        label=row.label,
+        api_key_masked=_mask_key(row.api_key),
+        is_active=row.is_active,
+        created_at=row.created_at,
+    )
+
+
+@router.patch("/model-configs/{config_id}/keys/{key_id}", response_model=ApiKeyPoolItem)
+def toggle_pool_key(
+    config_id: str,
+    key_id: str,
+    data: ApiKeyPoolToggle,
+    current_user: User = Depends(_admin_only),
+    db: Session = Depends(get_db),
+):
+    from models.api_key_pool import ApiKeyPool
+    row = db.get(ApiKeyPool, key_id)
+    if not row or row.model_config_id != config_id:
+        raise HTTPException(status_code=404, detail="Key not found")
+    row.is_active = data.is_active
+    db.commit()
+    db.refresh(row)
+    return ApiKeyPoolItem(
+        id=row.id,
+        label=row.label,
+        api_key_masked=_mask_key(row.api_key),
+        is_active=row.is_active,
+        created_at=row.created_at,
+    )
+
+
+@router.delete("/model-configs/{config_id}/keys/{key_id}", status_code=204)
+def delete_pool_key(
+    config_id: str,
+    key_id: str,
+    current_user: User = Depends(_admin_only),
+    db: Session = Depends(get_db),
+):
+    from models.api_key_pool import ApiKeyPool
+    row = db.get(ApiKeyPool, key_id)
+    if not row or row.model_config_id != config_id:
+        raise HTTPException(status_code=404, detail="Key not found")
+    db.delete(row)
+    db.commit()
+
+
+@router.post("/model-configs/{config_id}/keys/{key_id}/test")
+def test_pool_key(
+    config_id: str,
+    key_id: str,
+    current_user: User = Depends(_admin_only),
+    db: Session = Depends(get_db),
+):
+    """Test connectivity for a specific pool key using the parent model's config."""
+    from models.api_key_pool import ApiKeyPool
+    config = db.get(AIModelConfig, config_id)
+    if not config:
+        raise HTTPException(status_code=404, detail="Model config not found")
+    row = db.get(ApiKeyPool, key_id)
+    if not row or row.model_config_id != config_id:
+        raise HTTPException(status_code=404, detail="Key not found")
+    test_config = {
+        "provider": config.provider,
+        "model_id": config.model_id,
+        "api_key": row.api_key,
+        "endpoint": config.endpoint,
+        "api_version": config.api_version,
+    }
+    try:
+        reply = ai_service.test_model_connection(test_config)
+        return {"success": True, "reply": reply}
+    except Exception as e:
+        raise HTTPException(status_code=422, detail=str(e))
 
 
 _ROLES = ("resume", "cover_letter", "jd_parse", "chat", "utility")

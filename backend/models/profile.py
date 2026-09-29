@@ -36,9 +36,6 @@ class Profile(Base):
     show_skills: Mapped[bool] = mapped_column(Boolean, default=True, nullable=False)
     check_clearance: Mapped[bool] = mapped_column(Boolean, default=False, nullable=False)
     security_clearance: Mapped[str | None] = mapped_column(String(50), nullable=True)
-    foundry_endpoint: Mapped[str | None] = mapped_column(String(500), nullable=True)
-    foundry_api_key: Mapped[str | None] = mapped_column(Text, nullable=True)
-    foundry_model_id: Mapped[str | None] = mapped_column(String(200), nullable=True)
     created_at: Mapped[datetime] = mapped_column(
         DateTime, default=datetime.utcnow
     )

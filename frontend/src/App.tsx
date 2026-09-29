@@ -12,6 +12,7 @@ import PricingPage from "./pages/admin/PricingPage";
 import DocStylesPage from "./pages/admin/DocStylesPage";
 import UsersPage from "./pages/admin/UsersPage";
 import BatchJobStatus from "./pages/BatchJobStatus";
+import QueuePage from "./pages/QueuePage";
 import BidderDashboard from "./pages/BidderDashboard";
 import ApplicationDetailPage from "./pages/ApplicationDetailPage";
 import History from "./pages/History";
@@ -68,6 +69,7 @@ function App() {
               <Route path="/generate" element={<JobInput />} />
               <Route path="/preview/:applicationId" element={<Preview />} />
               <Route path="/batch-jobs/:jobId" element={<BatchJobStatus />} />
+              <Route path="/queue" element={<QueuePage />} />
             </Route>
 
             {/* Shared — all approved roles */}

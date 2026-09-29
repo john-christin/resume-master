@@ -1,5 +1,5 @@
 import { useState, useEffect, useRef, useCallback } from 'react'
-import type { ChatMessage, ChatRequest, ChatResponse, GenerateResult, ProfileDetails, SWResponse } from '../shared/types'
+import type { ChatMessage, ChatRequest, ChatResponse, ExtractedJobData, GenerateResult, Profile, ProfileDetails, SWResponse } from '../shared/types'
 import FileCard from './components/FileCard'
 
 interface AuthState {
@@ -7,12 +7,15 @@ interface AuthState {
   username: string
   profileId: string | null
   profileName: string | null
+  confirmedProfiles: Profile[]
 }
 
 type Stage =
   | { name: 'form' }
   | { name: 'generating' }
   | { name: 'results'; result: GenerateResult }
+  | { name: 'queuing' }
+  | { name: 'queued'; count: number }
 
 interface Pos { x: number; y: number }
 
@@ -54,7 +57,7 @@ export default function Widget() {
   const [pos, setPos] = useState<Pos>(defaultPos)
   const [open, setOpen] = useState(false)
   const [auth, setAuth] = useState<AuthState>({
-    isLoggedIn: false, username: '', profileId: null, profileName: null,
+    isLoggedIn: false, username: '', profileId: null, profileName: null, confirmedProfiles: [],
   })
   const [stage, setStage] = useState<Stage>({ name: 'form' })
   const [jobTitle, setJobTitle] = useState('')
@@ -89,13 +92,19 @@ export default function Widget() {
 
   async function loadAuth() {
     const data = (await chrome.storage.local.get([
-      'access_token', 'username', 'active_profile_id', 'active_profile_name',
-    ])) as { access_token?: string; username?: string; active_profile_id?: string; active_profile_name?: string }
+      'access_token', 'username', 'active_profile_id', 'active_profile_name', 'confirmed_profiles',
+    ])) as {
+      access_token?: string; username?: string
+      active_profile_id?: string; active_profile_name?: string
+      confirmed_profiles?: Profile[]
+    }
+    const confirmed: Profile[] = data.confirmed_profiles || []
     setAuth({
       isLoggedIn: !!data.access_token,
       username: data.username || '',
-      profileId: data.active_profile_id || null,
-      profileName: data.active_profile_name || null,
+      profileId: confirmed.length > 0 ? confirmed[0].id : (data.active_profile_id || null),
+      profileName: confirmed.length > 0 ? confirmed.map((p) => p.name).join(', ') : (data.active_profile_name || null),
+      confirmedProfiles: confirmed,
     })
   }
 
@@ -142,9 +151,41 @@ export default function Widget() {
       setStage({ name: 'form' })
       return
     }
-    // Persist result so it survives navigation to the application page
     chrome.storage.local.set({ last_result: res.data })
     setStage({ name: 'results', result: res.data })
+  }
+
+  async function handleQueueJob() {
+    const profiles = auth.confirmedProfiles.length > 0
+      ? auth.confirmedProfiles
+      : auth.profileId ? [{ id: auth.profileId, name: auth.profileName || '' }] : []
+    if (profiles.length === 0) return
+
+    setError('')
+    setStage({ name: 'queuing' })
+
+    let successCount = 0
+    for (const profile of profiles) {
+      const res: SWResponse = await chrome.runtime.sendMessage({
+        type: 'QUEUE_JOB',
+        payload: {
+          profile_id: profile.id,
+          job_title: jobTitle || undefined,
+          company: company || undefined,
+          job_url: jobUrl || undefined,
+          job_source_url: jobUrl || undefined,
+          job_description: jobDescription || undefined,
+        },
+      })
+      if (res.ok) successCount++
+    }
+
+    if (successCount === 0) {
+      setError('Failed to add to queue. Please check your connection.')
+      setStage({ name: 'form' })
+      return
+    }
+    setStage({ name: 'queued', count: successCount })
   }
 
   function handleReset() {
@@ -158,6 +199,7 @@ export default function Widget() {
   }
 
   const panel = panelPos(pos)
+  const canQueue = auth.isLoggedIn && !!auth.profileId && jobDescription.trim() !== ''
   const canGenerate = auth.isLoggedIn && !!auth.profileId && jobTitle.trim() && jobDescription.trim()
 
   return (
@@ -280,15 +322,21 @@ export default function Widget() {
                 jobUrl={jobUrl}
                 jobDescription={jobDescription}
                 error={error}
+                canQueue={!!canQueue}
                 canGenerate={!!canGenerate}
                 onJobTitle={setJobTitle}
                 onCompany={setCompany}
                 onJobUrl={setJobUrl}
                 onJobDescription={setJobDescription}
+                onQueue={handleQueueJob}
                 onGenerate={handleGenerate}
               />
             ) : stage.name === 'generating' ? (
               <Generating />
+            ) : stage.name === 'queuing' ? (
+              <Queuing />
+            ) : stage.name === 'queued' ? (
+              <Queued count={stage.count} onReset={handleReset} />
             ) : (
               <Results result={stage.result} onReset={handleReset} />
             )}
@@ -604,17 +652,97 @@ function NoProfile() {
 
 interface JobFormProps {
   jobTitle: string; company: string; jobUrl: string; jobDescription: string
-  error: string; canGenerate: boolean
+  error: string; canQueue: boolean; canGenerate: boolean
   onJobTitle: (v: string) => void; onCompany: (v: string) => void
   onJobUrl: (v: string) => void; onJobDescription: (v: string) => void
-  onGenerate: () => void
+  onQueue: () => void; onGenerate: () => void
 }
 
-function JobForm({ jobTitle, company, jobUrl, jobDescription, error, canGenerate,
-  onJobTitle, onCompany, onJobUrl, onJobDescription, onGenerate }: JobFormProps) {
+function JobForm({ jobTitle, company, jobUrl, jobDescription, error, canQueue, canGenerate,
+  onJobTitle, onCompany, onJobUrl, onJobDescription, onQueue, onGenerate }: JobFormProps) {
+  const [grabbing, setGrabbing] = useState(false)
+  const [autofilling, setAutofilling] = useState(false)
+
+  async function handleGrab() {
+    setGrabbing(true)
+    try {
+      // Content script has direct DOM access — extract from current page
+      let extracted: ExtractedJobData = {}
+
+      // Try JSON-LD JobPosting
+      const ldScripts = document.querySelectorAll('script[type="application/ld+json"]')
+      for (const el of ldScripts) {
+        try {
+          const json = JSON.parse(el.textContent || '{}')
+          const jobs = Array.isArray(json) ? json : [json]
+          const job = jobs.find((j: Record<string, unknown>) => j['@type'] === 'JobPosting')
+          if (job) {
+            extracted.job_title = job.title as string || extracted.job_title
+            extracted.company = (job.hiringOrganization as Record<string, unknown>)?.name as string || extracted.company
+            extracted.job_description = job.description as string || extracted.job_description
+            break
+          }
+        } catch {}
+      }
+
+      // OpenGraph / meta fallback
+      if (!extracted.job_title) {
+        const ogTitle = document.querySelector('meta[property="og:title"]') as HTMLMetaElement | null
+        if (ogTitle) extracted.job_title = ogTitle.content
+      }
+      if (!extracted.job_title) {
+        const h1 = document.querySelector('h1')
+        if (h1) extracted.job_title = h1.innerText.trim()
+      }
+      if (!extracted.job_description) {
+        // Best-effort: collect visible text from main content area
+        const main = document.querySelector('main, [role="main"], article') || document.body
+        extracted.job_description = (main as HTMLElement).innerText.slice(0, 8000).trim()
+      }
+
+      if (extracted.job_title) onJobTitle(extracted.job_title)
+      if (extracted.company) onCompany(extracted.company)
+      if (extracted.job_description) onJobDescription(extracted.job_description)
+    } finally {
+      setGrabbing(false)
+    }
+  }
+
+  async function handleAIFill() {
+    setAutofilling(true)
+    try {
+      const pageText = (document.querySelector('main, [role="main"], article') || document.body as HTMLElement)
+      const text = (pageText as HTMLElement).innerText.slice(0, 12000)
+      const res: SWResponse<ExtractedJobData> = await chrome.runtime.sendMessage({
+        type: 'AI_AUTOFILL',
+        url: window.location.href,
+        text,
+      })
+      if (res.ok) {
+        if (res.data.job_title) onJobTitle(res.data.job_title)
+        if (res.data.company) onCompany(res.data.company)
+        if (res.data.job_description) onJobDescription(res.data.job_description)
+      }
+    } finally {
+      setAutofilling(false)
+    }
+  }
+
   return (
     <div className="px-4 py-4 space-y-3">
-      <Field label="Job Title *">
+      {/* Grab buttons */}
+      <div className="flex gap-2">
+        <button onClick={handleGrab} disabled={grabbing}
+          className="flex-1 py-1.5 rounded-lg bg-slate-800 hover:bg-slate-700 disabled:opacity-40 text-slate-300 text-xs font-medium transition-colors">
+          {grabbing ? 'Grabbing…' : '⚡ Grab from tab'}
+        </button>
+        <button onClick={handleAIFill} disabled={autofilling}
+          className="flex-1 py-1.5 rounded-lg bg-slate-800 hover:bg-slate-700 disabled:opacity-40 text-slate-300 text-xs font-medium transition-colors">
+          {autofilling ? 'Filling…' : '✦ AI auto-fill'}
+        </button>
+      </div>
+
+      <Field label="Job Title">
         <input type="text" value={jobTitle} onChange={(e) => onJobTitle(e.target.value)}
           placeholder="e.g. Senior Software Engineer" className="av-input" />
       </Field>
@@ -627,14 +755,20 @@ function JobForm({ jobTitle, company, jobUrl, jobDescription, error, canGenerate
       </Field>
       <Field label="Job Description *">
         <textarea value={jobDescription} onChange={(e) => onJobDescription(e.target.value)}
-          placeholder="Paste the full job description here…" rows={9} className="av-input resize-none" />
+          placeholder="Paste the full job description here…" rows={7} className="av-input resize-none" />
       </Field>
       {error && (
         <div className="text-xs text-red-400 bg-red-950/40 border border-red-900 rounded-lg px-3 py-2">{error}</div>
       )}
-      <button onClick={onGenerate} disabled={!canGenerate}
+      {/* Primary: Add to Queue */}
+      <button onClick={onQueue} disabled={!canQueue}
         className="w-full py-2.5 rounded-xl bg-indigo-600 hover:bg-indigo-500 disabled:opacity-40 disabled:cursor-not-allowed text-white text-sm font-medium transition-colors">
-        Generate Application
+        Add to Queue
+      </button>
+      {/* Secondary: sync Generate (kept for direct generation) */}
+      <button onClick={onGenerate} disabled={!canGenerate}
+        className="w-full py-2 rounded-xl border border-slate-700 hover:border-slate-600 disabled:opacity-30 disabled:cursor-not-allowed text-slate-400 hover:text-slate-200 text-xs transition-colors">
+        Generate Now (sync)
       </button>
     </div>
   )
@@ -655,6 +789,37 @@ function Generating() {
       <div className="w-9 h-9 border-2 border-indigo-500 border-t-transparent rounded-full animate-spin" />
       <p className="text-sm text-slate-400 text-center">Generating your tailored resume and cover letter…</p>
       <p className="text-xs text-slate-600 text-center">This may take 30–60 seconds</p>
+    </div>
+  )
+}
+
+function Queuing() {
+  return (
+    <div className="flex flex-col items-center justify-center px-6 py-14 gap-4">
+      <div className="w-9 h-9 border-2 border-indigo-500 border-t-transparent rounded-full animate-spin" />
+      <p className="text-sm text-slate-400 text-center">Adding to queue…</p>
+    </div>
+  )
+}
+
+function Queued({ count, onReset }: { count: number; onReset: () => void }) {
+  return (
+    <div className="px-4 py-8 flex flex-col items-center gap-4 text-center">
+      <div className="w-12 h-12 rounded-full bg-emerald-900/40 border border-emerald-700/50 flex items-center justify-center">
+        <svg className="w-6 h-6 text-emerald-400" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+          <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M5 13l4 4L19 7" />
+        </svg>
+      </div>
+      <div>
+        <p className="text-sm font-medium text-slate-200">Added to queue</p>
+        <p className="text-xs text-slate-500 mt-1">
+          Queued for {count} profile{count !== 1 ? 's' : ''} — results will appear in the web app.
+        </p>
+      </div>
+      <button onClick={onReset}
+        className="w-full py-2.5 rounded-xl border border-slate-700 hover:border-slate-600 text-slate-400 hover:text-slate-200 text-sm transition-colors">
+        Add Another
+      </button>
     </div>
   )
 }

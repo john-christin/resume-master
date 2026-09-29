@@ -1,6 +1,11 @@
-import type { ChatResponse, FetchedFile, MessageToSW, ProfileDetails, SWResponse } from '../shared/types'
+import type { ChatResponse, ExtractedJobData, FetchedFile, MessageToSW, Profile, ProfileDetails, SWResponse } from '../shared/types'
 
-const API_BASE = 'https://aurexviper.pro'
+const DEFAULT_BASE_URL = 'https://aurexviper.pro'
+
+async function getBaseUrl(): Promise<string> {
+  const { base_url } = await chrome.storage.sync.get('base_url')
+  return (base_url as string) || DEFAULT_BASE_URL
+}
 
 async function getToken(): Promise<string | null> {
   const { access_token } = await chrome.storage.local.get('access_token')
@@ -8,8 +13,8 @@ async function getToken(): Promise<string | null> {
 }
 
 async function authFetch(path: string, init: RequestInit = {}): Promise<Response> {
-  const token = await getToken()
-  return fetch(`${API_BASE}${path}`, {
+  const [token, base] = await Promise.all([getToken(), getBaseUrl()])
+  return fetch(`${base}${path}`, {
     ...init,
     headers: {
       'Content-Type': 'application/json',
@@ -31,7 +36,8 @@ chrome.runtime.onMessage.addListener(
 async function handle(msg: MessageToSW): Promise<SWResponse> {
   switch (msg.type) {
     case 'LOGIN': {
-      const res = await fetch(`${API_BASE}/api/auth/login`, {
+      const base = await getBaseUrl()
+      const res = await fetch(`${base}/api/auth/login`, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ username: msg.username, password: msg.password }),
@@ -58,12 +64,12 @@ async function handle(msg: MessageToSW): Promise<SWResponse> {
         'user_status',
         'active_profile_id',
         'active_profile_name',
+        'confirmed_profiles',
       ])
       return { ok: true, data: null }
     }
 
     case 'GET_PROFILES': {
-      // accessible_only=true ensures admins only see their own+shared profiles, not all users'
       const res = await authFetch('/api/profiles?accessible_only=true')
       if (!res.ok) return { ok: false, error: 'Failed to load profiles' }
       const data = await res.json()
@@ -83,19 +89,64 @@ async function handle(msg: MessageToSW): Promise<SWResponse> {
       return { ok: true, data }
     }
 
+    case 'QUEUE_JOB': {
+      const res = await authFetch('/api/queue', {
+        method: 'POST',
+        body: JSON.stringify(msg.payload),
+      })
+      if (!res.ok) {
+        const err = await res.json().catch(() => ({ detail: 'Queue failed' }))
+        return { ok: false, error: err.detail || 'Failed to add to queue' }
+      }
+      const data = await res.json()
+      return { ok: true, data }
+    }
+
+    case 'AI_AUTOFILL': {
+      const res = await authFetch('/api/ext/extract', {
+        method: 'POST',
+        body: JSON.stringify({ url: msg.url, text: msg.text }),
+      })
+      if (!res.ok) {
+        const err = await res.json().catch(() => ({ detail: 'Extraction failed' }))
+        return { ok: false, error: err.detail || 'AI auto-fill failed' }
+      }
+      const data: ExtractedJobData = await res.json()
+      return { ok: true, data }
+    }
+
+    case 'SET_CONFIRMED_PROFILES': {
+      await chrome.storage.local.set({ confirmed_profiles: msg.profiles })
+      return { ok: true, data: msg.profiles }
+    }
+
+    case 'GET_CONFIRMED_PROFILES': {
+      const { confirmed_profiles } = await chrome.storage.local.get('confirmed_profiles')
+      return { ok: true, data: (confirmed_profiles as Profile[]) || [] }
+    }
+
+    case 'SET_BASE_URL': {
+      await chrome.storage.sync.set({ base_url: msg.url })
+      return { ok: true, data: msg.url }
+    }
+
+    case 'GET_BASE_URL': {
+      const url = await getBaseUrl()
+      return { ok: true, data: url }
+    }
+
     case 'FETCH_FILE': {
       const token = await getToken()
-      const res = await fetch(`${API_BASE}${msg.url}`, {
+      const base = await getBaseUrl()
+      const res = await fetch(`${base}${msg.url}`, {
         headers: token ? { Authorization: `Bearer ${token}` } : {},
       })
       if (!res.ok) return { ok: false, error: 'Failed to fetch file' }
 
-      const contentType =
-        res.headers.get('content-type') || 'application/octet-stream'
+      const contentType = res.headers.get('content-type') || 'application/octet-stream'
       const filename = msg.url.split('/').pop() || 'download'
       const buffer = await res.arrayBuffer()
 
-      // Convert to base64 for message passing (ArrayBuffer is not serializable)
       const bytes = new Uint8Array(buffer)
       let binary = ''
       for (let i = 0; i < bytes.byteLength; i++) {

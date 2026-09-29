@@ -1,6 +1,6 @@
 import uuid
 
-from sqlalchemy import ForeignKey, String
+from sqlalchemy import ForeignKey, String, Text
 from sqlalchemy.orm import Mapped, mapped_column, relationship
 
 from database import Base
@@ -19,5 +19,6 @@ class Experience(Base):
     title: Mapped[str] = mapped_column(String(300))
     start_date: Mapped[str] = mapped_column(String(50))
     end_date: Mapped[str | None] = mapped_column(String(50), nullable=True)
+    description: Mapped[str | None] = mapped_column(Text, nullable=True)
 
     profile: Mapped["Profile"] = relationship(back_populates="experiences")

@@ -48,9 +48,6 @@ const emptyProfile: ProfileCreate = {
   show_skills: true,
   check_clearance: false,
   security_clearance: null,
-  foundry_endpoint: null,
-  foundry_api_key: null,
-  foundry_model_id: null,
   educations: [],
   experiences: [],
 };
@@ -66,8 +63,6 @@ export default function ProfileEdit() {
   const [error, setError] = useState<string | null>(null);
   const [readOnly, setReadOnly] = useState(false);
   const [docStyles, setDocStyles] = useState<DocStyle[]>([]);
-  const [foundryKeySet, setFoundryKeySet] = useState(false);
-
   useEffect(() => {
     getDocStyles()
       .then((res) => setDocStyles(res.data))
@@ -92,13 +87,9 @@ export default function ProfileEdit() {
           show_skills: p.show_skills ?? true,
           check_clearance: p.check_clearance ?? false,
           security_clearance: p.security_clearance ?? null,
-          foundry_endpoint: p.foundry_endpoint ?? null,
-          foundry_api_key: null,
-          foundry_model_id: p.foundry_model_id ?? null,
           educations: p.educations,
           experiences: p.experiences,
         });
-        setFoundryKeySet(!!p.foundry_api_key_set);
         setReadOnly(p.is_shared && !p.is_owner && getUserRole() !== "admin");
       })
       .catch(() => setError("Failed to load profile"))
@@ -397,60 +388,6 @@ export default function ProfileEdit() {
                 <span>Active — sent with all KB prompts during generation</span>
               </div>
             )}
-          </CardContent>
-        </Card>
-
-        <Card>
-          <CardHeader>
-            <CardTitle className="text-base">Bring Your Own Claude Key (optional)</CardTitle>
-            <p className="text-xs text-muted-foreground leading-relaxed">
-              Attach a Microsoft Foundry-hosted Claude deployment to bill this profile's
-              resume generation to your own Azure resource instead of the shared platform key.
-              Leave blank to use the platform default.
-            </p>
-          </CardHeader>
-          <CardContent className="space-y-4">
-            <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-              <div className="space-y-1.5">
-                <Label>Foundry Endpoint</Label>
-                <Input
-                  value={profile.foundry_endpoint || ""}
-                  onChange={(e) =>
-                    setProfile({ ...profile, foundry_endpoint: e.target.value || null })
-                  }
-                  placeholder="https://<resource>.services.ai.azure.com/anthropic/v1"
-                  readOnly={readOnly}
-                />
-              </div>
-              <div className="space-y-1.5">
-                <Label>Model / Deployment ID</Label>
-                <Input
-                  value={profile.foundry_model_id || ""}
-                  onChange={(e) =>
-                    setProfile({ ...profile, foundry_model_id: e.target.value || null })
-                  }
-                  placeholder="claude-opus-4-8"
-                  readOnly={readOnly}
-                />
-              </div>
-            </div>
-            <div className="space-y-1.5">
-              <Label>API Key</Label>
-              <Input
-                type="password"
-                value={profile.foundry_api_key || ""}
-                onChange={(e) =>
-                  setProfile({ ...profile, foundry_api_key: e.target.value || null })
-                }
-                placeholder={foundryKeySet ? "•••••••••••• (unchanged — enter a new key to replace)" : "Enter API key"}
-                readOnly={readOnly}
-              />
-              {foundryKeySet && (
-                <p className="text-xs text-muted-foreground">
-                  A key is already saved. Leave blank to keep it, or enter a new one to replace it.
-                </p>
-              )}
-            </div>
           </CardContent>
         </Card>
 

@@ -14,6 +14,7 @@ export interface Experience {
   title: string;
   start_date: string;
   end_date?: string;
+  description?: string;
 }
 
 export interface SectionItem {
@@ -120,9 +121,6 @@ export interface Profile {
   show_skills: boolean;
   check_clearance: boolean;
   security_clearance?: string | null;
-  foundry_endpoint?: string | null;
-  foundry_api_key_set?: boolean;
-  foundry_model_id?: string | null;
   educations: Education[];
   experiences: Experience[];
   is_owner: boolean;
@@ -145,9 +143,6 @@ export interface ProfileCreate {
   show_skills?: boolean;
   check_clearance?: boolean;
   security_clearance?: string | null;
-  foundry_endpoint?: string | null;
-  foundry_api_key?: string | null;
-  foundry_model_id?: string | null;
   educations: Education[];
   experiences: Experience[];
 }

@@ -13,6 +13,7 @@ class LLMResponse:
     model_config_id: str | None = None
     input_price_per_1k: float = 0.0
     output_price_per_1k: float = 0.0
+    used_pool_key_id: str | None = None
 
 
 # Populated after provider modules are imported (avoids circular imports)

@@ -71,6 +71,7 @@ class GenerateResponse(BaseModel):
     prompt_tokens: int = 0
     completion_tokens: int = 0
     cost: float = 0.0
+    used_pool_key_id: str | None = None
 
 
 class BatchGenerateResponse(BaseModel):

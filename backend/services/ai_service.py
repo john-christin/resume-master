@@ -1,6 +1,7 @@
 import hashlib
 import json
 import logging
+import random
 import re
 import time
 from sqlalchemy import select
@@ -32,31 +33,18 @@ def clear_extraction_cache() -> None:
 from prompts import (
     COVER_LETTER as COVER_LETTER_SYSTEM_PROMPT,
     RESUME_COMBINED as COMBINED_CONTENT_SYSTEM_PROMPT,
-    RESUME_TAILOR as RESUME_SYSTEM_PROMPT,
+    RESUME_TAILOR as RESUME_TAILOR_PROMPT,
 )
 
 
-def _get_active_model_config(role: str = "resume", profile_id: str | None = None):
+def _get_active_model_config(role: str = "resume"):
     """Load whichever model is assigned to a role, via role_model_assignments.
 
     Args:
-        role: "resume" for resume tailoring/content (quality-critical),
-              "cover_letter" for cover letter generation,
-              "jd_parse" for job-description extraction,
-              "chat" for interview-prep chat,
-              "utility" for miscellaneous cheap tasks.
-              Every role except "resume" falls back to "resume" if
-              unconfigured, so nothing breaks before an admin sets up the
-              new roles. The same model can be assigned to multiple roles
-              at once (that's the whole point of the mapping table).
-        profile_id: If given and role == "resume", and the profile has its
-              own Microsoft Foundry-hosted Claude key attached, that key is
-              used instead of the global role assignment — the profile's
-              own Azure resource is billed rather than the shared platform
-              key. Falls through to the global assignment otherwise.
+        role: "resume", "cover_letter", "jd_parse", "chat", or "utility".
+              Every role except "resume" falls back to "resume" if unconfigured.
     """
     from models.ai_model_config import AIModelConfig
-    from models.profile import Profile
     from models.role_model_assignment import RoleModelAssignment
 
     def _lookup(db, for_role: str):
@@ -71,20 +59,6 @@ def _get_active_model_config(role: str = "resume", profile_id: str | None = None
 
     db = SessionLocal()
     try:
-        if profile_id and role == "resume":
-            profile = db.get(Profile, profile_id)
-            if profile and profile.foundry_api_key:
-                return {
-                    "id": None,
-                    "provider": "anthropic",
-                    "model_id": profile.foundry_model_id,
-                    "api_key": profile.foundry_api_key,
-                    "endpoint": profile.foundry_endpoint,
-                    "api_version": None,
-                    "input_price_per_1k": 0.0,
-                    "output_price_per_1k": 0.0,
-                }
-
         config = _lookup(db, role)
 
         # Fallback: any non-resume role uses the resume model if unconfigured
@@ -107,9 +81,90 @@ def _get_active_model_config(role: str = "resume", profile_id: str | None = None
     return None
 
 
-# Server-side web search tool — only meaningful for Anthropic-family
-# providers; other providers' call_*() functions accept and ignore `tools`.
-_WEB_SEARCH_TOOLS = [{"type": "web_search_20260209", "name": "web_search"}]
+def assign_key_for_job(model_config_id: str) -> tuple[str, str | None] | None:
+    """Atomically claim the next pool key for a queue job (round-robin).
+
+    Locks the AIModelConfig row, picks the active pool key at
+    key_rotation_index % len(keys), increments the index, and commits.
+
+    Returns (pool_key_id, label) or None if no active pool keys exist.
+    """
+    from models.api_key_pool import ApiKeyPool
+    from models.ai_model_config import AIModelConfig
+
+    db = SessionLocal()
+    try:
+        config = db.execute(
+            select(AIModelConfig)
+            .where(AIModelConfig.id == model_config_id)
+            .with_for_update()
+        ).scalar_one_or_none()
+
+        if not config:
+            return None
+
+        keys = db.scalars(
+            select(ApiKeyPool)
+            .where(ApiKeyPool.model_config_id == model_config_id, ApiKeyPool.is_active == True)  # noqa: E712
+            .order_by(ApiKeyPool.created_at.asc())
+        ).all()
+
+        if not keys:
+            return None
+
+        idx = config.key_rotation_index % len(keys)
+        chosen = keys[idx]
+        config.key_rotation_index += 1
+        db.commit()
+        return (chosen.id, chosen.label)
+    except Exception:
+        db.rollback()
+        logger.exception("Failed to assign key for job from config %s", model_config_id)
+        return None
+    finally:
+        db.close()
+
+
+
+def _load_pool_keys(model_config_id: str) -> list[tuple[str, str]]:
+    """Return active pool keys as (pool_key_id, api_key) in creation order."""
+    from models.api_key_pool import ApiKeyPool
+    db = SessionLocal()
+    try:
+        rows = db.execute(
+            select(ApiKeyPool.id, ApiKeyPool.api_key)
+            .where(
+                ApiKeyPool.model_config_id == model_config_id,
+                ApiKeyPool.is_active == True,  # noqa: E712
+            )
+            .order_by(ApiKeyPool.created_at.asc())
+        ).all()
+        return [(r[0], r[1]) for r in rows]
+    finally:
+        db.close()
+
+
+def _is_key_error(exc: Exception) -> bool:
+    """Return True if exc indicates an invalid/exhausted key (401 or 429)."""
+    # Anthropic SDK exceptions
+    try:
+        import anthropic
+        if isinstance(exc, (anthropic.AuthenticationError, anthropic.RateLimitError)):
+            return True
+    except ImportError:
+        pass
+    # httpx / requests HTTP status errors
+    try:
+        import httpx
+        if isinstance(exc, httpx.HTTPStatusError) and exc.response.status_code in (401, 429):
+            return True
+    except ImportError:
+        pass
+    # Generic check on string representation
+    msg = str(exc).lower()
+    if "401" in msg or "429" in msg or "rate limit" in msg or "authentication" in msg or "invalid x-api-key" in msg:
+        return True
+    return False
 
 
 def _call_llm(
@@ -118,23 +173,18 @@ def _call_llm(
     temperature: float = 0.7,
     tier: str = "resume",
     model_config_id: str | None = None,
-    profile_id: str | None = None,
+    fixed_pool_key_id: str | None = None,
 ) -> LLMResponse:
     """Route to the correct provider based on active model config.
 
     Args:
-        tier: "resume" (tailoring + summary/skills), "cover_letter",
-              "jd_parse" (JD extraction), "chat" (interview prep),
-              or "utility" (misc cheap tasks).
+        tier: "resume", "cover_letter", "jd_parse", "chat", or "utility".
         model_config_id: If provided, use this specific model config instead of tier lookup.
-        profile_id: Threaded to _get_active_model_config for the per-profile
-              Foundry-key override (see there). Ignored when model_config_id
-              is given — an explicit model choice always wins.
+        fixed_pool_key_id: If provided (queue jobs), try this pool key first. On 401/429
+            failover, try remaining pool keys in creation order, then config's own key.
+            Without this (direct generate, batch), pool keys are shuffled randomly.
 
-    Cost is computed here, immediately, from the same config that served
-    the call — not re-derived later from a separately-fetched "current
-    active model" price, which could reflect a different model than the
-    one that actually ran if the active config changed in between.
+    Cost is computed immediately from the config that served the call.
     """
     if model_config_id:
         from models.ai_model_config import AIModelConfig
@@ -154,7 +204,7 @@ def _call_llm(
         finally:
             db.close()
     else:
-        config = _get_active_model_config(role=tier, profile_id=profile_id)
+        config = _get_active_model_config(role=tier)
 
     if not config:
         # Fallback to env-var Azure config for backwards compatibility
@@ -169,52 +219,106 @@ def _call_llm(
             "output_price_per_1k": settings.default_output_price_per_1k,
         }
 
-    tools = _WEB_SEARCH_TOOLS if tier == "resume" and config["provider"] == "anthropic" else None
+    tools = None
 
-    start = time.monotonic()
-    try:
-        result = call_provider(messages, max_tokens, temperature, config, tools=tools)
-        result.cost = (
-            result.prompt_tokens / 1000 * config["input_price_per_1k"]
-            + result.completion_tokens / 1000 * config["output_price_per_1k"]
+    config_db_id = config.get("id")
+    own_key = config["api_key"]
+
+    # Build (pool_key_id_or_none, api_key) candidate list
+    if fixed_pool_key_id and config_db_id:
+        # Queue path: fixed key first, then remaining pool keys in creation order, own key last
+        all_pool = _load_pool_keys(config_db_id)  # [(id, key), ...] ordered by created_at
+        fixed_pair = next(((kid, k) for kid, k in all_pool if kid == fixed_pool_key_id), None)
+        others = [(kid, k) for kid, k in all_pool if kid != fixed_pool_key_id]
+        candidates: list[tuple[str | None, str]] = (
+            ([fixed_pair] if fixed_pair else []) + others
         )
-        result.provider = config["provider"]
-        result.model_id = config["model_id"]
-        result.model_config_id = config.get("id")
-        result.input_price_per_1k = config["input_price_per_1k"]
-        result.output_price_per_1k = config["output_price_per_1k"]
-        duration_ms = int((time.monotonic() - start) * 1000)
-        log_service.log_bg(
-            log_service.INFO, log_service.AI_CALL,
-            f"LLM call succeeded · {config['provider']} / {config['model_id']}",
-            details={
-                "provider": config["provider"],
-                "model_id": config["model_id"],
-                "tier": tier,
-                "prompt_tokens": result.prompt_tokens,
-                "completion_tokens": result.completion_tokens,
-                "cost": result.cost,
-                "max_tokens": max_tokens,
-                "temperature": temperature,
-            },
-            duration_ms=duration_ms,
-        )
-        return result
-    except Exception as exc:
-        duration_ms = int((time.monotonic() - start) * 1000)
-        log_service.log_bg(
-            log_service.ERROR, log_service.AI_CALL,
-            f"LLM call failed · {config.get('provider', '?')} / {config.get('model_id', '?')}",
-            details={
-                "provider": config.get("provider"),
-                "model_id": config.get("model_id"),
-                "tier": tier,
-                "max_tokens": max_tokens,
-            },
-            duration_ms=duration_ms,
-            **log_service.exc_to_log_kwargs(exc),
-        )
-        raise
+        if own_key not in (k for _, k in candidates):
+            candidates.append((None, own_key))
+    else:
+        # Direct/batch path: random shuffle (original behaviour)
+        pool_pairs = _load_pool_keys(config_db_id) if config_db_id else []
+        random.shuffle(pool_pairs)
+        candidates = pool_pairs
+        if own_key not in (k for _, k in candidates):
+            candidates.append((None, own_key))
+
+    last_exc: Exception | None = None
+    for attempt, (pool_key_id, api_key) in enumerate(candidates):
+        attempt_config = {**config, "api_key": api_key}
+        start = time.monotonic()
+        try:
+            result = call_provider(messages, max_tokens, temperature, attempt_config, tools=tools)
+            result.cost = (
+                result.prompt_tokens / 1000 * config["input_price_per_1k"]
+                + result.completion_tokens / 1000 * config["output_price_per_1k"]
+            )
+            result.provider = config["provider"]
+            result.model_id = config["model_id"]
+            result.model_config_id = config_db_id
+            result.input_price_per_1k = config["input_price_per_1k"]
+            result.output_price_per_1k = config["output_price_per_1k"]
+            result.used_pool_key_id = pool_key_id
+            duration_ms = int((time.monotonic() - start) * 1000)
+            log_service.log_bg(
+                log_service.INFO, log_service.AI_CALL,
+                f"LLM call succeeded · {config['provider']} / {config['model_id']}",
+                details={
+                    "provider": config["provider"],
+                    "model_id": config["model_id"],
+                    "tier": tier,
+                    "prompt_tokens": result.prompt_tokens,
+                    "completion_tokens": result.completion_tokens,
+                    "cost": result.cost,
+                    "max_tokens": max_tokens,
+                    "temperature": temperature,
+                    "key_pool_attempt": attempt + 1,
+                    "pool_key_id": pool_key_id,
+                },
+                duration_ms=duration_ms,
+            )
+            return result
+        except Exception as exc:
+            duration_ms = int((time.monotonic() - start) * 1000)
+            last_exc = exc
+            if _is_key_error(exc) and attempt < len(candidates) - 1:
+                logger.warning(
+                    "API key attempt %d/%d failed (%s) — retrying with next key",
+                    attempt + 1, len(candidates), type(exc).__name__,
+                )
+                if pool_key_id:
+                    log_service.log_bg(
+                        log_service.WARNING, log_service.AI_CALL,
+                        f"Pool key {pool_key_id} returned 401/429 — failing over",
+                        details={
+                            "pool_key_id": pool_key_id,
+                            "provider": config.get("provider"),
+                            "model_id": config.get("model_id"),
+                            "tier": tier,
+                            "attempt": attempt + 1,
+                        },
+                        duration_ms=duration_ms,
+                        **log_service.exc_to_log_kwargs(exc),
+                    )
+                continue
+            log_service.log_bg(
+                log_service.ERROR, log_service.AI_CALL,
+                f"LLM call failed · {config.get('provider', '?')} / {config.get('model_id', '?')}",
+                details={
+                    "provider": config.get("provider"),
+                    "model_id": config.get("model_id"),
+                    "tier": tier,
+                    "max_tokens": max_tokens,
+                    "key_pool_attempt": attempt + 1,
+                    "key_pool_size": len(candidates),
+                    "pool_key_id": pool_key_id,
+                },
+                duration_ms=duration_ms,
+                **log_service.exc_to_log_kwargs(exc),
+            )
+            raise
+
+    raise last_exc  # type: ignore[misc]
 
 
 # ---------------------------------------------------------------------------
@@ -256,13 +360,14 @@ def _normalize_ai_text(text: str) -> str:
 
 
 def _format_experiences(experiences: list[dict]) -> str:
-    """Format company/title/dates only — candidates no longer author bullets."""
+    """Format experiences for summary/cover letter context."""
     parts = []
     for exp in experiences:
         end = exp.get("end_date") or "Present"
-        parts.append(
-            f"Company: {exp['company']} | Title: {exp['title']} | {exp['start_date']} to {end}"
-        )
+        line = f"Company: {exp['company']} | Title: {exp['title']} | {exp['start_date']} to {end}"
+        if exp.get("description"):
+            line += f"\n  {exp['description']}"
+        parts.append(line)
     return "\n".join(parts)
 
 
@@ -411,6 +516,7 @@ def generate_resume_content(
     knowledge_base: str | None = None,
     creativity_factor: float = 0.3,
     profile_id: str | None = None,
+    pool_key_id: str | None = None,
 ) -> tuple[dict, dict]:
     """Generate summary and skills in a single LLM call.
 
@@ -456,9 +562,10 @@ Generate the summary, skills, and cover letter as a single JSON object."""
         "prompt_tokens": 0, "completion_tokens": 0, "cost": 0.0,
         "provider": "", "model_id": "", "model_config_id": None,
         "input_price_per_1k": 0.0, "output_price_per_1k": 0.0,
+        "used_pool_key_id": None,
     }
 
-    for attempt in range(2):
+    for attempt in range(3):
         resp = _call_llm(
             messages=[
                 {"role": "system", "content": COMBINED_CONTENT_SYSTEM_PROMPT},
@@ -467,7 +574,7 @@ Generate the summary, skills, and cover letter as a single JSON object."""
             max_tokens=8192,
             temperature=temperature,
             tier="resume",
-            profile_id=profile_id,
+            fixed_pool_key_id=pool_key_id,
         )
 
         total_usage["prompt_tokens"] += resp.prompt_tokens
@@ -478,12 +585,19 @@ Generate the summary, skills, and cover letter as a single JSON object."""
         total_usage["model_config_id"] = resp.model_config_id
         total_usage["input_price_per_1k"] = resp.input_price_per_1k
         total_usage["output_price_per_1k"] = resp.output_price_per_1k
+        if resp.used_pool_key_id is not None:
+            total_usage["used_pool_key_id"] = resp.used_pool_key_id
 
         content = resp.content
-        # Strip markdown code fences if present
         if content.startswith("```"):
             content = re.sub(r"^```(?:json)?\s*\n?", "", content)
             content = re.sub(r"\n?```\s*$", "", content)
+        content = content.strip()
+        if not content:
+            if attempt < 2:
+                logger.warning("Empty LLM response on attempt %d, retrying", attempt + 1)
+                continue
+            raise RuntimeError("LLM returned empty response after 3 attempts")
         try:
             result = json.loads(content)
             if not isinstance(result, dict):
@@ -497,16 +611,16 @@ Generate the summary, skills, and cover letter as a single JSON object."""
                 cat["skills"] = [_normalize_ai_text(s) for s in cat.get("skills", [])]
             return result, total_usage
         except (json.JSONDecodeError, ValueError) as e:
-            if attempt == 0:
+            if attempt < 2:
                 logger.warning(
-                    "Combined content JSON parse failed on attempt 1, retrying: %s", e
+                    "Combined content JSON parse failed on attempt %d, retrying: %s", attempt + 1, e
                 )
                 user_prompt = (
                     f"Your previous response was not valid JSON. "
                     f"Please respond with valid JSON only.\n\n{user_prompt}"
                 )
             else:
-                logger.error("Combined content JSON parse failed on attempt 2: %s", e)
+                logger.error("Combined content JSON parse failed on attempt 3: %s", e)
                 raise RuntimeError(
                     f"Failed to parse AI combined response: {e}"
                 ) from e
@@ -522,73 +636,61 @@ def tailor_resume(
     knowledge_base: str | None = None,
     creativity_factor: float = 0.3,
     profile_id: str | None = None,
+    pool_key_id: str | None = None,
 ) -> tuple[list[dict], dict]:
-    """Call LLM to research each employer via web search and write grounded resume bullets.
+    """Generate tailored resume bullets for all experiences in one LLM call."""
+    total_usage: dict = {
+        "prompt_tokens": 0, "completion_tokens": 0, "cost": 0.0,
+        "provider": "", "model_id": "", "model_config_id": None,
+        "input_price_per_1k": 0.0, "output_price_per_1k": 0.0,
+        "used_pool_key_id": None,
+    }
 
-    Candidates no longer author bullets themselves — `experiences` carries
-    only company/title/dates, and the model researches each employer (via
-    the web_search tool enabled in _call_llm for the "resume" tier) to write
-    bullets grounded in real, plausible work rather than reworded boilerplate.
-    """
-    formatted_exp = _format_experiences(experiences)
-    company_str = company or "the company"
+    if not experiences:
+        return [], total_usage
 
+    company_str = company or "the target company"
     skills_section = ""
     if required_skills:
-        skills_section = (
-            "\n\n## Job Description Required Skills\n" + ", ".join(required_skills)
-        )
+        skills_section = "\n\nRequired skills to weave in: " + ", ".join(required_skills)
 
     kb_section = ""
     if knowledge_base:
-        kb_section = f"""
-
-## Knowledge Base Guidelines (MUST FOLLOW)
-{knowledge_base}
-"""
+        kb_section = f"\n\n## Knowledge Base Guidelines (MUST FOLLOW)\n{knowledge_base}"
 
     jd_trimmed = _truncate_jd(job_description)
     style = _style_hint(creativity_factor)
     temperature = _effective_temperature(creativity_factor)
 
-    user_prompt = f"""## Candidate's Work History (company, title, dates only — no prior bullets)
-{formatted_exp}
+    exp_lines = []
+    for exp in experiences:
+        end = exp.get("end_date") or "Present"
+        lines = [f"- Company: {exp['company']} | Title: {exp['title']} | {exp['start_date']} to {end}"]
+        if exp.get("description"):
+            lines.append(f"  Description: {exp['description']}")
+        exp_lines.append("\n".join(lines))
+    experiences_str = "\n".join(exp_lines)
 
-## Target Job Description
-Title: {job_title} at {company_str}
-{jd_trimmed}{skills_section}
-{kb_section}
-## Writing Style
-Use a {style} writing style for the bullet points.
+    user_prompt = (
+        f"## Candidate Experiences\n{experiences_str}\n\n"
+        f"## Target Job\n"
+        f"Applying for: {job_title} at {company_str}\n\n"
+        f"## Job Description\n"
+        f"{jd_trimmed}{skills_section}{kb_section}\n\n"
+        f"## Writing Style\n"
+        f"Use a {style} writing style for the bullet points."
+    )
 
-## Required Output Format
-[
-  {{
-    "company": "...",
-    "location": "...",
-    "title": "...",
-    "start_date": "...",
-    "end_date": "...",
-    "bullets": ["bullet 1", "bullet 2"]
-  }}
-]"""
-
-    total_usage = {
-        "prompt_tokens": 0, "completion_tokens": 0, "cost": 0.0,
-        "provider": "", "model_id": "", "model_config_id": None,
-        "input_price_per_1k": 0.0, "output_price_per_1k": 0.0,
-    }
-
-    for attempt in range(2):
+    for attempt in range(3):
         resp = _call_llm(
             messages=[
-                {"role": "system", "content": RESUME_SYSTEM_PROMPT},
+                {"role": "system", "content": RESUME_TAILOR_PROMPT},
                 {"role": "user", "content": user_prompt},
             ],
-            max_tokens=8192,
+            max_tokens=4096,
             temperature=temperature,
             tier="resume",
-            profile_id=profile_id,
+            fixed_pool_key_id=pool_key_id,
         )
 
         total_usage["prompt_tokens"] += resp.prompt_tokens
@@ -599,41 +701,36 @@ Use a {style} writing style for the bullet points.
         total_usage["model_config_id"] = resp.model_config_id
         total_usage["input_price_per_1k"] = resp.input_price_per_1k
         total_usage["output_price_per_1k"] = resp.output_price_per_1k
+        if resp.used_pool_key_id is not None:
+            total_usage["used_pool_key_id"] = resp.used_pool_key_id
 
         content = resp.content
-        # Strip markdown code fences if present
         if content.startswith("```"):
             content = re.sub(r"^```(?:json)?\s*\n?", "", content)
             content = re.sub(r"\n?```\s*$", "", content)
+        content = content.strip()
+
+        if not content:
+            if attempt < 2:
+                logger.warning("Empty LLM response on attempt %d, retrying", attempt + 1)
+                continue
+            raise RuntimeError("LLM returned empty response after 3 attempts")
+
         try:
             result = json.loads(content)
             if not isinstance(result, list):
                 raise ValueError("Expected a JSON array")
-            required = {"company", "title", "start_date"}
-            invalid = [e for e in result if not required.issubset(e.keys())]
-            if invalid:
-                raise ValueError(
-                    f"Experience objects missing required keys: {invalid[0]}"
-                )
             for exp in result:
-                exp["bullets"] = [
-                    _normalize_ai_text(b) for b in exp.get("bullets", [])
-                ]
+                exp["bullets"] = [_normalize_ai_text(b) for b in exp.get("bullets", [])]
             return result, total_usage
         except (json.JSONDecodeError, ValueError) as e:
-            if attempt == 0:
-                logger.warning(
-                    "JSON parse failed on attempt 1, retrying: %s", e
-                )
-                user_prompt = (
-                    f"Your previous response was not valid JSON or had wrong structure. "
-                    f"Please respond with valid JSON only.\n\n{user_prompt}"
-                )
+            if attempt < 2:
+                logger.warning("Tailor resume JSON parse failed attempt %d: %s — retrying", attempt + 1, e)
+                user_prompt = f"Your previous response was not valid JSON. Respond with valid JSON only.\n\n{user_prompt}"
             else:
-                logger.error("JSON parse failed on attempt 2: %s", e)
-                raise RuntimeError(
-                    f"Failed to parse AI response: {e}"
-                ) from e
+                raise RuntimeError(f"Failed to parse AI response: {e}") from e
+
+    raise RuntimeError("tailor_resume: exhausted retries")
 
 
 def generate_cover_letter(
@@ -646,6 +743,7 @@ def generate_cover_letter(
     company: str | None = None,
     knowledge_base: str | None = None,
     creativity_factor: float = 0.3,
+    pool_key_id: str | None = None,
 ) -> tuple[str, dict]:
     """Call LLM to generate a cover letter."""
     formatted_exp = _format_experiences(experiences)
@@ -681,6 +779,7 @@ Write the cover letter body only (Dear Hiring Manager through sign-off)."""
         max_tokens=2048,
         temperature=temperature,
         tier="cover_letter",
+        fixed_pool_key_id=pool_key_id,
     )
 
     usage = {
@@ -692,5 +791,6 @@ Write the cover letter body only (Dear Hiring Manager through sign-off)."""
         "model_config_id": resp.model_config_id,
         "input_price_per_1k": resp.input_price_per_1k,
         "output_price_per_1k": resp.output_price_per_1k,
+        "used_pool_key_id": resp.used_pool_key_id,
     }
     return _normalize_ai_text(resp.content), usage
