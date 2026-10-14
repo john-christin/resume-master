@@ -4,7 +4,7 @@ from fastapi import APIRouter, Depends, HTTPException, Query
 from sqlalchemy import func, select, cast, Date, Integer
 from sqlalchemy.orm import Session
 
-from auth import require_role
+from auth import hash_password, require_role
 from database import get_db
 from services import log_service
 from models.ai_model_config import AIModelConfig
@@ -47,6 +47,7 @@ from schemas.admin import (
     UserCostStat,
     UserDailyPoint,
     UserListItem,
+    UserPasswordResetRequest,
     UserStatItem,
     UserStatsResponse,
 )
@@ -189,6 +190,33 @@ def change_user_role(
         details={"target_user_id": user_id, "target_username": user.username, "old_role": old_role, "new_role": data.role},
     )
     return {"detail": "Role updated", "user_id": user_id, "role": data.role}
+
+
+@router.put("/users/{user_id}/password")
+def reset_user_password(
+    user_id: str,
+    data: UserPasswordResetRequest,
+    current_user: User = Depends(_admin_only),
+    db: Session = Depends(get_db),
+):
+    if len(data.new_password) < 6:
+        raise HTTPException(
+            status_code=400, detail="New password must be at least 6 characters"
+        )
+
+    user = db.get(User, user_id)
+    if not user:
+        raise HTTPException(status_code=404, detail="User not found")
+
+    user.hashed_password = hash_password(data.new_password)
+    db.commit()
+    log_service.log_bg(
+        log_service.WARNING, log_service.ADMIN,
+        f"Password reset by admin: {user.username}",
+        user_id=current_user.id,
+        details={"target_user_id": user_id, "target_username": user.username},
+    )
+    return {"detail": "Password reset", "user_id": user_id}
 
 
 @router.post("/users/{user_id}/suspend")
