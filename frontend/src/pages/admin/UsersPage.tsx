@@ -6,6 +6,7 @@ import {
   deleteUser,
   getUsers,
   rejectUser,
+  resetUserPassword,
   suspendUser,
   unsuspendUser,
   updateUserRole,
@@ -108,6 +109,27 @@ export default function UsersPage() {
     )
       return;
     userAction(userId, () => deleteUser(userId));
+  };
+
+  const handleResetPassword = async (userId: string, username: string) => {
+    const newPassword = window.prompt(
+      `Enter a new password for "${username}" (min 6 characters):`
+    );
+    if (newPassword === null) return;
+    if (newPassword.length < 6) {
+      setError("New password must be at least 6 characters");
+      return;
+    }
+    setActionLoading(userId);
+    try {
+      await resetUserPassword(userId, newPassword);
+      setError(null);
+      window.alert(`Password for "${username}" has been reset.`);
+    } catch {
+      setError("Failed to reset password");
+    } finally {
+      setActionLoading(null);
+    }
   };
 
   if (loading && users.length === 0)
@@ -290,6 +312,16 @@ export default function UsersPage() {
                                 }
                               >
                                 Unsuspend
+                              </Button>
+                            )}
+                            {user.status !== "pending" && (
+                              <Button
+                                size="sm"
+                                variant="outline"
+                                disabled={isLoading}
+                                onClick={() => handleResetPassword(user.id, user.username)}
+                              >
+                                Reset Password
                               </Button>
                             )}
                             {user.status !== "pending" && (
