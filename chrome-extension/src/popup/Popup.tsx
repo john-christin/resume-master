@@ -283,10 +283,10 @@ export default function Popup() {
           </div>
         </div>
       ) : (
-        <div className="px-6 py-5 space-y-4">
+        <div className="px-6 py-5 flex flex-col gap-4">
           <div className="p-3 rounded-lg bg-slate-900 border border-slate-800">
             <p className="text-xs text-slate-400 mb-2">Queuing for:</p>
-            <div className="space-y-1.5">
+            <div className="space-y-1.5 max-h-[160px] overflow-y-auto">
               {confirmedProfiles.map((p) => (
                 <div key={p.id} className="flex items-center gap-2">
                   <div className="w-1.5 h-1.5 rounded-full bg-indigo-400 flex-shrink-0" />
