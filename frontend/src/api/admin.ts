@@ -26,6 +26,9 @@ export const unsuspendUser = (userId: string) =>
 export const deleteUser = (userId: string) =>
   api.delete(`/api/admin/users/${userId}`);
 
+export const resetUserPassword = (userId: string, newPassword: string) =>
+  api.put(`/api/admin/users/${userId}/password`, { new_password: newPassword });
+
 export const updateUserRole = (userId: string, role: string) =>
   api.patch(`/api/admin/users/${userId}/role`, { role });
 

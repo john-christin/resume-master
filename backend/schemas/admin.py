@@ -18,6 +18,10 @@ class UserApproveRequest(BaseModel):
     role: str  # "admin" | "bidder" | "caller"
 
 
+class UserPasswordResetRequest(BaseModel):
+    new_password: str
+
+
 class ProfileStat(BaseModel):
     profile_id: str
     name: str
