@@ -9,9 +9,9 @@ from sqlalchemy.orm import Session
 from auth import get_approved_user
 from database import get_db
 from models.application import Application
-from models.profile import Profile
 from models.queue import QueueTask
 from models.user import User
+from routers.generate import _get_accessible_profile
 
 router = APIRouter(prefix="/api/queue", tags=["queue"])
 
@@ -97,9 +97,7 @@ def enqueue_task(
     current_user: User = Depends(get_approved_user),
     db: Session = Depends(get_db),
 ):
-    profile = db.get(Profile, profile_id)
-    if not profile or profile.owner_id != current_user.id:
-        raise HTTPException(status_code=404, detail="Profile not found")
+    profile = _get_accessible_profile(profile_id, current_user, db)
 
     # Snapshot profile name at enqueue time
     profile_name = profile.name if hasattr(profile, "name") else profile_id

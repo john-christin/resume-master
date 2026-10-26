@@ -165,6 +165,7 @@ export default function Widget() {
     setStage({ name: 'queuing' })
 
     let successCount = 0
+    let lastError = ''
     for (const profile of profiles) {
       const res: SWResponse = await chrome.runtime.sendMessage({
         type: 'QUEUE_JOB',
@@ -178,10 +179,16 @@ export default function Widget() {
         },
       })
       if (res.ok) successCount++
+      else lastError = res.error
     }
 
     if (successCount === 0) {
-      setError('Failed to add to queue. Please check your connection.')
+      // fetch() rejections surface as "Failed to fetch"; anything else is a server-side reason
+      setError(
+        lastError && lastError !== 'Failed to fetch'
+          ? `Failed to add to queue: ${lastError}`
+          : 'Failed to add to queue. Please check your connection.',
+      )
       setStage({ name: 'form' })
       return
     }
