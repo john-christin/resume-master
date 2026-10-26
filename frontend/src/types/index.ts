@@ -17,70 +17,206 @@ export interface Experience {
   description?: string;
 }
 
-export interface SectionItem {
-  key: string;
-  visible: boolean;
+export interface Certification {
+  id?: string;
+  name: string;
+  issuer?: string | null;
+  issue_date?: string | null;
+  expiry_date?: string | null;
 }
 
-export interface StyleConfig {
-  font_name: string;
-  font_size_name: number;
-  font_size_section: number;
-  font_size_body: number;
-  font_size_contact: number;
-  header_layout: "centered" | "left";
-  accent_color: string;
-  section_separator: "line" | "thick_line" | "double_line" | "none";
-  name_bold: boolean;
-  name_uppercase: boolean;
-  section_caps: boolean;
+export interface CustomSection {
+  title: string;
+  items: string[];
+}
+
+// ---------------------------------------------------------------------------
+// Document style (v2) — mirrors backend/schemas/doc_style.py
+// ---------------------------------------------------------------------------
+export type UnderlineStyle = "none" | "single" | "double" | "dotted" | "dashed" | "thick" | "wavy";
+export type BorderLineStyle =
+  | "none" | "single" | "double" | "triple" | "dotted" | "dashed" | "dash_dot" | "thick" | "wave";
+export type TextAlign = "left" | "center" | "right" | "justify";
+export type SectionKey = "summary" | "skills" | "experience" | "education" | "certifications";
+
+export interface TextStyle {
+  font: string | null; // null → inherit fonts.family
+  size: number | null; // pt; null → inherit
+  bold: boolean;
+  italic: boolean;
+  underline: UnderlineStyle;
+  strike: boolean;
+  small_caps: boolean;
+  all_caps: boolean;
+  color: string | null; // hex without #; null → automatic
+  highlight: string | null; // hex background behind the text
+  letter_spacing: number; // pt
+}
+
+export interface BorderSide {
+  style: BorderLineStyle;
+  width: number; // pt, 0.25–6
+  color: string; // hex without #
+  space: number; // pt, 0–31
+}
+
+export interface Borders {
+  top: BorderSide;
+  left: BorderSide;
+  bottom: BorderSide;
+  right: BorderSide;
+}
+
+export interface ParagraphStyle {
+  align: TextAlign;
+  space_before: number; // pt
+  space_after: number; // pt
+  line_spacing_mode: "multiple" | "exact" | "at_least";
+  line_spacing: number; // multiple, or pt for exact / at_least
+  left_indent: number; // inches
+  right_indent: number; // inches
+  first_line_indent: number; // inches (negative = hanging)
+  keep_with_next: boolean;
+  keep_together: boolean;
+  borders: Borders;
+  shading: string | null; // hex background fill
+}
+
+export interface PageSettings {
+  size: "letter" | "a4" | "legal";
+  orientation: "portrait" | "landscape";
   margin_top: number;
   margin_bottom: number;
   margin_left: number;
   margin_right: number;
-  space_before_section: number;
-  space_after_section: number;
-  name_color: string;
-  line_spacing: number;
-  section_bold: boolean;
-  bullet_char: string;
+  gutter: number;
+  mirror_margins: boolean;
+  header_distance: number;
+  footer_distance: number;
+  page_border: BorderSide;
+}
+
+export interface FontSettings {
+  family: string;
+  kerning: boolean;
+  auto_hyphenation: boolean;
+  widow_control: boolean;
+}
+
+export interface DocProperties {
+  title: string | null;
+  author: string | null;
+  keywords: string | null;
+  language: string | null;
+}
+
+export interface HeaderSettings {
+  layout: "centered" | "left" | "right";
+  name: TextStyle;
+  name_uppercase: boolean;
+  name_para: ParagraphStyle;
+  contact: TextStyle;
   contact_separator: string;
+  contact_para: ParagraphStyle;
+  hyperlinks: boolean;
+  link_color: string | null;
+  link_underline: boolean;
+}
 
-  // Section ordering + visibility
-  sections: SectionItem[];
+export interface HeadingSettings {
+  text: TextStyle;
+  para: ParagraphStyle;
+  titles: Record<SectionKey, string>;
+}
 
-  // Section heading visual style
-  section_heading_style: "plain" | "underline" | "line_below" | "thick_line_below" | "double_line_below" | "boxed" | "bar";
+export interface ListSettings {
+  kind: "bullet" | "dash" | "none" | "numbered" | "lettered" | "custom";
+  char: string;
+  indent: number; // inches — text position
+  hanging: number; // inches — marker hangs left of text
+  color: string | null;
+  para: ParagraphStyle;
+}
 
-  // Spacing
-  space_between_entries: number;
-  space_after_bullet: number;
+export interface BodySettings {
+  text: TextStyle;
+  summary_para: ParagraphStyle;
+  skills_para: ParagraphStyle;
+  skills_category: TextStyle;
+  skills_separator: string;
+}
 
-  // Entry layout
-  entry_title_size: number;
-  entry_subtitle_size: number;
-  entry_subtitle_style: "normal" | "bold" | "italic" | "bold_italic";
-  entry_list_style: "bullet" | "dash" | "none";
-  entry_indent_body: boolean;
-
-  // Per-element colors
-  color_heading: string;
-  color_heading_line: string;
-  color_job_title: string;
-  color_employer: string;
-  color_dates: string;
-  color_subtitle: string;
-  color_contact: string;
-
-  // Name extended
-  name_italic: boolean;
-  name_letter_spacing: number;
-
-  // Experience layout
+export interface EntrySettings {
   experience_layout: "employer-title" | "title-employer" | "combined";
-
-  // Education layout
+  job_title: TextStyle;
+  employer: TextStyle;
+  combined_separator: string;
   education_layout: "degree-school" | "school-degree";
+  degree: TextStyle;
+  school: TextStyle;
+  gpa: TextStyle;
+  certification_layout: "name-issuer" | "inline";
+  cert_name: TextStyle;
+  cert_issuer: TextStyle;
+  dates: TextStyle;
+  date_format: "as_entered" | "mon_yyyy" | "month_yyyy" | "mm_yyyy" | "yyyy";
+  date_separator: string;
+  present_label: string;
+  first_line_para: ParagraphStyle;
+  second_line_para: ParagraphStyle;
+  bullets: ListSettings;
+}
+
+export interface HeaderFooterSettings {
+  header_text: string; // supports {name}
+  footer_text: string; // supports {name}
+  page_numbers: "none" | "number" | "page_of_total";
+  page_number_position: "header" | "footer";
+  text: TextStyle;
+  para: ParagraphStyle;
+  different_first_page: boolean;
+}
+
+export interface CoverLetterSettings {
+  margin_top: number;
+  margin_bottom: number;
+  margin_left: number;
+  margin_right: number;
+  letterhead: "left" | "centered" | "right" | "match_resume";
+  name: TextStyle;
+  name_uppercase: boolean;
+  name_para: ParagraphStyle;
+  contact: TextStyle;
+  contact_separator: string;
+  contact_para: ParagraphStyle;
+  letterhead_border: BorderSide;
+  include_date: boolean;
+  date_format: "long" | "us" | "iso";
+  date: TextStyle;
+  date_para: ParagraphStyle;
+  include_recipient: boolean;
+  body: TextStyle;
+  body_para: ParagraphStyle;
+  header_footer: HeaderFooterSettings;
+}
+
+export interface SectionItem {
+  key: SectionKey;
+  visible: boolean;
+}
+
+export interface StyleConfig {
+  version: 2;
+  page: PageSettings;
+  fonts: FontSettings;
+  properties: DocProperties;
+  header: HeaderSettings;
+  headings: HeadingSettings;
+  body: BodySettings;
+  entries: EntrySettings;
+  header_footer: HeaderFooterSettings;
+  sections: SectionItem[];
+  cover_letter: CoverLetterSettings;
 }
 
 export interface DocStyle {
@@ -124,6 +260,8 @@ export interface Profile {
   security_clearance?: string | null;
   educations: Education[];
   experiences: Experience[];
+  certifications: Certification[];
+  custom_sections: CustomSection[];
   is_owner: boolean;
   is_shared: boolean;
   owner_username?: string;
@@ -147,6 +285,8 @@ export interface ProfileCreate {
   security_clearance?: string | null;
   educations: Education[];
   experiences: Experience[];
+  certifications?: Certification[];
+  custom_sections?: CustomSection[];
 }
 
 export interface ClearanceCheckResponse {

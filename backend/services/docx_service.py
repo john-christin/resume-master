@@ -1,134 +1,90 @@
-from datetime import date
 from pathlib import Path
 
 from docx import Document
-from docx.enum.text import WD_ALIGN_PARAGRAPH, WD_LINE_SPACING
-from docx.shared import Inches, Pt, RGBColor
 
-from schemas.doc_style import StyleConfig
+from schemas.doc_style import (
+    Borders,
+    HeaderFooterSettings,
+    ParagraphStyle,
+    StyleConfig,
+    TextStyle,
+)
+from services import docx_helpers as h
 
 _DEFAULT_STYLE = StyleConfig()
 
-
-def _hex_to_rgbcolor(hex_str: str) -> RGBColor:
-    h = hex_str.lstrip("#").zfill(6)
-    return RGBColor(int(h[0:2], 16), int(h[2:4], 16), int(h[4:6], 16))
+_LAYOUT_ALIGN = {"centered": "center", "left": "left", "right": "right", "match_resume": "left"}
 
 
-def _set_font(run, name: str = "Calibri", size: float = 11, bold: bool = False,
-              italic: bool = False, color: str | None = None):
-    run.font.name = name
-    run.font.size = Pt(size)
-    run.bold = bold
-    run.italic = italic
-    if color:
-        run.font.color.rgb = _hex_to_rgbcolor(color)
+def _new_document(s: StyleConfig, user_name: str, title: str):
+    """Document with the style's default font, heading style and metadata applied."""
+    doc = Document()
+    h.set_default_font(doc, s.fonts.family, language=s.properties.language)
+    h.add_heading_style(doc)
+    h.set_doc_settings(doc, s.fonts.auto_hyphenation, s.page.mirror_margins)
+    props = doc.core_properties
+    props.title = s.properties.title or title
+    props.author = s.properties.author or user_name
+    if s.properties.keywords:
+        props.keywords = s.properties.keywords
+    if s.properties.language:
+        props.language = s.properties.language
+    return doc
 
 
-def _apply_entry_subtitle_style(run, style: StyleConfig):
-    es = style.entry_subtitle_style
-    run.bold = es in ("bold", "bold_italic")
-    run.italic = es in ("italic", "bold_italic")
+def _add_run(paragraph, text: str, ts: TextStyle, s: StyleConfig, default_color: str | None = None):
+    run = paragraph.add_run(text)
+    h.format_run(run, ts, s.fonts.family, s.fonts.kerning, default_color)
+    return run
 
 
-def _add_section_border(paragraph, style: StyleConfig):
-    """Apply section heading visual style based on section_heading_style."""
-    from docx.oxml.ns import qn
-    from lxml import etree
-
-    heading_style = style.section_heading_style
-    line_color = style.color_heading_line
-
-    # Map legacy section_separator to new style when default
-    if heading_style == "line_below" and style.section_separator != "line":
-        sep_map = {
-            "thick_line": "thick_line_below",
-            "double_line": "double_line_below",
-            "none": "plain",
-        }
-        heading_style = sep_map.get(style.section_separator, "line_below")
-
-    if heading_style == "plain":
+def _build_header_footer(doc, section, hf: HeaderFooterSettings, user_name: str, s: StyleConfig):
+    """Optional running header / footer text and page numbers."""
+    header_text = hf.header_text.replace("{name}", user_name).strip()
+    footer_text = hf.footer_text.replace("{name}", user_name).strip()
+    numbers = hf.page_numbers != "none"
+    if not (header_text or footer_text or numbers):
         return
 
-    if heading_style == "underline":
-        for run in paragraph.runs:
-            run.font.underline = True
-        return
+    section.different_first_page_header_footer = hf.different_first_page
 
-    pPr = paragraph._element.get_or_add_pPr()
+    def fill(container, text: str, with_number: bool):
+        if not (text or with_number):
+            return
+        first = True
+        for kind in ("text", "number"):
+            if kind == "text" and not text:
+                continue
+            if kind == "number" and not with_number:
+                continue
+            para = container.paragraphs[0] if first else container.add_paragraph()
+            first = False
+            h.apply_paragraph(para, hf.para, widow_control=s.fonts.widow_control)
+            if kind == "text":
+                _add_run(para, text, hf.text, s)
+            elif hf.page_numbers == "number":
+                h.add_field(para, "PAGE", hf.text, s.fonts.family)
+            else:
+                _add_run(para, "Page ", hf.text, s)
+                h.add_field(para, "PAGE", hf.text, s.fonts.family)
+                _add_run(para, " of ", hf.text, s)
+                h.add_field(para, "NUMPAGES", hf.text, s.fonts.family, placeholder="1")
 
-    if heading_style in ("line_below", "thick_line_below", "double_line_below"):
-        val_map = {
-            "line_below": ("single", "4"),
-            "thick_line_below": ("thick", "6"),
-            "double_line_below": ("double", "4"),
-        }
-        val, sz = val_map[heading_style]
-        pBdr = etree.SubElement(pPr, qn("w:pBdr"))
-        bottom = etree.SubElement(pBdr, qn("w:bottom"))
-        bottom.set(qn("w:val"), val)
-        bottom.set(qn("w:sz"), sz)
-        bottom.set(qn("w:space"), "1")
-        bottom.set(qn("w:color"), line_color)
-
-    elif heading_style == "boxed":
-        pBdr = etree.SubElement(pPr, qn("w:pBdr"))
-        for side in ("top", "left", "bottom", "right"):
-            el = etree.SubElement(pBdr, qn(f"w:{side}"))
-            el.set(qn("w:val"), "single")
-            el.set(qn("w:sz"), "4")
-            el.set(qn("w:space"), "4")
-            el.set(qn("w:color"), line_color)
-
-    elif heading_style == "bar":
-        pBdr = etree.SubElement(pPr, qn("w:pBdr"))
-        left = etree.SubElement(pBdr, qn("w:left"))
-        left.set(qn("w:val"), "single")
-        left.set(qn("w:sz"), "18")   # ~2.25pt thick
-        left.set(qn("w:space"), "6")
-        left.set(qn("w:color"), line_color)
+    fill(section.header, header_text, numbers and hf.page_number_position == "header")
+    fill(section.footer, footer_text, numbers and hf.page_number_position == "footer")
 
 
-def _add_left_tabstop(paragraph, position_inches: float):
-    from docx.oxml.ns import qn
-    from lxml import etree
-
-    pPr = paragraph._element.get_or_add_pPr()
-    tabs = pPr.find(qn("w:tabs"))
-    if tabs is None:
-        tabs = etree.SubElement(pPr, qn("w:tabs"))
-    tab = etree.SubElement(tabs, qn("w:tab"))
-    tab.set(qn("w:val"), "left")
-    tab.set(qn("w:pos"), str(int(position_inches * 1440)))
-
-
-def _set_line_spacing(paragraph, spacing: float):
-    if spacing != 1.0:
-        paragraph.paragraph_format.line_spacing_rule = WD_LINE_SPACING.MULTIPLE
-        paragraph.paragraph_format.line_spacing = spacing
-
-
-def _add_tabstop_right(paragraph, position_inches: float):
-    from docx.oxml.ns import qn
-    from lxml import etree
-
-    pPr = paragraph._element.get_or_add_pPr()
-    tabs = pPr.find(qn("w:tabs"))
-    if tabs is None:
-        tabs = etree.SubElement(pPr, qn("w:tabs"))
-    tab = etree.SubElement(tabs, qn("w:tab"))
-    tab.set(qn("w:val"), "right")
-    tab.set(qn("w:pos"), str(int(position_inches * 1440)))
-
-
-def _bullet_char_for_style(style: StyleConfig) -> str | None:
-    """Return bullet prefix string or None for 'none' list style."""
-    if style.entry_list_style == "none":
-        return None
-    if style.entry_list_style == "dash":
-        return "–"
-    return style.bullet_char
+def _add_contact_line(paragraph, parts: list[tuple[str, str | None]], separator: str,
+                      ts: TextStyle, s: StyleConfig):
+    """parts: (text, url-or-None). Writes 'a | b | c' with optional hyperlinks."""
+    for i, (text, url) in enumerate(parts):
+        if i:
+            _add_run(paragraph, f" {separator} ", ts, s)
+        if url and s.header.hyperlinks:
+            h.add_hyperlink(paragraph, text, url, ts, s.fonts.family,
+                            s.header.link_color, s.header.link_underline, s.fonts.kerning)
+        else:
+            _add_run(paragraph, text, ts, s)
 
 
 def create_resume(
@@ -143,216 +99,190 @@ def create_resume(
     tailored_experiences: list[dict],
     output_path: Path,
     style: StyleConfig | None = None,
+    certifications: list[dict] | None = None,
+    custom_sections: list[dict] | None = None,
 ) -> Path:
     """Generate a resume DOCX at output_path. Returns the path."""
     s = style or _DEFAULT_STYLE
-    doc = Document()
+    doc = _new_document(s, user_name, f"{user_name} - Resume")
+    section = doc.sections[0]
+    h.apply_page(section, s.page)
+    content_width = h.content_width_in(section)
+    widow = s.fonts.widow_control
+    lists = h.ListFactory(doc)
 
-    page_width_inches = 8.5
-    content_width = page_width_inches - s.margin_left - s.margin_right
+    _build_header_footer(doc, section, s.header_footer, user_name, s)
 
-    for section in doc.sections:
-        section.top_margin = Inches(s.margin_top)
-        section.bottom_margin = Inches(s.margin_bottom)
-        section.left_margin = Inches(s.margin_left)
-        section.right_margin = Inches(s.margin_right)
+    def para(ps: ParagraphStyle, align: str | None = None):
+        p = doc.add_paragraph()
+        h.apply_paragraph(p, ps, align_override=align, widow_control=widow)
+        return p
 
-    align = WD_ALIGN_PARAGRAPH.CENTER if s.header_layout == "centered" else WD_ALIGN_PARAGRAPH.LEFT
+    def date_range(start: str | None, end: str | None) -> str:
+        e = s.entries
+        start_txt = h.format_date(start, e.date_format, present_label="")
+        end_txt = h.format_date(end, e.date_format, present_label=e.present_label)
+        return f"{start_txt} {e.date_separator} {end_txt}"
 
-    # --- Headline ---
-    name_para = doc.add_paragraph()
-    name_para.alignment = align
-    name_para.paragraph_format.space_after = Pt(2)
-    name_text = user_name.upper() if s.name_uppercase else user_name
-    run = name_para.add_run(name_text)
-    _set_font(run, name=s.font_name, size=s.font_size_name, bold=s.name_bold,
-              italic=s.name_italic, color=s.name_color)
-    if s.name_letter_spacing:
-        from docx.oxml.ns import qn
-        rPr = run._r.get_or_add_rPr()
-        spacing_el = rPr.find(qn("w:spacing"))
-        if spacing_el is None:
-            from lxml import etree
-            spacing_el = etree.SubElement(rPr, qn("w:spacing"))
-        spacing_el.set(qn("w:val"), str(int(s.name_letter_spacing * 20)))
+    def add_dates(p, text: str):
+        _add_run(p, f"\t{text}", s.entries.dates, s)
 
-    contact_parts = [p for p in [location, phone, email, linkedin] if p]
+    # --- Headline ---------------------------------------------------------
+    hd = s.header
+    align = _LAYOUT_ALIGN[hd.layout]
+    name_para = para(hd.name_para, align)
+    _add_run(name_para, user_name.upper() if hd.name_uppercase else user_name, hd.name, s)
+
+    contact_parts: list[tuple[str, str | None]] = []
+    if location:
+        contact_parts.append((location, None))
+    if phone:
+        contact_parts.append((phone, None))
+    if email:
+        contact_parts.append((email, h.normalize_url(f"mailto:{email}")))
+    if linkedin:
+        contact_parts.append((linkedin, h.normalize_url(linkedin)))
     if contact_parts:
-        contact_para = doc.add_paragraph()
-        contact_para.alignment = align
-        contact_para.paragraph_format.space_after = Pt(6)
-        run = contact_para.add_run(f" {s.contact_separator} ".join(contact_parts))
-        _set_font(run, name=s.font_name, size=s.font_size_contact, color=s.color_contact)
+        contact_para = para(hd.contact_para, align)
+        _add_contact_line(contact_para, contact_parts, hd.contact_separator, hd.contact, s)
 
-    def _section_heading(label: str):
-        heading = doc.add_paragraph()
-        heading.paragraph_format.space_before = Pt(s.space_before_section)
-        heading.paragraph_format.space_after = Pt(s.space_after_section)
-        text = label.upper() if s.section_caps else label
-        run = heading.add_run(text)
-        _set_font(run, name=s.font_name, size=s.font_size_section, bold=s.section_bold,
-                  color=s.color_heading)
-        _add_section_border(heading, s)
-        return heading
+    # --- Shared bits --------------------------------------------------------
+    def section_heading(key: str, fallback: str):
+        label = s.headings.titles.get(key) or fallback
+        p = para(s.headings.para)
+        p.style = doc.styles["Section Heading"]
+        # re-apply: assigning a style does not remove direct formatting, but keep order stable
+        _add_run(p, label, s.headings.text, s)
+        return p
 
-    def _render_summary():
+    def add_bullets(items: list[str]):
+        bl = s.entries.bullets
+        num_id = lists.new_list(bl.kind, bl.char, s.body.text.font or s.fonts.family, bl.indent,
+                                  bl.hanging, bl.color, s.body.text.size)
+        for text in items:
+            p = para(bl.para)
+            if num_id is not None:
+                h.apply_numbering(p, num_id)
+            _add_run(p, text, s.body.text, s)
+
+    # --- Sections -----------------------------------------------------------
+    def render_summary():
         if not summary:
             return
-        _section_heading("Professional Summary")
-        summary_para = doc.add_paragraph()
-        summary_para.paragraph_format.space_after = Pt(4)
-        _set_line_spacing(summary_para, s.line_spacing)
-        run = summary_para.add_run(summary)
-        _set_font(run, name=s.font_name, size=s.font_size_body)
+        section_heading("summary", "Professional Summary")
+        p = para(s.body.summary_para)
+        _add_run(p, summary, s.body.text, s)
 
-    def _render_skills():
+    def render_skills():
         if not skills:
             return
-        _section_heading("Technical Skills")
-        for skill_cat in skills:
-            skill_para = doc.add_paragraph()
-            skill_para.paragraph_format.space_after = Pt(1)
-            _set_line_spacing(skill_para, s.line_spacing)
-            cat_run = skill_para.add_run(f"{skill_cat['category']}: ")
-            _set_font(cat_run, name=s.font_name, size=s.font_size_body, bold=True)
-            skills_run = skill_para.add_run(", ".join(skill_cat["skills"]))
-            _set_font(skills_run, name=s.font_name, size=s.font_size_body)
+        section_heading("skills", "Technical Skills")
+        for cat in skills:
+            p = para(s.body.skills_para)
+            _add_run(p, f"{cat['category']}: ", s.body.skills_category, s)
+            _add_run(p, s.body.skills_separator.join(cat["skills"]), s.body.text, s)
 
-    def _render_experience():
+    def render_experience():
         if not tailored_experiences:
             return
-        _section_heading("Professional Experience")
-        bullet_prefix = _bullet_char_for_style(s)
-        indent = Inches(0.25) if s.entry_indent_body else Inches(0)
-
-        for i, exp in enumerate(tailored_experiences):
-            end = exp.get("end_date") or "Present"
-            exp_location = exp.get("location") or ""
+        section_heading("experience", "Professional Experience")
+        e = s.entries
+        for exp in tailored_experiences:
             company = exp.get("company") or ""
             title = exp.get("title") or ""
-
+            exp_location = exp.get("location") or ""
             company_text = f"{company}, {exp_location}" if exp_location else company
-            dates_text = f"{exp.get('start_date') or ''} – {end}"
+            dates_text = date_range(exp.get("start_date"), exp.get("end_date"))
 
-            if s.experience_layout == "combined":
-                # Single line: "Title | Company" with dates right-aligned
-                entry_para = doc.add_paragraph()
-                entry_para.paragraph_format.space_before = Pt(s.space_between_entries)
-                entry_para.paragraph_format.space_after = Pt(1)
-                _add_tabstop_right(entry_para, content_width)
-                combined_text = f"{title} | {company_text}"
-                run = entry_para.add_run(combined_text)
-                _set_font(run, name=s.font_name, size=s.entry_title_size, bold=True,
-                          color=s.color_job_title)
-                run = entry_para.add_run(f"\t{dates_text}")
-                _set_font(run, name=s.font_name, size=s.font_size_contact, color=s.color_dates)
+            if e.experience_layout == "combined":
+                p = para(e.first_line_para)
+                h.add_right_tab(p, content_width)
+                _add_run(p, title, e.job_title, s)
+                _add_run(p, f" {e.combined_separator} {company_text}", e.employer, s)
+                add_dates(p, dates_text)
+            elif e.experience_layout == "title-employer":
+                p = para(e.first_line_para)
+                h.add_right_tab(p, content_width)
+                _add_run(p, title, e.job_title, s)
+                add_dates(p, dates_text)
+                p2 = para(e.second_line_para)
+                _add_run(p2, company_text, e.employer, s)
+            else:  # employer-title
+                p = para(e.first_line_para)
+                _add_run(p, company_text, e.employer, s)
+                p2 = para(e.second_line_para)
+                h.add_right_tab(p2, content_width)
+                _add_run(p2, title, e.job_title, s)
+                add_dates(p2, dates_text)
 
-            elif s.experience_layout == "title-employer":
-                # Title (bold) on line 1, employer on line 2
-                title_para = doc.add_paragraph()
-                title_para.paragraph_format.space_before = Pt(s.space_between_entries)
-                title_para.paragraph_format.space_after = Pt(1)
-                _add_tabstop_right(title_para, content_width)
-                run = title_para.add_run(title)
-                _set_font(run, name=s.font_name, size=s.entry_title_size, bold=True,
-                          color=s.color_job_title)
-                run = title_para.add_run(f"\t{dates_text}")
-                _set_font(run, name=s.font_name, size=s.font_size_contact, color=s.color_dates)
+            add_bullets(exp.get("bullets", []))
 
-                employer_para = doc.add_paragraph()
-                employer_para.paragraph_format.space_after = Pt(1)
-                run = employer_para.add_run(company_text)
-                _set_font(run, name=s.font_name, size=s.entry_subtitle_size,
-                          color=s.color_employer)
-                _apply_entry_subtitle_style(run, s)
-
-            else:
-                # employer-title (default): Company bold on line 1, title + dates on line 2
-                company_para = doc.add_paragraph()
-                company_para.paragraph_format.space_before = Pt(s.space_between_entries)
-                company_para.paragraph_format.space_after = Pt(1)
-                run = company_para.add_run(company_text)
-                _set_font(run, name=s.font_name, size=s.entry_subtitle_size, bold=True,
-                          color=s.color_employer)
-
-                title_para = doc.add_paragraph()
-                title_para.paragraph_format.space_after = Pt(1)
-                _add_tabstop_right(title_para, content_width)
-                run = title_para.add_run(title)
-                _set_font(run, name=s.font_name, size=s.entry_title_size, color=s.color_job_title)
-                run = title_para.add_run(f"\t{dates_text}")
-                _set_font(run, name=s.font_name, size=s.font_size_contact, color=s.color_dates)
-
-            for bullet in exp.get("bullets", []):
-                bullet_para = doc.add_paragraph()
-                bullet_para.paragraph_format.space_before = Pt(0)
-                bullet_para.paragraph_format.space_after = Pt(s.space_after_bullet)
-                if s.entry_indent_body:
-                    bullet_para.paragraph_format.left_indent = indent
-                    bullet_para.paragraph_format.first_line_indent = Inches(-0.25)
-                    _add_left_tabstop(bullet_para, 0.25)
-                _set_line_spacing(bullet_para, s.line_spacing)
-                if bullet_prefix:
-                    run = bullet_para.add_run(f"{bullet_prefix}\t{bullet}")
-                else:
-                    run = bullet_para.add_run(bullet)
-                _set_font(run, name=s.font_name, size=s.font_size_body)
-
-    def _render_education():
+    def render_education():
         if not educations:
             return
-        _section_heading("Education")
+        section_heading("education", "Education")
+        e = s.entries
         for edu in educations:
-            end = edu.get("end_date") or "Present"
-
-            edu_para = doc.add_paragraph()
-            edu_para.paragraph_format.space_before = Pt(s.space_between_entries)
-            edu_para.paragraph_format.space_after = Pt(1)
-            _add_tabstop_right(edu_para, content_width)
-
+            dates_text = date_range(edu.get("start_date"), edu.get("end_date"))
             degree_text = f"{edu['degree']} in {edu['field']}"
             school_text = edu["school"]
-            dates_text = f"{edu['start_date']} – {end}"
 
-            if s.education_layout == "school-degree":
-                # School bold on top, degree below
-                run = edu_para.add_run(school_text)
-                _set_font(run, name=s.font_name, size=s.entry_title_size, bold=True,
-                          color=s.color_employer)
-                run = edu_para.add_run(f"\t{dates_text}")
-                _set_font(run, name=s.font_name, size=s.font_size_contact, color=s.color_dates)
-
-                subtitle_para = doc.add_paragraph()
-                subtitle_para.paragraph_format.space_after = Pt(1)
-                run = subtitle_para.add_run(degree_text)
-                _set_font(run, name=s.font_name, size=s.entry_subtitle_size,
-                          color=s.color_subtitle)
-                _apply_entry_subtitle_style(run, s)
+            p = para(e.first_line_para)
+            h.add_right_tab(p, content_width)
+            if e.education_layout == "school-degree":
+                _add_run(p, school_text, e.school, s)
+                add_dates(p, dates_text)
+                p2 = para(e.second_line_para)
+                _add_run(p2, degree_text, e.degree, s)
             else:
-                # degree-school (default): Degree bold on top, school below
-                run = edu_para.add_run(f"{degree_text}, {school_text}")
-                _set_font(run, name=s.font_name, size=s.entry_title_size, bold=True,
-                          color=s.color_job_title)
-                run = edu_para.add_run(f"\t{dates_text}")
-                _set_font(run, name=s.font_name, size=s.font_size_contact, color=s.color_dates)
+                _add_run(p, degree_text, e.degree, s)
+                _add_run(p, f", {school_text}", e.school, s)
+                add_dates(p, dates_text)
 
             if edu.get("gpa"):
-                gpa_para = doc.add_paragraph()
-                gpa_para.paragraph_format.space_after = Pt(1)
-                run = gpa_para.add_run(f"GPA: {edu['gpa']}")
-                _set_font(run, name=s.font_name, size=s.font_size_contact, color=s.color_subtitle)
+                gp = para(e.second_line_para)
+                _add_run(gp, f"GPA: {edu['gpa']}", e.gpa, s)
 
-    # --- Render sections in configured order ---
-    _render_map = {
-        "summary": _render_summary,
-        "skills": _render_skills,
-        "experience": _render_experience,
-        "education": _render_education,
+    def render_certifications():
+        if not certifications:
+            return
+        section_heading("certifications", "Certifications")
+        e = s.entries
+        for cert in certifications:
+            issued = h.format_date(cert.get("issue_date"), e.date_format, present_label="")
+            expires = h.format_date(cert.get("expiry_date"), e.date_format, present_label="")
+            dates_text = f"{issued} {e.date_separator} {expires}" if issued and expires else (issued or expires)
+            name, issuer = cert.get("name") or "", cert.get("issuer") or ""
+
+            p = para(e.first_line_para)
+            h.add_right_tab(p, content_width)
+            _add_run(p, name, e.cert_name, s)
+            if e.certification_layout == "inline" and issuer:
+                _add_run(p, f", {issuer}", e.cert_issuer, s)
+            if dates_text:
+                add_dates(p, dates_text)
+            if e.certification_layout == "name-issuer" and issuer:
+                p2 = para(e.second_line_para)
+                _add_run(p2, issuer, e.cert_issuer, s)
+
+    renderers = {
+        "summary": render_summary,
+        "skills": render_skills,
+        "experience": render_experience,
+        "education": render_education,
+        "certifications": render_certifications,
     }
-
     for sec in s.sections:
-        if sec.visible and sec.key in _render_map:
-            _render_map[sec.key]()
+        if sec.visible and sec.key in renderers:
+            renderers[sec.key]()
+
+    for custom_sec in (custom_sections or []):
+        title = (custom_sec.get("title") or "").strip()
+        items = custom_sec.get("items") or []
+        if not title or not items:
+            continue
+        section_heading(title, title)
+        add_bullets([item for item in items if item.strip()])
 
     doc.save(str(output_path))
     return output_path
@@ -366,43 +296,70 @@ def create_cover_letter(
     job_title: str,
     company: str | None,
     output_path: Path,
+    style: StyleConfig | None = None,
 ) -> Path:
     """Generate a cover letter DOCX at output_path. Returns the path."""
-    doc = Document()
+    s = style or _DEFAULT_STYLE
+    cl = s.cover_letter
+    doc = _new_document(s, user_name, f"{user_name} - Cover Letter")
+    section = doc.sections[0]
+    h.apply_page(section, s.page, margins={
+        "top": cl.margin_top, "bottom": cl.margin_bottom,
+        "left": cl.margin_left, "right": cl.margin_right,
+    })
+    widow = s.fonts.widow_control
 
-    for section in doc.sections:
-        section.top_margin = Inches(1)
-        section.bottom_margin = Inches(1)
-        section.left_margin = Inches(1)
-        section.right_margin = Inches(1)
+    _build_header_footer(doc, section, cl.header_footer, user_name, s)
 
-    name_para = doc.add_paragraph()
-    name_para.alignment = WD_ALIGN_PARAGRAPH.LEFT
-    name_para.paragraph_format.space_after = Pt(2)
-    run = name_para.add_run(user_name)
-    _set_font(run, size=14, bold=True)
+    def para(ps: ParagraphStyle, align: str | None = None):
+        p = doc.add_paragraph()
+        h.apply_paragraph(p, ps, align_override=align, widow_control=widow)
+        return p
 
-    contact_parts = [p for p in [email, phone] if p]
+    # Letterhead — "match_resume" reuses the resume header styling
+    if cl.letterhead == "match_resume":
+        name_ts, name_ps = s.header.name, s.header.name_para
+        contact_ts, contact_ps = s.header.contact, s.header.contact_para
+        upper, sep = s.header.name_uppercase, s.header.contact_separator
+        align = _LAYOUT_ALIGN[s.header.layout]
+    else:
+        name_ts, name_ps = cl.name, cl.name_para
+        contact_ts, contact_ps = cl.contact, cl.contact_para
+        upper, sep = cl.name_uppercase, cl.contact_separator
+        align = _LAYOUT_ALIGN[cl.letterhead]
+
+    name_para = para(name_ps, align)
+    _add_run(name_para, user_name.upper() if upper else user_name, name_ts, s)
+
+    contact_parts: list[tuple[str, str | None]] = []
+    if email:
+        contact_parts.append((email, h.normalize_url(f"mailto:{email}")))
+    if phone:
+        contact_parts.append((phone, None))
+    border_para = name_para
     if contact_parts:
-        contact_para = doc.add_paragraph()
-        contact_para.paragraph_format.space_after = Pt(12)
-        run = contact_para.add_run(" | ".join(contact_parts))
-        _set_font(run, size=10)
+        contact_para = para(contact_ps, align)
+        _add_contact_line(contact_para, contact_parts, sep, contact_ts, s)
+        border_para = contact_para
+    if cl.letterhead_border.style != "none":
+        h.apply_borders(border_para, Borders(bottom=cl.letterhead_border))
 
-    date_para = doc.add_paragraph()
-    date_para.paragraph_format.space_after = Pt(12)
-    run = date_para.add_run(date.today().strftime("%B %d, %Y"))
-    _set_font(run, size=11)
+    if cl.include_date:
+        date_para = para(cl.date_para)
+        _add_run(date_para, h.format_letter_date(cl.date_format), cl.date, s)
 
-    paragraphs = cover_letter_text.split("\n\n")
-    for text in paragraphs:
+    if cl.include_recipient and company:
+        recipient = para(ParagraphStyle(space_after=cl.date_para.space_after))
+        _add_run(recipient, "Hiring Manager", cl.body, s)
+        recipient.add_run().add_break()
+        _add_run(recipient, company, cl.body, s)
+
+    for text in cover_letter_text.split("\n\n"):
         text = text.strip()
         if not text:
             continue
-        para = doc.add_paragraph()
-        para.paragraph_format.space_after = Pt(8)
-        run = para.add_run(text)
-        _set_font(run, size=11)
+        p = para(cl.body_para)
+        _add_run(p, text, cl.body, s)
 
     doc.save(str(output_path))
     return output_path

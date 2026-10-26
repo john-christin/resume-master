@@ -135,6 +135,7 @@ _DEFAULT_DOC_STYLES = [
 def _seed_default_doc_styles() -> None:
     """Insert default system DocStyle rows if the table is empty."""
     import json
+    from schemas.doc_style import StyleConfig
     db = SessionLocal()
     try:
         exists = db.scalars(select(DocStyle).limit(1)).first()
@@ -144,7 +145,7 @@ def _seed_default_doc_styles() -> None:
                     name=s["name"],
                     description=s["description"],
                     is_system=True,
-                    config=json.dumps(s["config"]),
+                    config=json.dumps(StyleConfig(**s["config"]).model_dump()),
                 ))
             db.commit()
             logger.info("Seeded %d default doc styles", len(_DEFAULT_DOC_STYLES))

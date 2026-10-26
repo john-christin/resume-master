@@ -1,4 +1,5 @@
 import { AlertCircle, ArrowLeft, Loader2, Save, ShieldCheck, SlidersHorizontal, Sparkles, User } from "lucide-react";
+import CustomSectionForm from "../components/CustomSectionForm";
 import { useEffect, useState } from "react";
 import { useNavigate, useParams } from "react-router-dom";
 import { getDocStyles } from "../api/doc_styles";
@@ -9,6 +10,7 @@ import {
 } from "../api/profile";
 import { getUserRole } from "../auth";
 import EducationForm from "../components/EducationForm";
+import CertificationForm from "../components/CertificationForm";
 import ExperienceForm from "../components/ExperienceForm";
 import LoadingSpinner from "../components/LoadingSpinner";
 import { Alert, AlertDescription } from "../components/ui/alert";
@@ -33,7 +35,7 @@ import { Separator } from "../components/ui/separator";
 import { Slider } from "../components/ui/slider";
 import { Switch } from "../components/ui/switch";
 import { Textarea } from "../components/ui/textarea";
-import type { DocStyle, Education, Experience, ProfileCreate } from "../types";
+import type { Certification, CustomSection, DocStyle, Education, Experience, ProfileCreate } from "../types";
 
 const emptyProfile: ProfileCreate = {
   name: "",
@@ -51,7 +53,14 @@ const emptyProfile: ProfileCreate = {
   security_clearance: null,
   educations: [],
   experiences: [],
+  certifications: [],
+  custom_sections: [],
 };
+
+const cleanCertifications = (certs: Certification[]): Certification[] =>
+  certs
+    .filter((c) => c.name.trim() !== "")
+    .map((c) => ({ ...c, name: c.name.trim() }));
 
 export default function ProfileEdit() {
   const navigate = useNavigate();
@@ -91,6 +100,8 @@ export default function ProfileEdit() {
           security_clearance: p.security_clearance ?? null,
           educations: p.educations,
           experiences: p.experiences,
+          certifications: p.certifications ?? [],
+          custom_sections: p.custom_sections ?? [],
         });
         setReadOnly(p.is_shared && !p.is_owner && getUserRole() !== "admin");
       })
@@ -104,11 +115,16 @@ export default function ProfileEdit() {
     setSaving(true);
     setError(null);
 
+    const payload: ProfileCreate = {
+      ...profile,
+      certifications: cleanCertifications(profile.certifications ?? []),
+    };
+
     try {
       if (isNew) {
-        await createProfile(profile);
+        await createProfile(payload);
       } else {
-        await updateProfile(profileId!, profile);
+        await updateProfile(profileId!, payload);
       }
       navigate("/profiles");
     } catch (err: unknown) {
@@ -421,10 +437,34 @@ export default function ProfileEdit() {
 
         <Card>
           <CardContent className="pt-6">
+            <CertificationForm
+              certifications={profile.certifications ?? []}
+              onChange={(certifications: Certification[]) =>
+                setProfile({ ...profile, certifications })
+              }
+              readOnly={readOnly}
+            />
+          </CardContent>
+        </Card>
+
+        <Card>
+          <CardContent className="pt-6">
             <ExperienceForm
               experiences={profile.experiences}
               onChange={(experiences: Experience[]) =>
                 setProfile({ ...profile, experiences })
+              }
+              readOnly={readOnly}
+            />
+          </CardContent>
+        </Card>
+
+        <Card>
+          <CardContent className="pt-6">
+            <CustomSectionForm
+              customSections={profile.custom_sections ?? []}
+              onChange={(custom_sections: CustomSection[]) =>
+                setProfile({ ...profile, custom_sections })
               }
               readOnly={readOnly}
             />
