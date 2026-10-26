@@ -1,9 +1,10 @@
 services:
   db:
     image: postgres:14
+    restart: unless-stopped
     environment:
       POSTGRES_USER: root
-      POSTGRES_PASSWORD: john_root
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:?set POSTGRES_PASSWORD in .env}
       POSTGRES_DB: resume_master
     volumes:
       - pgdata:/var/lib/postgresql/data
@@ -15,9 +16,10 @@ services:
 
   backend:
     build: ./backend
+    restart: unless-stopped
     env_file: .env
     environment:
-      DATABASE_URL: postgresql+psycopg2://root:john_root@db:5432/resume_master
+      DATABASE_URL: postgresql+psycopg2://root:${POSTGRES_PASSWORD}@db:5432/resume_master
     depends_on:
       db:
         condition: service_healthy
@@ -30,6 +32,7 @@ services:
 
   frontend:
     build: ./frontend
+    restart: unless-stopped
     depends_on:
       - backend
     environment:

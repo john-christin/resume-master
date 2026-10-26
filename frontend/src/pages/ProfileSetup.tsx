@@ -2,15 +2,24 @@ import { useEffect, useState } from "react";
 import { useNavigate } from "react-router-dom";
 import { getProfiles, createProfile, updateProfile } from "../api/profile";
 import EducationForm from "../components/EducationForm";
+import CertificationForm from "../components/CertificationForm";
+import CustomSectionForm from "../components/CustomSectionForm";
 import ExperienceForm from "../components/ExperienceForm";
 import LoadingSpinner from "../components/LoadingSpinner";
-import type { Education, Experience, ProfileCreate } from "../types";
+import type { Certification, CustomSection, Education, Experience, ProfileCreate } from "../types";
 
 const emptyProfile: ProfileCreate = {
   name: "",
   educations: [],
   experiences: [],
+  certifications: [],
+  custom_sections: [],
 };
+
+const cleanCertifications = (certs: Certification[]): Certification[] =>
+  certs
+    .filter((c) => c.name.trim() !== "")
+    .map((c) => ({ ...c, name: c.name.trim() }));
 
 export default function ProfileSetup() {
   const navigate = useNavigate();
@@ -36,6 +45,8 @@ export default function ProfileSetup() {
             summary: owned.summary,
             educations: owned.educations,
             experiences: owned.experiences,
+            certifications: owned.certifications ?? [],
+            custom_sections: owned.custom_sections ?? [],
           });
           setIsExisting(
             owned.educations.length > 0 || owned.experiences.length > 0
@@ -51,11 +62,16 @@ export default function ProfileSetup() {
     setSaving(true);
     setError(null);
 
+    const payload: ProfileCreate = {
+      ...profile,
+      certifications: cleanCertifications(profile.certifications ?? []),
+    };
+
     try {
       if (profileId) {
-        await updateProfile(profileId, profile);
+        await updateProfile(profileId, payload);
       } else {
-        await createProfile(profile);
+        await createProfile(payload);
       }
       navigate("/generate");
     } catch (err: unknown) {
@@ -168,10 +184,28 @@ export default function ProfileSetup() {
         </div>
 
         <div className="bg-white rounded-lg shadow-sm border border-gray-200 p-6">
+          <CertificationForm
+            certifications={profile.certifications ?? []}
+            onChange={(certifications: Certification[]) =>
+              setProfile({ ...profile, certifications })
+            }
+          />
+        </div>
+
+        <div className="bg-white rounded-lg shadow-sm border border-gray-200 p-6">
           <ExperienceForm
             experiences={profile.experiences}
             onChange={(experiences: Experience[]) =>
               setProfile({ ...profile, experiences })
+            }
+          />
+        </div>
+
+        <div className="bg-white rounded-lg shadow-sm border border-gray-200 p-6">
+          <CustomSectionForm
+            customSections={profile.custom_sections ?? []}
+            onChange={(custom_sections: CustomSection[]) =>
+              setProfile({ ...profile, custom_sections })
             }
           />
         </div>

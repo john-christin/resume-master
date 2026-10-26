@@ -47,7 +47,13 @@ docker-compose up --build   # PostgreSQL + backend + frontend
 
 > **Note:** The README references MySQL 8.0, but `docker-compose.yml` uses PostgreSQL 14. The production deployment uses PostgreSQL via `postgresql+psycopg2://`. Ensure `DATABASE_URL` in `.env` matches the driver you're using.
 
-There are no automated tests in this codebase.
+### Backend tests
+```bash
+cd backend && source .venv/bin/activate
+pip install -r requirements-dev.txt
+python -m pytest tests -q    # doc-style schema + DOCX renderer
+```
+Only the doc-style schema and DOCX renderer are covered; nothing else has automated tests.
 
 ---
 
@@ -92,6 +98,10 @@ There are no automated tests in this codebase.
 **In-memory extraction cache**: `_extraction_cache` (dict, max 200 entries) keyed by JD content hash. Call `ai_service.clear_extraction_cache()` after changing role-model assignments, otherwise stale results from the previous model are returned.
 
 **Provider implementations** live in `services/providers/`: `openai_provider.py` (handles both OpenAI and Azure OpenAI), `anthropic_provider.py`, `google_provider.py`. All expose a `call_*` function consumed via `services/providers/__init__.py::call_provider`.
+
+### Document Styles (DOCX)
+
+`DocStyle.config` is a JSON `StyleConfig` (`schemas/doc_style.py`, **v2**, nested). Every element is formatted with the same two reusable blocks, `TextStyle` and `ParagraphStyle` (borders, shading, spacing, indents). Groups: `page`, `fonts`, `properties`, `header`, `headings`, `body`, `entries`, `header_footer`, `sections`, `cover_letter`. Configs saved by the old flat schema (v1) are upgraded on load by `StyleConfig`'s `before` validator (`migrate_v1`), so old rows keep rendering the same. `services/docx_service.py` renders resume + cover letter; low-level OOXML helpers (borders, shading, real list numbering, hyperlinks, fields) are in `services/docx_helpers.py` and must insert elements in schema order. Adding an option = schema field + renderer + frontend type/editor/preview (`frontend/src/types/index.ts`, `components/docstyle/`, `StylePreview.tsx`). Profiles also carry `certifications` (rendered as an optional resume section).
 
 ### Two Background Workers
 
