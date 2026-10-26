@@ -43,6 +43,7 @@ def _profile_to_response(profile: Profile, current_user_id: str) -> dict:
         "use_global_kb": profile.use_global_kb,
         "check_clearance": profile.check_clearance,
         "security_clearance": profile.security_clearance,
+        "job_sheet_url": profile.job_sheet_url,
         "educations": profile.educations,
         "experiences": profile.experiences,
         "certifications": profile.certifications,
@@ -145,6 +146,7 @@ def create_profile(
         use_global_kb=data.use_global_kb,
         check_clearance=data.check_clearance,
         security_clearance=data.security_clearance or None,
+        job_sheet_url=data.job_sheet_url,
         custom_sections=[s.model_dump() for s in data.custom_sections],
     )
 
@@ -199,6 +201,7 @@ def update_profile(
     profile.use_global_kb = data.use_global_kb
     profile.check_clearance = data.check_clearance
     profile.security_clearance = data.security_clearance or None
+    profile.job_sheet_url = data.job_sheet_url
 
     profile.educations.clear()
     for edu in data.educations:

@@ -15,11 +15,12 @@ from config import settings
 from database import SessionLocal
 from models.doc_style import DocStyle
 from models.token_pricing import TokenPricing
-from routers import admin, applications, auth, batch_jobs, call_stages, calls, chat, doc_styles, generate, profile, stats, user_settings
+from routers import admin, applications, auth, batch_jobs, call_stages, calls, chat, doc_styles, generate, job_sheet, profile, stats, user_settings
 from routers.queue import router as queue_router, ext_router
 from services import log_service
 from services.batch_worker import start_worker
 from services.queue_worker import start_queue_worker
+from services.sheet_sync import start_sheet_sync_worker
 from utils import get_client_ip
 
 logger = logging.getLogger(__name__)
@@ -250,6 +251,7 @@ async def lifespan(app: FastAPI):
         logger.info("Cleaned up %d log entries older than 15 days", removed)
     await start_worker()
     await start_queue_worker()
+    await start_sheet_sync_worker()
     yield
 
 
@@ -271,6 +273,7 @@ app.mount("/uploads", StaticFiles(directory=str(uploads_dir)), name="uploads")
 
 app.include_router(auth.router)
 app.include_router(profile.router)
+app.include_router(job_sheet.router)
 app.include_router(generate.router)
 app.include_router(chat.router)
 app.include_router(batch_jobs.router)

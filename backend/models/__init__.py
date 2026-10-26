@@ -19,3 +19,4 @@ from models.banned_company import BannedCompany
 from models.system_log import SystemLog
 from models.queue import QueueTask
 from models.api_key_pool import ApiKeyPool
+from models.sheet_sync import SheetSyncJob

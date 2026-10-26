@@ -35,6 +35,9 @@ export const deleteApplication = (appId: string) =>
 export const updateCallStatus = (appId: string, callScheduled: boolean) =>
   api.patch(`/api/applications/${appId}/call-status`, { call_scheduled: callScheduled });
 
+export const updateApplied = (appId: string, applied: boolean) =>
+  api.patch(`/api/applications/${appId}/applied`, { applied });
+
 export const getApplicationChat = (appId: string) =>
   api.get<AppChatHistory>(`/api/applications/${appId}/chat`);
 
