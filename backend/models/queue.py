@@ -28,6 +28,8 @@ class QueueTask(Base):
         String(36), ForeignKey("doc_styles.id", ondelete="SET NULL"), nullable=True
     )
     job_source_url: Mapped[str | None] = mapped_column(Text, nullable=True)
+    job_board: Mapped[str | None] = mapped_column(String(100), nullable=True)
+    posted_text: Mapped[str | None] = mapped_column(String(100), nullable=True)
     job_url: Mapped[str | None] = mapped_column(Text, nullable=True)
     company: Mapped[str | None] = mapped_column(String(300), nullable=True)
     job_title: Mapped[str | None] = mapped_column(String(300), nullable=True)

@@ -19,6 +19,8 @@ class ApplicationSummary(BaseModel):
     completion_tokens: int | None = None
     total_cost: float | None = None
     call_scheduled: bool = False
+    applied: bool = False
+    applied_at: datetime | None = None
     call_id: str | None = None
     call_stage: str | None = None
     call_status: str | None = None

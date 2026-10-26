@@ -1,6 +1,8 @@
 import math
 from pathlib import Path
 
+from datetime import datetime
+
 from fastapi import APIRouter, Body, Depends, HTTPException, Query
 from sqlalchemy import func, or_, select
 from sqlalchemy.orm import Session, selectinload
@@ -12,6 +14,7 @@ from models.ai_usage_event import AIUsageEvent
 from models.application import Application
 from models.call import Call
 from models.user import User
+from services import sheet_sync
 from schemas.application import (
     ApplicationDetail,
     ApplicationSummary,
@@ -34,6 +37,8 @@ def _app_to_summary(app: Application, db: Session, include_cost: bool = True) ->
         "profile_name": app.profile_name,
         "location": app.location,
         "call_scheduled": app.call_scheduled,
+        "applied": app.applied,
+        "applied_at": app.applied_at,
         "call_id": app.call.id if app.call else None,
         "call_stage": app.call.stage if app.call else None,
         "call_status": app.call.status if app.call else None,
@@ -243,6 +248,32 @@ def update_call_status(
         raise HTTPException(status_code=404, detail="Application not found")
 
     application.call_scheduled = call_scheduled
+    db.commit()
+    db.refresh(application)
+    return _app_to_summary(application, db, include_cost=current_user.role in ("admin", "caller"))
+
+
+@router.patch("/{app_id}/applied", response_model=ApplicationSummary)
+def update_applied(
+    app_id: str,
+    applied: bool = Body(..., embed=True),
+    current_user: User = Depends(get_approved_user),
+    db: Session = Depends(get_db),
+):
+    application = db.get(Application, app_id)
+    if not application:
+        raise HTTPException(status_code=404, detail="Application not found")
+
+    # Same rules as call status: bidders only touch their own; callers are read-only
+    if current_user.role == "caller":
+        raise HTTPException(status_code=403, detail="Callers cannot mark applications applied")
+    if current_user.role == "bidder" and application.user_id != current_user.id:
+        raise HTTPException(status_code=404, detail="Application not found")
+
+    if application.applied != applied:
+        application.applied = applied
+        application.applied_at = datetime.utcnow() if applied else None
+        sheet_sync.on_application_applied(db, application)
     db.commit()
     db.refresh(application)
     return _app_to_summary(application, db, include_cost=current_user.role in ("admin", "caller"))

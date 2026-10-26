@@ -15,8 +15,10 @@ from datetime import datetime, date
 from sqlalchemy import select, text
 
 from database import SessionLocal
+from models.application import Application
 from models.queue import QueueTask
 from models.user import User
+from services import sheet_sync
 
 logger = logging.getLogger(__name__)
 
@@ -182,6 +184,7 @@ async def _process_task(task_id: str) -> None:
                 task.status = "needs_review"
                 task.warnings = json.dumps(warnings)
                 task.started_at = None
+                sheet_sync.on_task_blocked(db, task, "; ".join(warnings))
                 db.commit()
                 logger.info("Task %s needs review: %s", task_id, warnings)
                 return
@@ -194,6 +197,7 @@ async def _process_task(task_id: str) -> None:
             task.status = "failed"
             task.error = "Profile or user not found"
             task.completed_at = datetime.utcnow()
+            sheet_sync.on_task_blocked(db, task, f"Failed: {task.error}")
             db.commit()
             return
 
@@ -239,6 +243,12 @@ async def _process_task(task_id: str) -> None:
         task.status = "completed"
         task.application_id = result.application_id
         task.completed_at = datetime.utcnow()
+        generated = db.get(Application, result.application_id)
+        if generated and generated.required_skills:
+            try:
+                sheet_sync.on_task_generated(db, task, json.loads(generated.required_skills))
+            except ValueError:
+                logger.warning("Application %s has unreadable required_skills", generated.id)
         db.commit()
         logger.info("Queue task %s completed → application %s", task_id, result.application_id)
 
@@ -251,6 +261,7 @@ async def _process_task(task_id: str) -> None:
                 task.status = "failed"
                 task.error = str(exc)
                 task.completed_at = datetime.utcnow()
+                sheet_sync.on_task_blocked(db, task, f"Failed: {exc}")
                 db.commit()
         except Exception:
             db.rollback()

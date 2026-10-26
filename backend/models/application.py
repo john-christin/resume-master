@@ -44,6 +44,8 @@ class Application(Base):
     completion_tokens: Mapped[int] = mapped_column(Integer, default=0)
     total_cost: Mapped[float] = mapped_column(Float, default=0.0)
     call_scheduled: Mapped[bool] = mapped_column(Boolean, default=False, nullable=False, server_default="false")
+    applied: Mapped[bool] = mapped_column(Boolean, default=False, nullable=False, server_default="false")
+    applied_at: Mapped[datetime | None] = mapped_column(DateTime, nullable=True)
     created_at: Mapped[datetime] = mapped_column(
         DateTime, default=datetime.utcnow, index=True
     )

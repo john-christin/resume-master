@@ -53,6 +53,48 @@ function panelPos(btn: Pos): { top: number; left: number } {
   return { top, left }
 }
 
+const REDIRECT_PARAMS = ['url', 'u', 'redirect', 'redirect_url', 'target', 'dest', 'destination']
+
+/** Job boards wrap outbound links in redirects (e.g. linkedin.com/safety/go/?url=...). */
+function unwrapRedirect(href: string): string {
+  try {
+    const u = new URL(href, window.location.href)
+    if (u.protocol !== 'http:' && u.protocol !== 'https:') return ''
+    for (const key of REDIRECT_PARAMS) {
+      const inner = u.searchParams.get(key)
+      if (inner && /^https?:\/\//i.test(inner)) return inner
+    }
+    return u.href
+  } catch {
+    return ''
+  }
+}
+
+/** The employer's own apply URL: an "Apply" link on this page that leaves the current site. */
+function findApplyLink(): string {
+  const pageHost = window.location.hostname
+  const applyLinks = Array.from(document.querySelectorAll<HTMLAnchorElement>('a[href]')).filter((a) => {
+    const label = `${a.innerText} ${a.getAttribute('aria-label') ?? ''}`
+    return /\bapply\b/i.test(label) && !/easy apply/i.test(label)
+  })
+  for (const a of applyLinks) {
+    const target = unwrapRedirect(a.href)
+    if (!target) continue
+    try {
+      if (new URL(target).hostname !== pageHost) return target
+    } catch {
+      // unparseable link, try the next one
+    }
+  }
+  return ''
+}
+
+/** "24 hours ago", "3 days ago", "yesterday"... as the job board shows it. */
+function findPostedText(text: string): string {
+  const m = text.slice(0, 6000).match(/\b(\d+\+?\s+(?:minute|hour|day|week|month)s?\s+ago|yesterday|just now)\b/i)
+  return m ? m[1] : ''
+}
+
 export default function Widget() {
   const [pos, setPos] = useState<Pos>(defaultPos)
   const [open, setOpen] = useState(false)
@@ -63,6 +105,8 @@ export default function Widget() {
   const [jobTitle, setJobTitle] = useState('')
   const [company, setCompany] = useState('')
   const [jobUrl, setJobUrl] = useState(window.location.href)
+  const [actualUrl, setActualUrl] = useState('')
+  const [posted, setPosted] = useState('')
   const [jobDescription, setJobDescription] = useState('')
   const [error, setError] = useState('')
   const [activeTab, setActiveTab] = useState<'app' | 'chat' | 'details'>('app')
@@ -165,6 +209,7 @@ export default function Widget() {
     setStage({ name: 'queuing' })
 
     let successCount = 0
+    let lastError = ''
     for (const profile of profiles) {
       const res: SWResponse = await chrome.runtime.sendMessage({
         type: 'QUEUE_JOB',
@@ -172,16 +217,25 @@ export default function Widget() {
           profile_id: profile.id,
           job_title: jobTitle || undefined,
           company: company || undefined,
-          job_url: jobUrl || undefined,
+          // Sheet columns: Source Link = this page, Actual Link = the employer's apply URL
+          // (same as the source when the board links straight to the job)
+          job_url: actualUrl || jobUrl || undefined,
           job_source_url: jobUrl || undefined,
+          posted_text: posted || undefined,
           job_description: jobDescription || undefined,
         },
       })
       if (res.ok) successCount++
+      else lastError = res.error
     }
 
     if (successCount === 0) {
-      setError('Failed to add to queue. Please check your connection.')
+      // fetch() rejections surface as "Failed to fetch"; anything else is a server-side reason
+      setError(
+        lastError && lastError !== 'Failed to fetch'
+          ? `Failed to add to queue: ${lastError}`
+          : 'Failed to add to queue. Please check your connection.',
+      )
       setStage({ name: 'form' })
       return
     }
@@ -194,6 +248,8 @@ export default function Widget() {
     setJobTitle('')
     setCompany('')
     setJobUrl(window.location.href)
+    setActualUrl('')
+    setPosted('')
     setJobDescription('')
     setError('')
   }
@@ -320,6 +376,8 @@ export default function Widget() {
                 jobTitle={jobTitle}
                 company={company}
                 jobUrl={jobUrl}
+                actualUrl={actualUrl}
+                posted={posted}
                 jobDescription={jobDescription}
                 error={error}
                 canQueue={!!canQueue}
@@ -327,6 +385,8 @@ export default function Widget() {
                 onJobTitle={setJobTitle}
                 onCompany={setCompany}
                 onJobUrl={setJobUrl}
+                onActualUrl={setActualUrl}
+                onPosted={setPosted}
                 onJobDescription={setJobDescription}
                 onQueue={handleQueueJob}
                 onGenerate={handleGenerate}
@@ -651,17 +711,30 @@ function NoProfile() {
 }
 
 interface JobFormProps {
-  jobTitle: string; company: string; jobUrl: string; jobDescription: string
+  jobTitle: string; company: string; jobUrl: string; actualUrl: string; posted: string; jobDescription: string
   error: string; canQueue: boolean; canGenerate: boolean
   onJobTitle: (v: string) => void; onCompany: (v: string) => void
-  onJobUrl: (v: string) => void; onJobDescription: (v: string) => void
+  onJobUrl: (v: string) => void; onActualUrl: (v: string) => void; onPosted: (v: string) => void
+  onJobDescription: (v: string) => void
   onQueue: () => void; onGenerate: () => void
 }
 
-function JobForm({ jobTitle, company, jobUrl, jobDescription, error, canQueue, canGenerate,
-  onJobTitle, onCompany, onJobUrl, onJobDescription, onQueue, onGenerate }: JobFormProps) {
+function JobForm({ jobTitle, company, jobUrl, actualUrl, posted, jobDescription, error, canQueue, canGenerate,
+  onJobTitle, onCompany, onJobUrl, onActualUrl, onPosted, onJobDescription, onQueue, onGenerate }: JobFormProps) {
   const [grabbing, setGrabbing] = useState(false)
   const [autofilling, setAutofilling] = useState(false)
+
+  /** Fill the apply link and posted age from the page, without overwriting what's typed. */
+  function detectLinkAndPosted(pageText: string, haveAiPosted = false) {
+    if (!actualUrl) {
+      const link = findApplyLink()
+      if (link) onActualUrl(link)
+    }
+    if (!posted && !haveAiPosted) {
+      const found = findPostedText(pageText || document.body.innerText)
+      if (found) onPosted(found)
+    }
+  }
 
   async function handleGrab() {
     setGrabbing(true)
@@ -703,6 +776,7 @@ function JobForm({ jobTitle, company, jobUrl, jobDescription, error, canQueue, c
       if (extracted.job_title) onJobTitle(extracted.job_title)
       if (extracted.company) onCompany(extracted.company)
       if (extracted.job_description) onJobDescription(extracted.job_description)
+      detectLinkAndPosted(extracted.job_description ?? '')
     } finally {
       setGrabbing(false)
     }
@@ -722,7 +796,9 @@ function JobForm({ jobTitle, company, jobUrl, jobDescription, error, canQueue, c
         if (res.data.job_title) onJobTitle(res.data.job_title)
         if (res.data.company) onCompany(res.data.company)
         if (res.data.job_description) onJobDescription(res.data.job_description)
+        if (res.data.posted) onPosted(res.data.posted)
       }
+      detectLinkAndPosted(text, !!(res.ok && res.data.posted))
     } finally {
       setAutofilling(false)
     }
@@ -750,8 +826,23 @@ function JobForm({ jobTitle, company, jobUrl, jobDescription, error, canQueue, c
         <input type="text" value={company} onChange={(e) => onCompany(e.target.value)}
           placeholder="e.g. Acme Corp" className="av-input" />
       </Field>
-      <Field label="Job URL">
+      <Field label="Source link (this page)">
         <input type="url" value={jobUrl} onChange={(e) => onJobUrl(e.target.value)} className="av-input" />
+      </Field>
+      <Field label="Actual link (apply URL)">
+        <div className="flex gap-2">
+          <input type="url" value={actualUrl} onChange={(e) => onActualUrl(e.target.value)}
+            placeholder="Employer's apply link — blank uses the source link" className="av-input" />
+          <button type="button"
+            onClick={() => { const link = findApplyLink(); if (link) onActualUrl(link) }}
+            className="shrink-0 px-2.5 rounded-lg bg-slate-800 hover:bg-slate-700 text-slate-300 text-xs font-medium transition-colors">
+            Detect
+          </button>
+        </div>
+      </Field>
+      <Field label="When posted">
+        <input type="text" value={posted} onChange={(e) => onPosted(e.target.value)}
+          placeholder="e.g. 24 hours ago" className="av-input" />
       </Field>
       <Field label="Job Description *">
         <textarea value={jobDescription} onChange={(e) => onJobDescription(e.target.value)}

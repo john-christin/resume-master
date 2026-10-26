@@ -65,6 +65,7 @@ export interface QueueJobPayload {
   profile_id: string
   job_url?: string
   job_source_url?: string
+  posted_text?: string
   company?: string
   job_title?: string
   job_description?: string
@@ -75,6 +76,7 @@ export interface ExtractedJobData {
   job_title?: string
   company?: string
   job_description?: string
+  posted?: string
 }
 
 // Messages sent from content script / popup → service worker

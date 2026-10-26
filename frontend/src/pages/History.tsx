@@ -25,6 +25,7 @@ import {
   deleteApplication,
   getApplication,
   getApplications,
+  updateApplied,
   updateCallStatus,
 } from "../api/applications";
 import { deleteCall, updateCall } from "../api/calls";
@@ -255,6 +256,7 @@ export default function History() {
 
   const [callStages, setCallStages] = useState<CallStageConfig[]>([]);
   const [callStatus, setCallStatus] = useState<Record<string, boolean>>({});
+  const [appliedStatus, setAppliedStatus] = useState<Record<string, boolean>>({});
   const [callDialogApp, setCallDialogApp] = useState<{
     id: string;
     jobTitle: string;
@@ -393,6 +395,15 @@ export default function History() {
       setExpandedId(null);
     } finally {
       setExpandLoading(false);
+    }
+  };
+
+  const handleAppliedToggle = async (app: ApplicationSummary, next: boolean) => {
+    setAppliedStatus((p) => ({ ...p, [app.id]: next }));
+    try {
+      await updateApplied(app.id, next);
+    } catch {
+      setAppliedStatus((p) => ({ ...p, [app.id]: !next }));
     }
   };
 
@@ -623,6 +634,14 @@ export default function History() {
                     Date <SortIcon column="created_at" />
                   </TableHead>
                   {!isCaller && (
+                    <TableHead
+                      className="text-xs font-semibold uppercase tracking-wide text-muted-foreground text-center"
+                      title="Applied"
+                    >
+                      <CheckCircle2 className="h-3.5 w-3.5 inline" />
+                    </TableHead>
+                  )}
+                  {!isCaller && (
                     <TableHead className="text-xs font-semibold uppercase tracking-wide text-muted-foreground text-center">
                       <Phone className="h-3.5 w-3.5 inline" />
                     </TableHead>
@@ -677,6 +696,20 @@ export default function History() {
                         <TableCell className="text-muted-foreground text-xs">
                           {new Date(app.created_at).toLocaleDateString()}
                         </TableCell>
+                        {!isCaller && (
+                          <TableCell
+                            className="text-center"
+                            onClick={(e) => e.stopPropagation()}
+                          >
+                            <input
+                              type="checkbox"
+                              className="h-4 w-4 cursor-pointer accent-primary"
+                              checked={appliedStatus[app.id] ?? app.applied ?? false}
+                              onChange={(e) => handleAppliedToggle(app, e.target.checked)}
+                              aria-label={`Mark ${app.job_title} as applied`}
+                            />
+                          </TableCell>
+                        )}
                         {!isCaller && (
                           <TableCell
                             className="text-center"
@@ -815,7 +848,7 @@ export default function History() {
                       {isExpanded && (
                         <TableRow key={`${app.id}-detail`} className="bg-muted/30 hover:bg-muted/30">
                           <TableCell
-                            colSpan={isCaller ? 5 : 6}
+                            colSpan={isCaller ? 5 : 7}
                             className="px-6 py-4"
                           >
                             {expandLoading ? (

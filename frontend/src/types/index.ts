@@ -258,6 +258,7 @@ export interface Profile {
   use_global_kb: boolean;
   check_clearance: boolean;
   security_clearance?: string | null;
+  job_sheet_url?: string | null;
   educations: Education[];
   experiences: Experience[];
   certifications: Certification[];
@@ -283,6 +284,7 @@ export interface ProfileCreate {
   use_global_kb?: boolean;
   check_clearance?: boolean;
   security_clearance?: string | null;
+  job_sheet_url?: string | null;
   educations: Education[];
   experiences: Experience[];
   certifications?: Certification[];
@@ -424,6 +426,8 @@ export interface ApplicationSummary {
   profile_name?: string;
   location?: string;
   call_scheduled?: boolean;
+  applied?: boolean;
+  applied_at?: string | null;
   call_id?: string;
   call_stage?: string | null;
   call_status?: string | null;
@@ -668,4 +672,21 @@ export interface BatchJobStatus {
   created_at: string;
   started_at: string | null;
   completed_at: string | null;
+}
+
+export interface JobSheetStatus {
+  sheet_url: string | null;
+  configured: boolean;
+  service_account_email: string | null;
+  pending: number;
+  failed: number;
+  last_error: string | null;
+}
+
+export interface JobSheetCheck {
+  tab: string;
+  header_row: number;
+  filled_rows: number;
+  next_row: number;
+  missing_columns: string[];
 }

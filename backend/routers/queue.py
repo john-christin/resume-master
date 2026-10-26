@@ -9,9 +9,10 @@ from sqlalchemy.orm import Session
 from auth import get_approved_user
 from database import get_db
 from models.application import Application
-from models.profile import Profile
 from models.queue import QueueTask
 from models.user import User
+from routers.generate import _get_accessible_profile
+from services import sheet_sync
 
 router = APIRouter(prefix="/api/queue", tags=["queue"])
 
@@ -32,7 +33,9 @@ def extract_job_data(
 
     prompt = (
         "Extract the following fields from this job posting text. "
-        "Return only valid JSON with keys: job_title, company, job_description. "
+        "Return only valid JSON with keys: job_title, company, job_description, posted. "
+        "For posted, give how long ago the job was posted exactly as the page shows it "
+        "(e.g. \"24 hours ago\", \"3 days ago\", \"1 week ago\"). "
         "For job_description, include the full responsibilities and requirements sections. "
         "If a field is not found, use null.\n\n"
         f"URL: {url}\n\nTEXT:\n{text[:8000]}"
@@ -57,6 +60,7 @@ def extract_job_data(
             "job_title": data.get("job_title"),
             "company": data.get("company"),
             "job_description": data.get("job_description"),
+            "posted": data.get("posted"),
         }
     except Exception as exc:
         raise HTTPException(status_code=500, detail=f"Extraction failed: {exc}")
@@ -70,6 +74,8 @@ def _task_to_dict(task: QueueTask) -> dict:
         "profile_name": task.profile_name,
         "doc_style_id": task.doc_style_id,
         "job_source_url": task.job_source_url,
+        "job_board": task.job_board,
+        "posted_text": task.posted_text,
         "job_url": task.job_url,
         "company": task.company,
         "job_title": task.job_title,
@@ -93,13 +99,13 @@ def enqueue_task(
     company: str | None = Body(None),
     job_title: str | None = Body(None),
     job_description: str | None = Body(None),
+    job_board: str | None = Body(None),
+    posted_text: str | None = Body(None),
     doc_style_id: str | None = Body(None),
     current_user: User = Depends(get_approved_user),
     db: Session = Depends(get_db),
 ):
-    profile = db.get(Profile, profile_id)
-    if not profile or profile.owner_id != current_user.id:
-        raise HTTPException(status_code=404, detail="Profile not found")
+    profile = _get_accessible_profile(profile_id, current_user, db)
 
     # Snapshot profile name at enqueue time
     profile_name = profile.name if hasattr(profile, "name") else profile_id
@@ -115,6 +121,8 @@ def enqueue_task(
         profile_name=profile_name,
         doc_style_id=doc_style_id,
         job_source_url=job_source_url,
+        job_board=job_board,
+        posted_text=posted_text,
         job_url=job_url,
         company=company,
         job_title=job_title,
@@ -123,6 +131,7 @@ def enqueue_task(
         order=max_order + 1,
     )
     db.add(task)
+    sheet_sync.on_task_queued(db, task)
     db.commit()
     db.refresh(task)
     return _task_to_dict(task)
@@ -195,6 +204,8 @@ def update_task(
             raise HTTPException(status_code=400, detail="Cannot skip a task that is processing")
         task.status = "skipped"
         task.completed_at = datetime.utcnow()
+        if not task.warnings:  # a flagged task already has its reason in the sheet
+            sheet_sync.on_task_blocked(db, task, "Skipped")
 
     else:
         raise HTTPException(status_code=400, detail=f"Unknown action: {action}")

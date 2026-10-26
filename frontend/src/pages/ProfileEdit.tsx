@@ -11,6 +11,7 @@ import {
 import { getUserRole } from "../auth";
 import EducationForm from "../components/EducationForm";
 import CertificationForm from "../components/CertificationForm";
+import JobSheetSettings from "../components/JobSheetSettings";
 import ExperienceForm from "../components/ExperienceForm";
 import LoadingSpinner from "../components/LoadingSpinner";
 import { Alert, AlertDescription } from "../components/ui/alert";
@@ -51,6 +52,7 @@ const emptyProfile: ProfileCreate = {
   use_global_kb: true,
   check_clearance: false,
   security_clearance: null,
+  job_sheet_url: null,
   educations: [],
   experiences: [],
   certifications: [],
@@ -98,6 +100,7 @@ export default function ProfileEdit() {
           use_global_kb: p.use_global_kb ?? true,
           check_clearance: p.check_clearance ?? false,
           security_clearance: p.security_clearance ?? null,
+          job_sheet_url: p.job_sheet_url ?? null,
           educations: p.educations,
           experiences: p.experiences,
           certifications: p.certifications ?? [],
@@ -339,6 +342,13 @@ export default function ProfileEdit() {
                 </div>
               )}
             </div>
+
+            <JobSheetSettings
+              profileId={profileId}
+              value={profile.job_sheet_url}
+              onChange={(url) => setProfile({ ...profile, job_sheet_url: url })}
+              readOnly={readOnly}
+            />
 
             <div className="space-y-1.5">
               <Label>Professional Summary</Label>

@@ -1,6 +1,6 @@
 from datetime import datetime
 
-from pydantic import BaseModel
+from pydantic import BaseModel, field_validator
 
 
 class EducationSchema(BaseModel):
@@ -49,10 +49,25 @@ class ProfileCreate(BaseModel):
     use_global_kb: bool = True
     check_clearance: bool = False
     security_clearance: str | None = None
+    job_sheet_url: str | None = None
     educations: list[EducationSchema] = []
     experiences: list[ExperienceSchema] = []
     certifications: list[CertificationSchema] = []
     custom_sections: list[CustomSectionSchema] = []
+
+    @field_validator("job_sheet_url")
+    @classmethod
+    def _check_sheet_url(cls, v: str | None) -> str | None:
+        v = (v or "").strip()
+        if not v:
+            return None
+        from services.sheet_service import SheetError, parse_sheet_url
+
+        try:
+            parse_sheet_url(v)
+        except SheetError as exc:
+            raise ValueError(str(exc))
+        return v
 
 
 class ProfileResponse(BaseModel):
@@ -71,6 +86,7 @@ class ProfileResponse(BaseModel):
     use_global_kb: bool = True
     check_clearance: bool = False
     security_clearance: str | None = None
+    job_sheet_url: str | None = None
     educations: list[EducationSchema] = []
     experiences: list[ExperienceSchema] = []
     certifications: list[CertificationSchema] = []

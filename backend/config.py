@@ -22,6 +22,11 @@ class Settings(BaseSettings):
     default_admin_username: str = ""
     default_input_price_per_1k: float = 0.005
     default_output_price_per_1k: float = 0.015
+    # Google service account used to write to profiles' job sheets (path to key file, or the JSON itself)
+    google_service_account_file: str = ""
+    google_service_account_json: str = ""
+    # Timezone for the Date written on appended sheet rows
+    sheet_timezone: str = "America/New_York"
 
     model_config = {"env_file": str(_env_file), "env_file_encoding": "utf-8"}
 
