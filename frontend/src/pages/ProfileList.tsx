@@ -1,4 +1,5 @@
 import {
+  Award,
   AlertCircle,
   Briefcase,
   GraduationCap,
@@ -77,6 +78,10 @@ function ProfileCard({
           <span className="flex items-center gap-1">
             <Briefcase className="h-3.5 w-3.5" />
             {profile.experiences.length} experience
+          </span>
+          <span className="flex items-center gap-1">
+            <Award className="h-3.5 w-3.5" />
+            {(profile.certifications ?? []).length} certification
           </span>
         </div>
 

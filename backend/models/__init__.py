@@ -3,6 +3,7 @@ from models.profile import Profile
 from models.profile_share import profile_shares
 from models.education import Education
 from models.experience import Experience
+from models.certification import Certification
 from models.application import Application
 from models.token_pricing import TokenPricing
 from models.knowledge_base import KnowledgeBase

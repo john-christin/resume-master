@@ -22,6 +22,19 @@ class ExperienceSchema(BaseModel):
     description: str | None = None
 
 
+class CertificationSchema(BaseModel):
+    id: str | None = None
+    name: str
+    issuer: str | None = None
+    issue_date: str | None = None
+    expiry_date: str | None = None
+
+
+class CustomSectionSchema(BaseModel):
+    title: str
+    items: list[str] = []
+
+
 class ProfileCreate(BaseModel):
     name: str
     location: str | None = None
@@ -38,6 +51,8 @@ class ProfileCreate(BaseModel):
     security_clearance: str | None = None
     educations: list[EducationSchema] = []
     experiences: list[ExperienceSchema] = []
+    certifications: list[CertificationSchema] = []
+    custom_sections: list[CustomSectionSchema] = []
 
 
 class ProfileResponse(BaseModel):
@@ -58,6 +73,8 @@ class ProfileResponse(BaseModel):
     security_clearance: str | None = None
     educations: list[EducationSchema] = []
     experiences: list[ExperienceSchema] = []
+    certifications: list[CertificationSchema] = []
+    custom_sections: list[CustomSectionSchema] = []
     is_owner: bool = False
     is_shared: bool = False
     owner_username: str | None = None

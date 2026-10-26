@@ -6,6 +6,7 @@ from sqlalchemy.orm import Session
 
 from auth import require_role
 from database import get_db
+from models.certification import Certification
 from models.education import Education
 from models.experience import Experience
 from models.profile import Profile
@@ -44,6 +45,8 @@ def _profile_to_response(profile: Profile, current_user_id: str) -> dict:
         "security_clearance": profile.security_clearance,
         "educations": profile.educations,
         "experiences": profile.experiences,
+        "certifications": profile.certifications,
+        "custom_sections": profile.custom_sections or [],
         "is_owner": profile.owner_id == current_user_id,
         "is_shared": profile.owner_id != current_user_id,
         "owner_username": profile.owner.username if profile.owner else None,
@@ -142,6 +145,7 @@ def create_profile(
         use_global_kb=data.use_global_kb,
         check_clearance=data.check_clearance,
         security_clearance=data.security_clearance or None,
+        custom_sections=[s.model_dump() for s in data.custom_sections],
     )
 
     for edu in data.educations:
@@ -150,6 +154,8 @@ def create_profile(
         profile.experiences.append(
             Experience(**exp.model_dump(exclude={"id"}))
         )
+    for cert in data.certifications:
+        profile.certifications.append(Certification(**cert.model_dump(exclude={"id"})))
 
     db.add(profile)
     db.commit()
@@ -203,6 +209,12 @@ def update_profile(
         profile.experiences.append(
             Experience(**exp.model_dump(exclude={"id"}))
         )
+
+    profile.certifications.clear()
+    for cert in data.certifications:
+        profile.certifications.append(Certification(**cert.model_dump(exclude={"id"})))
+
+    profile.custom_sections = [s.model_dump() for s in data.custom_sections]
 
     db.commit()
     db.refresh(profile)

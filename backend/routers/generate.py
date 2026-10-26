@@ -130,6 +130,16 @@ async def _generate_single(
         for edu in profile.educations
     ]
 
+    certifications = [
+        {
+            "name": c.name,
+            "issuer": c.issuer,
+            "issue_date": c.issue_date,
+            "expiry_date": c.expiry_date,
+        }
+        for c in profile.certifications
+    ]
+
     # Load active knowledge bases. Global KBs are skipped when the profile
     # has use_global_kb=False, so only the profile's own custom_prompt applies.
     kb_parts = []
@@ -302,6 +312,8 @@ async def _generate_single(
         tailored_experiences=tailored,
         output_path=resume_docx,
         style=doc_style,
+        certifications=certifications,
+        custom_sections=profile.custom_sections or [],
     )
 
     docx_service.create_cover_letter(
@@ -312,6 +324,7 @@ async def _generate_single(
         job_title=job_title,
         company=company,
         output_path=cover_letter_docx,
+        style=doc_style,
     )
 
     # Convert to PDF

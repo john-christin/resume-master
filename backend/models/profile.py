@@ -2,7 +2,7 @@ import random
 import uuid
 from datetime import datetime
 
-from sqlalchemy import Boolean, DateTime, Float, ForeignKey, String, Text
+from sqlalchemy import JSON, Boolean, DateTime, Float, ForeignKey, String, Text
 from sqlalchemy.orm import Mapped, mapped_column, relationship
 
 from database import Base
@@ -43,6 +43,7 @@ class Profile(Base):
     updated_at: Mapped[datetime | None] = mapped_column(
         DateTime, nullable=True, onupdate=datetime.utcnow
     )
+    custom_sections: Mapped[list | None] = mapped_column(JSON, nullable=True)
 
     owner: Mapped["User"] = relationship(
         back_populates="profiles", foreign_keys=[owner_id]
@@ -51,6 +52,9 @@ class Profile(Base):
         back_populates="profile", cascade="all, delete-orphan"
     )
     experiences: Mapped[list["Experience"]] = relationship(
+        back_populates="profile", cascade="all, delete-orphan"
+    )
+    certifications: Mapped[list["Certification"]] = relationship(
         back_populates="profile", cascade="all, delete-orphan"
     )
     shared_with: Mapped[list["User"]] = relationship(
