@@ -244,11 +244,14 @@ async def _process_task(task_id: str) -> None:
         task.application_id = result.application_id
         task.completed_at = datetime.utcnow()
         generated = db.get(Application, result.application_id)
+        skills: list[str] = []
         if generated and generated.required_skills:
             try:
-                sheet_sync.on_task_generated(db, task, json.loads(generated.required_skills))
+                loaded = json.loads(generated.required_skills)
+                skills = loaded if isinstance(loaded, list) else []
             except ValueError:
                 logger.warning("Application %s has unreadable required_skills", generated.id)
+        sheet_sync.on_task_generated(db, task, skills, result.application_id)
         db.commit()
         logger.info("Queue task %s completed → application %s", task_id, result.application_id)
 

@@ -34,6 +34,7 @@ FIELD_HEADERS: dict[str, str] = {
     "posted": "whenposted",
     "source_link": "sourcelink",
     "actual_link": "actuallink",
+    "resume_link": "resumelink",
     "tech_stack": "maintechstack",
     "approved": "approved",
     "applied": "applied",

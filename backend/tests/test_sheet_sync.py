@@ -381,3 +381,67 @@ def test_application_without_a_queue_task_is_matched_by_company_and_actual_link(
     db.commit()
     sheet_sync.process_pending(db, sheet)
     assert sheet.row(5)[10] == "TRUE"
+
+
+# ── Resume Link (History page) ───────────────────────────────────────────────
+
+AARON_HEADER = [
+    "Date", "No.", "Job Board", "Company", "Position", "When Posted", "Source Link",
+    "Actual Link", "Resume Link", "Main TechStack", "Approved?", "Applied?", "Comment",
+]
+
+
+def make_aaron_grid() -> list[list[str]]:
+    """Header in row 1, a Resume Link column, and no blank rows left (rows get appended)."""
+    return [
+        list(AARON_HEADER),
+        ["10/26/2026", "1", "Linkedin", "Old Co", "Dev", "1 day ago", "https://l/1", "https://o/1",
+         "https://aurexviper.pro/history/old", "C#", "FALSE", "TRUE", ""],
+    ]
+
+
+def test_generation_writes_resume_link_and_tech_stack_into_the_resume_link_column(db):
+    _, _, task = seed(db)
+    sheet = FakeSheets(make_aaron_grid(), tab="Job LInk")
+    sheet_sync.on_task_queued(db, task)
+    sheet_sync.on_task_generated(db, task, ["Python", "AWS"], application_id="app-123")
+    db.commit()
+    sheet_sync.process_pending(db, sheet, limit=10)
+
+    new = sheet.row(3)                                   # appended below the existing row
+    assert new[3] == "Acme Corp" and new[8] == "https://aurexviper.pro/history/app-123"
+    assert new[9] == "Python, AWS"
+    assert new[10:12] == ["FALSE", "FALSE"]              # Approved? / Applied? checkboxes
+    assert sheet.row(2)[8] == "https://aurexviper.pro/history/old"   # existing rows untouched
+
+
+def test_resume_link_is_written_even_when_no_skills_were_extracted(db):
+    _, _, task = seed(db)
+    sheet = FakeSheets(make_aaron_grid(), tab="Job LInk")
+    sheet_sync.on_task_queued(db, task)
+    sheet_sync.on_task_generated(db, task, [], application_id="app-9")
+    db.commit()
+    sheet_sync.process_pending(db, sheet, limit=10)
+    assert sheet.row(3)[8] == "https://aurexviper.pro/history/app-9" and sheet.row(3)[9] == ""
+
+
+def test_sheets_without_a_resume_link_column_just_skip_it(db):
+    _, _, task = seed(db)
+    sheet = FakeSheets()                                  # Michael's layout: no Resume Link column
+    sheet_sync.on_task_queued(db, task)
+    sheet_sync.on_task_generated(db, task, ["Python"], application_id="app-5")
+    db.commit()
+    sheet_sync.process_pending(db, sheet, limit=10)
+    row = sheet.row(5)
+    assert row[8] == "Python" and not any("history/app-5" in c for c in row)
+    assert all(j.status == "done" for j in db.query(SheetSyncJob).all())
+
+
+def test_public_base_url_is_configurable_and_trailing_slash_safe(db, monkeypatch):
+    from config import settings
+    monkeypatch.setattr(settings, "public_base_url", "https://example.test/")
+    _, _, task = seed(db)
+    sheet_sync.on_task_generated(db, task, [], application_id="a1")
+    db.commit()
+    job = db.query(SheetSyncJob).one()
+    assert job.payload["fields"] == {"resume_link": "https://example.test/history/a1"}
