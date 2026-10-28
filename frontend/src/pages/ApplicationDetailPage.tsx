@@ -11,8 +11,9 @@ import {
 } from "lucide-react";
 import { useEffect, useState } from "react";
 import { Link, useNavigate, useParams } from "react-router-dom";
-import { getApplication } from "../api/applications";
+import { getApplication, updateApplied } from "../api/applications";
 import { getUserRole } from "../auth";
+import { smartDownload, smartDownloadBoth } from "../lib/download";
 import LoadingSpinner from "../components/LoadingSpinner";
 import { Alert, AlertDescription } from "../components/ui/alert";
 import { Badge } from "../components/ui/badge";
@@ -21,42 +22,11 @@ import { Card, CardContent, CardHeader, CardTitle } from "../components/ui/card"
 import {
   Dialog,
   DialogContent,
+  DialogDescription,
   DialogHeader,
   DialogTitle,
 } from "../components/ui/dialog";
 import type { ApplicationDetail } from "../types";
-
-async function smartDownload(url: string, filename: string): Promise<void> {
-  if ("showSaveFilePicker" in window) {
-    try {
-      const response = await fetch(url);
-      if (!response.ok) throw new Error("fetch failed");
-      const blob = await response.blob();
-      const ext = filename.endsWith(".docx") ? ".docx" : ".pdf";
-      const mimeType =
-        ext === ".docx"
-          ? "application/vnd.openxmlformats-officedocument.wordprocessingml.document"
-          : "application/pdf";
-      // eslint-disable-next-line @typescript-eslint/no-explicit-any
-      const handle = await (window as any).showSaveFilePicker({
-        suggestedName: filename,
-        types: [{ description: "Document", accept: { [mimeType]: [ext] } }],
-      });
-      const writable = await handle.createWritable();
-      await writable.write(blob);
-      await writable.close();
-      return;
-    } catch (e) {
-      if ((e as DOMException).name === "AbortError") return;
-    }
-  }
-  const a = document.createElement("a");
-  a.href = url;
-  a.download = filename;
-  document.body.appendChild(a);
-  a.click();
-  document.body.removeChild(a);
-}
 
 const PART_LABELS: Record<string, string> = {
   tailor_resume: "Resume Tailoring",
@@ -91,8 +61,9 @@ function CopyBtn({ value }: { value: string }) {
 }
 
 type FormatPicker = {
-  type: "resume" | "cover";
-  file: string;
+  type: "both" | "resume" | "cover";
+  resumeFile: string | null;
+  coverFile: string | null;
   profileName: string;
 };
 
@@ -116,6 +87,7 @@ export default function ApplicationDetailPage() {
   const [formatPicker, setFormatPicker] = useState<FormatPicker | null>(null);
   const [toast, setToast] = useState<string | null>(null);
   const [showCostBreakdown, setShowCostBreakdown] = useState(false);
+  const [savingApplied, setSavingApplied] = useState(false);
 
   useEffect(() => {
     if (!toast) return;
@@ -150,6 +122,22 @@ export default function ApplicationDetailPage() {
   }
 
   const showCost = role === "admin";
+
+  const handleApplied = async (next: boolean) => {
+    setSavingApplied(true);
+    try {
+      const res = await updateApplied(detail.id, next);
+      setDetail({ ...detail, applied: res.data.applied, applied_at: res.data.applied_at });
+      setToast(next ? "Marked as applied" : "Applied mark removed");
+    } catch {
+      setToast("Couldn't update the applied status. Try again.");
+    } finally {
+      setSavingApplied(false);
+    }
+  };
+  const appliedOn = detail.applied_at
+    ? new Date(/Z|[+-]\d{2}:?\d{2}$/.test(detail.applied_at) ? detail.applied_at : detail.applied_at + "Z").toLocaleDateString()
+    : null;
   const shareUrl = `${window.location.origin}/history/${detail.id}`;
 
   let tailoredExperiences: TailoredExperience[] = [];
@@ -159,13 +147,25 @@ export default function ApplicationDetailPage() {
     } catch {}
   }
 
-  const toFile = (raw: string, label: string, ext: string) => {
-    const base = raw.replace(/\.(pdf|docx)$/, "");
-    const sn = (detail.profile_name ?? "Resume").trim().replace(/\s+/g, "_");
-    return {
-      url: `/api/download/${base}.${ext}?name=${sn}_${label}.${ext}`,
-      name: `${sn}_${label}.${ext}`,
+  const handleFormatPick = (fmt: "pdf" | "docx") => {
+    if (!formatPicker) return;
+    const { type, resumeFile, coverFile, profileName: sn } = formatPicker;
+    setFormatPicker(null);
+    const toFile = (raw: string, label: string) => {
+      const base = raw.replace(/\.(pdf|docx)$/, "");
+      return { url: `/api/download/${base}.${fmt}?name=${sn}_${label}.${fmt}`, name: `${sn}_${label}.${fmt}` };
     };
+    if (type === "both" && resumeFile && coverFile) {
+      const r = toFile(resumeFile, "Resume");
+      const c = toFile(coverFile, "Cover_Letter");
+      smartDownloadBoth(r.url, r.name, c.url, c.name, setToast);
+    } else if (type === "resume" && resumeFile) {
+      const r = toFile(resumeFile, "Resume");
+      smartDownload(r.url, r.name);
+    } else if (type === "cover" && coverFile) {
+      const c = toFile(coverFile, "Cover_Letter");
+      smartDownload(c.url, c.name);
+    }
   };
 
   return (
@@ -204,18 +204,54 @@ export default function ApplicationDetailPage() {
                   <span>{detail.company}</span>
                 </div>
               )}
+              <label
+                className={`mt-3 inline-flex items-center gap-2 text-sm select-none ${
+                  role === "caller" ? "opacity-70" : "cursor-pointer"
+                }`}
+              >
+                <input
+                  type="checkbox"
+                  className="h-4 w-4 accent-primary cursor-pointer disabled:cursor-not-allowed"
+                  checked={detail.applied ?? false}
+                  disabled={role === "caller" || savingApplied}
+                  onChange={(e) => handleApplied(e.target.checked)}
+                />
+                <span className="font-medium">Applied</span>
+                {detail.applied && appliedOn && (
+                  <span className="text-xs text-muted-foreground">on {appliedOn}</span>
+                )}
+              </label>
             </div>
             <div className="flex gap-2 shrink-0">
+              {detail.resume_path && detail.cover_letter_path && (
+                <Button
+                  variant="outline"
+                  size="sm"
+                  onClick={() => {
+                    setFormatPicker({
+                      type: "both",
+                      resumeFile: detail.resume_path!.split("/").pop()!,
+                      coverFile: detail.cover_letter_path!.split("/").pop()!,
+                      profileName: (detail.profile_name ?? "Resume")
+                        .trim()
+                        .replace(/\s+/g, "_"),
+                    });
+                  }}
+                >
+                  <Download className="h-3.5 w-3.5" />
+                  Both
+                </Button>
+              )}
               {detail.resume_path && (
                 <Button
                   variant="outline"
                   size="sm"
                   className="text-emerald-600 border-emerald-200 hover:bg-emerald-50 dark:text-emerald-400 dark:border-emerald-800"
                   onClick={() => {
-                    const file = detail.resume_path!.split("/").pop()!;
                     setFormatPicker({
                       type: "resume",
-                      file,
+                      resumeFile: detail.resume_path!.split("/").pop()!,
+                      coverFile: null,
                       profileName: (detail.profile_name ?? "Resume")
                         .trim()
                         .replace(/\s+/g, "_"),
@@ -232,10 +268,10 @@ export default function ApplicationDetailPage() {
                   size="sm"
                   className="text-violet-600 border-violet-200 hover:bg-violet-50 dark:text-violet-400 dark:border-violet-800"
                   onClick={() => {
-                    const file = detail.cover_letter_path!.split("/").pop()!;
                     setFormatPicker({
                       type: "cover",
-                      file,
+                      resumeFile: null,
+                      coverFile: detail.cover_letter_path!.split("/").pop()!,
                       profileName: (detail.profile_name ?? "Resume")
                         .trim()
                         .replace(/\s+/g, "_"),
@@ -489,18 +525,20 @@ export default function ApplicationDetailPage() {
         <DialogContent className="max-w-xs">
           <DialogHeader>
             <DialogTitle>Choose Format</DialogTitle>
+            <DialogDescription>
+              {formatPicker?.type === "both"
+                ? "Both files"
+                : formatPicker?.type === "resume"
+                  ? "Resume"
+                  : "Cover Letter"}{" "}
+              will be downloaded in the selected format.
+            </DialogDescription>
           </DialogHeader>
           <div className="grid grid-cols-2 gap-3">
             <Button
               variant="outline"
               className="h-16 flex-col gap-1 text-destructive border-destructive/30 hover:bg-destructive/10"
-              onClick={() => {
-                if (!formatPicker) return;
-                const label = formatPicker.type === "resume" ? "Resume" : "Cover_Letter";
-                const r = toFile(formatPicker.file, label, "pdf");
-                smartDownload(r.url, r.name);
-                setFormatPicker(null);
-              }}
+              onClick={() => handleFormatPick("pdf")}
             >
               <FileText className="h-5 w-5" />
               PDF
@@ -508,13 +546,7 @@ export default function ApplicationDetailPage() {
             <Button
               variant="outline"
               className="h-16 flex-col gap-1 text-primary border-primary/30 hover:bg-primary/10"
-              onClick={() => {
-                if (!formatPicker) return;
-                const label = formatPicker.type === "resume" ? "Resume" : "Cover_Letter";
-                const r = toFile(formatPicker.file, label, "docx");
-                smartDownload(r.url, r.name);
-                setFormatPicker(null);
-              }}
+              onClick={() => handleFormatPick("docx")}
             >
               <FileText className="h-5 w-5" />
               DOCX
