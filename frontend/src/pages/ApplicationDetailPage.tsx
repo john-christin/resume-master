@@ -11,7 +11,7 @@ import {
 } from "lucide-react";
 import { useEffect, useState } from "react";
 import { Link, useNavigate, useParams } from "react-router-dom";
-import { getApplication } from "../api/applications";
+import { getApplication, updateApplied } from "../api/applications";
 import { getUserRole } from "../auth";
 import LoadingSpinner from "../components/LoadingSpinner";
 import { Alert, AlertDescription } from "../components/ui/alert";
@@ -116,6 +116,7 @@ export default function ApplicationDetailPage() {
   const [formatPicker, setFormatPicker] = useState<FormatPicker | null>(null);
   const [toast, setToast] = useState<string | null>(null);
   const [showCostBreakdown, setShowCostBreakdown] = useState(false);
+  const [savingApplied, setSavingApplied] = useState(false);
 
   useEffect(() => {
     if (!toast) return;
@@ -150,6 +151,22 @@ export default function ApplicationDetailPage() {
   }
 
   const showCost = role === "admin";
+
+  const handleApplied = async (next: boolean) => {
+    setSavingApplied(true);
+    try {
+      const res = await updateApplied(detail.id, next);
+      setDetail({ ...detail, applied: res.data.applied, applied_at: res.data.applied_at });
+      setToast(next ? "Marked as applied" : "Applied mark removed");
+    } catch {
+      setToast("Couldn't update the applied status. Try again.");
+    } finally {
+      setSavingApplied(false);
+    }
+  };
+  const appliedOn = detail.applied_at
+    ? new Date(/Z|[+-]\d{2}:?\d{2}$/.test(detail.applied_at) ? detail.applied_at : detail.applied_at + "Z").toLocaleDateString()
+    : null;
   const shareUrl = `${window.location.origin}/history/${detail.id}`;
 
   let tailoredExperiences: TailoredExperience[] = [];
@@ -204,6 +221,23 @@ export default function ApplicationDetailPage() {
                   <span>{detail.company}</span>
                 </div>
               )}
+              <label
+                className={`mt-3 inline-flex items-center gap-2 text-sm select-none ${
+                  role === "caller" ? "opacity-70" : "cursor-pointer"
+                }`}
+              >
+                <input
+                  type="checkbox"
+                  className="h-4 w-4 accent-primary cursor-pointer disabled:cursor-not-allowed"
+                  checked={detail.applied ?? false}
+                  disabled={role === "caller" || savingApplied}
+                  onChange={(e) => handleApplied(e.target.checked)}
+                />
+                <span className="font-medium">Applied</span>
+                {detail.applied && appliedOn && (
+                  <span className="text-xs text-muted-foreground">on {appliedOn}</span>
+                )}
+              </label>
             </div>
             <div className="flex gap-2 shrink-0">
               {detail.resume_path && (
