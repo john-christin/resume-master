@@ -724,21 +724,32 @@ function JobForm({ jobTitle, company, jobUrl, actualUrl, posted, jobDescription,
   const [grabbing, setGrabbing] = useState(false)
   const [autofilling, setAutofilling] = useState(false)
 
-  /** Fill the apply link and posted age from the page, without overwriting what's typed. */
-  function detectLinkAndPosted(pageText: string, haveAiPosted = false) {
-    if (!actualUrl) {
-      const link = findApplyLink()
-      if (link) onActualUrl(link)
-    }
-    if (!posted && !haveAiPosted) {
-      const found = findPostedText(pageText || document.body.innerText)
-      if (found) onPosted(found)
+  /**
+   * Re-read the page address. Boards like LinkedIn change it without a reload when you pick
+   * another job, so the value captured at load can be stale. Returns true if it changed.
+   */
+  function refreshSourceUrl(): boolean {
+    const current = window.location.href
+    if (current === jobUrl) return false
+    onJobUrl(current)
+    return true
+  }
+
+  /**
+   * Fill the apply link and posted age from the page. Anything already typed is kept,
+   * unless the page changed, in which case the old values belong to a different job.
+   */
+  function detectLinkAndPosted(pageText: string, pageChanged: boolean, haveAiPosted = false) {
+    if (pageChanged || !actualUrl) onActualUrl(findApplyLink())
+    if (!haveAiPosted && (pageChanged || !posted)) {
+      onPosted(findPostedText(pageText || document.body.innerText))
     }
   }
 
   async function handleGrab() {
     setGrabbing(true)
     try {
+      const pageChanged = refreshSourceUrl()
       // Content script has direct DOM access — extract from current page
       let extracted: ExtractedJobData = {}
 
@@ -776,7 +787,7 @@ function JobForm({ jobTitle, company, jobUrl, actualUrl, posted, jobDescription,
       if (extracted.job_title) onJobTitle(extracted.job_title)
       if (extracted.company) onCompany(extracted.company)
       if (extracted.job_description) onJobDescription(extracted.job_description)
-      detectLinkAndPosted(extracted.job_description ?? '')
+      detectLinkAndPosted(extracted.job_description ?? '', pageChanged)
     } finally {
       setGrabbing(false)
     }
@@ -785,6 +796,7 @@ function JobForm({ jobTitle, company, jobUrl, actualUrl, posted, jobDescription,
   async function handleAIFill() {
     setAutofilling(true)
     try {
+      const pageChanged = refreshSourceUrl()
       const pageText = (document.querySelector('main, [role="main"], article') || document.body as HTMLElement)
       const text = (pageText as HTMLElement).innerText.slice(0, 12000)
       const res: SWResponse<ExtractedJobData> = await chrome.runtime.sendMessage({
@@ -798,7 +810,7 @@ function JobForm({ jobTitle, company, jobUrl, actualUrl, posted, jobDescription,
         if (res.data.job_description) onJobDescription(res.data.job_description)
         if (res.data.posted) onPosted(res.data.posted)
       }
-      detectLinkAndPosted(text, !!(res.ok && res.data.posted))
+      detectLinkAndPosted(text, pageChanged, !!(res.ok && res.data.posted))
     } finally {
       setAutofilling(false)
     }

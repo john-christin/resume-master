@@ -27,6 +27,8 @@ class Settings(BaseSettings):
     google_service_account_json: str = ""
     # Timezone for the Date written on appended sheet rows
     sheet_timezone: str = "America/New_York"
+    # Public address of the web app; used for links written into job sheets
+    public_base_url: str = "https://aurexviper.pro"
 
     model_config = {"env_file": str(_env_file), "env_file_encoding": "utf-8"}
 

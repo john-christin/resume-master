@@ -12,6 +12,7 @@ from datetime import datetime, timedelta
 from sqlalchemy import select
 from sqlalchemy.orm import Session
 
+from config import settings
 from database import SessionLocal
 from models.application import Application
 from models.profile import Profile
@@ -74,11 +75,21 @@ def _update(db: Session, task: QueueTask, fields: dict) -> None:
     _add(db, profile, "update_row", {"match": _row_identity(task), "fields": fields})
 
 
-def on_task_generated(db: Session, task: QueueTask, required_skills: list[str]) -> None:
-    """Generation finished -> fill Main TechStack."""
+def on_task_generated(
+    db: Session,
+    task: QueueTask,
+    required_skills: list[str],
+    application_id: str | None = None,
+) -> None:
+    """Generation finished -> fill Main TechStack and Resume Link (the History page)."""
+    fields: dict[str, str] = {}
     skills = [s.strip() for s in required_skills if s and s.strip()][:6]
     if skills:
-        _update(db, task, {"tech_stack": ", ".join(skills)})
+        fields["tech_stack"] = ", ".join(skills)
+    if application_id:
+        fields["resume_link"] = f"{settings.public_base_url.rstrip('/')}/history/{application_id}"
+    if fields:
+        _update(db, task, fields)
 
 
 def on_task_blocked(db: Session, task: QueueTask, reason: str) -> None:
