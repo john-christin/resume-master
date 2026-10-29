@@ -195,6 +195,34 @@ async function handle(msg: MessageToSW): Promise<SWResponse> {
       return { ok: true, data }
     }
 
+    case 'SEARCH_APPLICATIONS': {
+      const q = encodeURIComponent(msg.query)
+      const res = await authFetch(`/api/applications?search=${q}&page_size=10`)
+      if (!res.ok) return { ok: false, error: 'Search failed' }
+      const data = await res.json()
+      return { ok: true, data: data.items }
+    }
+
+    case 'GET_APP_CHAT': {
+      const res = await authFetch(`/api/applications/${msg.appId}/chat`)
+      if (!res.ok) return { ok: false, error: 'Could not load the conversation' }
+      const data = await res.json()
+      return { ok: true, data: data.messages }
+    }
+
+    case 'APP_CHAT': {
+      const res = await authFetch(`/api/applications/${msg.appId}/chat`, {
+        method: 'POST',
+        body: JSON.stringify({ content: msg.content, model_config_id: null }),
+      })
+      if (!res.ok) {
+        const err = await res.json().catch(() => ({ detail: 'Chat failed' }))
+        return { ok: false, error: err.detail || 'Chat failed' }
+      }
+      const data = await res.json()
+      return { ok: true, data }
+    }
+
     default:
       return { ok: false, error: 'Unknown message type' }
   }

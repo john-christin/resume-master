@@ -8,12 +8,14 @@ import {
   Copy,
   Download,
   FileText,
+  MessageSquare,
 } from "lucide-react";
 import { useEffect, useState } from "react";
 import { Link, useNavigate, useParams } from "react-router-dom";
 import { getApplication, updateApplied } from "../api/applications";
 import { getUserRole } from "../auth";
 import { smartDownload, smartDownloadBoth } from "../lib/download";
+import ApplicationChatSidebar from "../components/ApplicationChatSidebar";
 import LoadingSpinner from "../components/LoadingSpinner";
 import { Alert, AlertDescription } from "../components/ui/alert";
 import { Badge } from "../components/ui/badge";
@@ -88,6 +90,7 @@ export default function ApplicationDetailPage() {
   const [toast, setToast] = useState<string | null>(null);
   const [showCostBreakdown, setShowCostBreakdown] = useState(false);
   const [savingApplied, setSavingApplied] = useState(false);
+  const [chatOpen, setChatOpen] = useState(false);
 
   useEffect(() => {
     if (!toast) return;
@@ -223,6 +226,10 @@ export default function ApplicationDetailPage() {
               </label>
             </div>
             <div className="flex gap-2 shrink-0">
+              <Button variant="outline" size="sm" onClick={() => setChatOpen(true)}>
+                <MessageSquare className="h-3.5 w-3.5" />
+                Chat
+              </Button>
               {detail.resume_path && detail.cover_letter_path && (
                 <Button
                   variant="outline"
@@ -554,6 +561,16 @@ export default function ApplicationDetailPage() {
           </div>
         </DialogContent>
       </Dialog>
+
+      {/* Interview prep chat sidebar */}
+      {chatOpen && (
+        <ApplicationChatSidebar
+          appId={detail.id}
+          jobTitle={detail.job_title}
+          company={detail.company ?? undefined}
+          onClose={() => setChatOpen(false)}
+        />
+      )}
 
       {/* Toast */}
       {toast && (

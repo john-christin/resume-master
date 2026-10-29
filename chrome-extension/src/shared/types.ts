@@ -61,6 +61,18 @@ export interface ChatResponse {
   completion_tokens: number
 }
 
+export interface ApplicationHit {
+  id: string
+  job_title: string
+  company: string | null
+  profile_name: string | null
+  created_at: string
+}
+
+export interface AppChatReply {
+  message: { role: 'user' | 'assistant'; content: string }
+}
+
 export interface QueueJobPayload {
   profile_id: string
   job_url?: string
@@ -95,6 +107,9 @@ export type MessageToSW =
   | { type: 'GET_PROFILE_DETAILS'; profileId: string }
   | { type: 'DOWNLOAD_FILE'; filename: string; dataUrl: string }
   | { type: 'CHAT'; payload: ChatRequest }
+  | { type: 'SEARCH_APPLICATIONS'; query: string }
+  | { type: 'GET_APP_CHAT'; appId: string }
+  | { type: 'APP_CHAT'; appId: string; content: string }
 
 export type SWResponse<T = unknown> =
   | { ok: true; data: T }
