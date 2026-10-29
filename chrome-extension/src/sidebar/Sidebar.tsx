@@ -1,5 +1,5 @@
 import { useState, useEffect, useRef, useCallback } from 'react'
-import type { ChatMessage, ChatRequest, ChatResponse, ExtractedJobData, GenerateResult, Profile, ProfileDetails, SWResponse } from '../shared/types'
+import type { ApplicationHit, AppChatReply, ChatMessage, ChatRequest, ChatResponse, ExtractedJobData, GenerateResult, Profile, ProfileDetails, SWResponse } from '../shared/types'
 import FileCard from './components/FileCard'
 
 interface AuthState {
@@ -532,6 +532,10 @@ function ChatPanel({ profileId, jobTitle, company, jobDescription }: ChatPanelPr
   const [loading, setLoading] = useState(false)
   const [error, setError] = useState('')
   const [copied, setCopied] = useState<number | null>(null)
+  const [selected, setSelected] = useState<ApplicationHit | null>(null)
+  const [query, setQuery] = useState('')
+  const [results, setResults] = useState<ApplicationHit[] | null>(null)
+  const [searching, setSearching] = useState(false)
   const bottomRef = useRef<HTMLDivElement>(null)
   const textareaRef = useRef<HTMLTextAreaElement>(null)
 
@@ -539,9 +543,74 @@ function ChatPanel({ profileId, jobTitle, company, jobDescription }: ChatPanelPr
     bottomRef.current?.scrollIntoView({ behavior: 'smooth' })
   }, [messages, loading])
 
+  async function handleSearch() {
+    const q = query.trim()
+    if (!q) {
+      setResults(null)
+      return
+    }
+    setSearching(true)
+    setError('')
+    const res: SWResponse<ApplicationHit[]> = await chrome.runtime.sendMessage({
+      type: 'SEARCH_APPLICATIONS',
+      query: q,
+    })
+    setSearching(false)
+    if (!res.ok) {
+      setError(res.error)
+      return
+    }
+    setResults(res.data)
+  }
+
+  async function selectApplication(hit: ApplicationHit) {
+    setSelected(hit)
+    setResults(null)
+    setQuery('')
+    setMessages([])
+    setError('')
+    setLoading(true)
+    const res: SWResponse<ChatMessage[]> = await chrome.runtime.sendMessage({
+      type: 'GET_APP_CHAT',
+      appId: hit.id,
+    })
+    setLoading(false)
+    if (!res.ok) {
+      setError(res.error)
+      return
+    }
+    setMessages(res.data.map((m) => ({ role: m.role, content: m.content })))
+  }
+
+  function useCurrentJob() {
+    setSelected(null)
+    setMessages([])
+    setError('')
+  }
+
   async function handleSend() {
     const text = input.trim()
     if (!text || loading) return
+
+    if (selected) {
+      const next: ChatMessage[] = [...messages, { role: 'user', content: text }]
+      setMessages(next)
+      setInput('')
+      setError('')
+      setLoading(true)
+      const res: SWResponse<AppChatReply> = await chrome.runtime.sendMessage({
+        type: 'APP_CHAT',
+        appId: selected.id,
+        content: text,
+      })
+      setLoading(false)
+      if (!res.ok) {
+        setError(res.error)
+        return
+      }
+      setMessages([...next, { role: 'assistant', content: res.data.message.content }])
+      return
+    }
 
     const next: ChatMessage[] = [...messages, { role: 'user', content: text }]
     setMessages(next)
@@ -593,8 +662,69 @@ function ChatPanel({ profileId, jobTitle, company, jobDescription }: ChatPanelPr
 
   return (
     <div className="flex flex-col h-full" style={{ minHeight: 0 }}>
+      {/* Application picker */}
+      <div className="relative flex-shrink-0 px-3 pt-3">
+        {selected ? (
+          <div className="flex items-center gap-2 rounded-lg bg-indigo-950/50 border border-indigo-900/60 px-3 py-2">
+            <div className="flex-1 min-w-0">
+              <p className="text-xs text-slate-200 truncate">
+                {selected.company || 'Unknown company'} – {selected.job_title}
+              </p>
+              <p className="text-[10px] text-slate-500 truncate">Chatting about this application</p>
+            </div>
+            <button
+              onClick={useCurrentJob}
+              className="text-[10px] text-slate-400 hover:text-slate-200 transition-colors flex-shrink-0"
+            >
+              Use this page
+            </button>
+          </div>
+        ) : (
+          <input
+            value={query}
+            onChange={(e) => {
+              setQuery(e.target.value)
+              if (!e.target.value.trim()) setResults(null)
+            }}
+            onKeyDown={(e) => {
+              if (e.key === 'Enter') {
+                e.preventDefault()
+                handleSearch()
+              } else if (e.key === 'Escape') {
+                setResults(null)
+              }
+            }}
+            placeholder={searching ? 'Searching…' : 'Search past applications: company or role, then Enter'}
+            className="av-input w-full text-xs"
+          />
+        )}
+
+        {results && !selected && (
+          <div className="absolute left-3 right-3 top-full z-10 mt-1 max-h-64 overflow-y-auto rounded-lg border border-slate-700 bg-slate-900 shadow-lg">
+            {results.length === 0 ? (
+              <p className="px-3 py-2 text-xs text-slate-500">No matching applications</p>
+            ) : (
+              results.map((hit) => (
+                <button
+                  key={hit.id}
+                  onClick={() => selectApplication(hit)}
+                  className="block w-full text-left px-3 py-2 hover:bg-slate-800 transition-colors"
+                >
+                  <p className="text-xs text-slate-200 truncate">
+                    {hit.company || 'Unknown company'} – {hit.job_title}
+                  </p>
+                  <p className="text-[10px] text-slate-500 truncate">
+                    {[hit.profile_name, new Date(hit.created_at).toLocaleDateString()].filter(Boolean).join(' · ')}
+                  </p>
+                </button>
+              ))
+            )}
+          </div>
+        )}
+      </div>
+
       {/* Context hint */}
-      {!hasContext && (
+      {!hasContext && !selected && (
         <div className="mx-4 mt-3 px-3 py-2 rounded-lg bg-amber-950/40 border border-amber-900/50 text-[11px] text-amber-400 flex-shrink-0">
           Fill in the job title/description for more tailored answers.
         </div>
@@ -604,7 +734,7 @@ function ChatPanel({ profileId, jobTitle, company, jobDescription }: ChatPanelPr
       <div className="flex-1 overflow-y-auto av-panel px-3 py-3 space-y-3 min-h-0">
         {messages.length === 0 && !loading && (
           <div className="text-center text-slate-600 text-xs py-8">
-            Ask any application question.<br />
+            {selected ? 'Ask about this application.' : 'Ask any application question.'}<br />
             <span className="text-slate-700">e.g. "Why do you want to work here?"</span>
           </div>
         )}
@@ -650,7 +780,7 @@ function ChatPanel({ profileId, jobTitle, company, jobDescription }: ChatPanelPr
 
       {/* Input area */}
       <div className="flex-shrink-0 border-t border-slate-800 px-3 py-2.5 flex flex-col gap-2">
-        {messages.length > 0 && (
+        {messages.length > 0 && !selected && (
           <button
             onClick={handleClear}
             className="self-start text-[10px] text-slate-600 hover:text-slate-400 transition-colors"

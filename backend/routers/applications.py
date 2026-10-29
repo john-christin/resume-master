@@ -96,12 +96,14 @@ def list_applications(
         count_stmt = count_stmt.where(Application.user_id == user_sub)
 
     # Search filter
-    if search:
+    # Every word must match one of the fields, so "acme engineer" finds the
+    # company and the role together.
+    for term in (search or "").split():
         search_filter = or_(
-            Application.job_title.ilike(f"%{search}%"),
-            Application.company.ilike(f"%{search}%"),
-            Application.job_url.ilike(f"%{search}%"),
-            Application.profile_name.ilike(f"%{search}%"),
+            Application.job_title.ilike(f"%{term}%"),
+            Application.company.ilike(f"%{term}%"),
+            Application.job_url.ilike(f"%{term}%"),
+            Application.profile_name.ilike(f"%{term}%"),
         )
         stmt = stmt.where(search_filter)
         count_stmt = count_stmt.where(search_filter)
