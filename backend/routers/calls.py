@@ -6,6 +6,7 @@ from sqlalchemy import select
 from sqlalchemy.orm import Session, selectinload
 
 from auth import get_approved_user
+from services.access import can_access_application, visible_applications_clause
 from database import get_db
 from models.application import Application
 from models.call import Call
@@ -115,7 +116,7 @@ def list_calls(
     )
 
     if current_user.role == "bidder":
-        stmt = stmt.where(Application.user_id == current_user.id)
+        stmt = stmt.where(visible_applications_clause(current_user))
 
     stmt = stmt.where(Call.is_closed == False)  # noqa: E712
 
@@ -139,7 +140,7 @@ def create_call(
     if not application:
         raise HTTPException(status_code=404, detail="Application not found")
 
-    if current_user.role == "bidder" and application.user_id != current_user.id:
+    if current_user.role == "bidder" and not can_access_application(current_user, application, db):
         raise HTTPException(status_code=404, detail="Application not found")
 
     if application.call:
@@ -207,7 +208,7 @@ def update_call(
 
     application = db.get(Application, call.application_id)
     if current_user.role == "bidder" and (
-        not application or application.user_id != current_user.id
+        not application or not can_access_application(current_user, application, db)
     ):
         raise HTTPException(status_code=404, detail="Call not found")
 
@@ -275,7 +276,7 @@ def delete_call(
 
     application = db.get(Application, call.application_id)
     if current_user.role == "bidder" and (
-        not application or application.user_id != current_user.id
+        not application or not can_access_application(current_user, application, db)
     ):
         raise HTTPException(status_code=404, detail="Call not found")
 

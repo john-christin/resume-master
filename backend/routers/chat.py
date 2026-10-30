@@ -14,6 +14,7 @@ from models.chat_message import ChatMessage
 from models.user import User
 from prompts import CHAT_INTERVIEW_PREP
 from services import ai_service
+from services.access import can_access_application
 from .generate import _get_accessible_profile
 
 router = APIRouter(prefix="/api", tags=["chat"])
@@ -79,7 +80,7 @@ def _get_own_application(app_id: str, user: User, db: Session) -> Application:
     app = db.scalars(select(Application).where(Application.id == app_id)).first()
     if not app:
         raise HTTPException(status_code=404, detail="Application not found")
-    if app.user_id != user.id and user.role not in ("admin",):
+    if user.role != "admin" and not can_access_application(user, app, db):
         raise HTTPException(status_code=403, detail="Access denied")
     return app
 
