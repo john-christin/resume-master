@@ -9,6 +9,7 @@ from sqlalchemy.orm import Session, selectinload
 
 from auth import get_approved_user
 from config import settings
+from services.access import can_access_application, visible_applications_clause
 from database import get_db
 from models.ai_usage_event import AIUsageEvent
 from models.application import Application
@@ -72,8 +73,9 @@ def list_applications(
 
     # Role-based filtering
     if current_user.role == "bidder":
-        stmt = stmt.where(Application.user_id == current_user.id)
-        count_stmt = count_stmt.where(Application.user_id == current_user.id)
+        visible = visible_applications_clause(current_user)
+        stmt = stmt.where(visible)
+        count_stmt = count_stmt.where(visible)
     # caller and admin see all
 
     # Call status filter
@@ -152,11 +154,8 @@ def get_application(
     if not application:
         raise HTTPException(status_code=404, detail="Application not found")
 
-    # Bidders can only view their own
-    if (
-        current_user.role == "bidder"
-        and application.user_id != current_user.id
-    ):
+    # Bidders can view their own and those on profiles shared with them
+    if current_user.role == "bidder" and not can_access_application(current_user, application, db):
         raise HTTPException(status_code=404, detail="Application not found")
 
     # Build response dict and attach profile snapshot
@@ -246,7 +245,7 @@ def update_call_status(
     # Bidders can only update their own; callers cannot update
     if current_user.role == "caller":
         raise HTTPException(status_code=403, detail="Callers cannot update call status")
-    if current_user.role == "bidder" and application.user_id != current_user.id:
+    if current_user.role == "bidder" and not can_access_application(current_user, application, db):
         raise HTTPException(status_code=404, detail="Application not found")
 
     application.call_scheduled = call_scheduled
@@ -269,7 +268,7 @@ def update_applied(
     # Same rules as call status: bidders only touch their own; callers are read-only
     if current_user.role == "caller":
         raise HTTPException(status_code=403, detail="Callers cannot mark applications applied")
-    if current_user.role == "bidder" and application.user_id != current_user.id:
+    if current_user.role == "bidder" and not can_access_application(current_user, application, db):
         raise HTTPException(status_code=404, detail="Application not found")
 
     if application.applied != applied:
