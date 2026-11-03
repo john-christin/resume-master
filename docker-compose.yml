@@ -28,6 +28,8 @@ services:
     volumes:
       - ./backend:/app
       - uploads:/app/uploads
+      # Google service account key for the job sheet sync (host path set in .env)
+      - ${GOOGLE_KEY_HOST_PATH:-/dev/null}:/run/secrets/google.json:ro
     command: uvicorn main:app --host 0.0.0.0 --port 8000 --reload
 
   frontend:
