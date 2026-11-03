@@ -13,6 +13,7 @@ Architecture:
 import asyncio
 import json
 import logging
+import time
 from datetime import datetime, date
 
 from sqlalchemy import select, text
@@ -23,10 +24,16 @@ from models.application import Application
 from models.queue import QueueTask
 from models.user import User
 from services import sheet_sync
+from services.ai_service import RateLimitExceeded
 
 logger = logging.getLogger(__name__)
 
 TICK_INTERVAL = 3  # seconds between polls
+RATE_LIMIT_PAUSE = 60  # seconds every worker waits after the AI provider is rate limited
+
+# The rate limit belongs to the whole API account, so when one task hits it the
+# other workers would only hit it too: nobody claims a task until this time.
+_paused_until = 0.0
 
 
 # ---------------------------------------------------------------------------
@@ -270,6 +277,20 @@ async def _process_task(task_id: str) -> None:
         db.commit()
         logger.info("Queue task %s completed → application %s", task_id, result.application_id)
 
+    except RateLimitExceeded as exc:
+        # Not the task's fault: put it back in the queue and let every worker rest a bit.
+        global _paused_until
+        _paused_until = time.monotonic() + RATE_LIMIT_PAUSE
+        logger.warning("Queue task %s hit the AI rate limit (%s) — requeued, pausing %ds",
+                       task_id, exc, RATE_LIMIT_PAUSE)
+        db.rollback()
+        task = db.get(QueueTask, task_id)
+        if task:
+            task.status = "queued"
+            task.started_at = None
+            task.used_api_key_pool_id = None
+            db.commit()
+        db.close()
     except Exception as exc:
         logger.exception("Queue task %s failed: %s", task_id, exc)
         db = SessionLocal()
@@ -297,6 +318,9 @@ async def _worker_loop(worker_no: int) -> None:
     # Stagger the start so workers don't all poll on the same tick
     await asyncio.sleep(worker_no * TICK_INTERVAL / max(1, settings.queue_max_workers))
     while True:
+        if time.monotonic() < _paused_until:
+            await asyncio.sleep(TICK_INTERVAL)
+            continue
         try:
             task_id = _claim_next_task()
             if task_id:

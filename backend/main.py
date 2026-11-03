@@ -4,6 +4,7 @@ from contextlib import asynccontextmanager
 from pathlib import Path
 
 from fastapi import FastAPI
+from fastapi.responses import JSONResponse
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.staticfiles import StaticFiles
 from jose import JWTError, jwt
@@ -18,6 +19,7 @@ from models.token_pricing import TokenPricing
 from routers import admin, applications, auth, batch_jobs, call_stages, calls, chat, doc_styles, generate, job_sheet, profile, stats, user_settings
 from routers.queue import router as queue_router, ext_router
 from services import log_service
+from services.ai_service import RateLimitExceeded
 from services.batch_worker import start_worker
 from services.queue_worker import start_queue_worker
 from services.sheet_sync import start_sheet_sync_worker
@@ -256,6 +258,15 @@ async def lifespan(app: FastAPI):
 
 
 app = FastAPI(title="Resume Master API", version="0.1.0", lifespan=lifespan)
+
+
+@app.exception_handler(RateLimitExceeded)
+async def rate_limited_handler(request: Request, exc: RateLimitExceeded):
+    return JSONResponse(
+        status_code=429,
+        content={"detail": "The AI service is busy right now (rate limit). Please try again in a minute."},
+        headers={"Retry-After": "60"},
+    )
 
 app.add_middleware(
     CORSMiddleware,

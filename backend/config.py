@@ -29,6 +29,10 @@ class Settings(BaseSettings):
     sheet_timezone: str = "America/New_York"
     # How many queue tasks may be generated at once (one resume API key each).
     queue_max_workers: int = 4
+    # Rate-limited AI calls (429 / overloaded) wait and retry this many times, sleeping
+    # for the API's Retry-After (or 5s, 10s, 20s...) and never longer than the max.
+    llm_rate_limit_retries: int = 5
+    llm_rate_limit_max_wait: int = 60
     # Public address of the web app; used for links written into job sheets
     public_base_url: str = "https://aurexviper.pro"
 
