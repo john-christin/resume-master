@@ -208,6 +208,8 @@ async def _generate_single(
                 pool_key_id=pool_key_id,
             ),
         )
+    except ai_service.RateLimitExceeded:
+        raise  # handled by the app (HTTP 429) or requeued by the queue worker
     except Exception as e:
         log_service.log_bg(
             log_service.ERROR, log_service.GENERATION,

@@ -161,6 +161,41 @@ def _load_pool_keys(model_config_id: str) -> list[tuple[str, str]]:
         db.close()
 
 
+class RateLimitExceeded(Exception):
+    """The AI provider kept answering 429/overloaded after all retries."""
+
+
+def _retry_delay(exc: Exception, waits_done: int) -> float | None:
+    """Seconds to wait before retrying if exc is a rate-limit/overloaded error, else None.
+
+    Uses the API's Retry-After header when it sends one, otherwise 5s, 10s, 20s...
+    Capped at llm_rate_limit_max_wait, with a little jitter so parallel workers that
+    hit the limit together don't all come back on the same second.
+    """
+    status = getattr(exc, "status_code", None)
+    response = getattr(exc, "response", None)
+    if status is None and response is not None:
+        status = getattr(response, "status_code", None)
+    if status not in (429, 529):
+        try:
+            import anthropic
+            if not isinstance(exc, anthropic.RateLimitError):
+                return None
+        except ImportError:
+            return None
+
+    retry_after = None
+    headers = getattr(response, "headers", None)
+    if headers is not None:
+        try:
+            retry_after = float(headers.get("retry-after"))
+        except (TypeError, ValueError):
+            retry_after = None
+    delay = retry_after if retry_after is not None else 5 * (2 ** waits_done)
+    delay = min(delay, settings.llm_rate_limit_max_wait)
+    return delay * random.uniform(1.0, 1.2)
+
+
 def _is_key_error(exc: Exception) -> bool:
     """Return True if exc indicates an invalid/exhausted key (401 or 429)."""
     # Anthropic SDK exceptions
@@ -261,81 +296,110 @@ def _call_llm(
             candidates.append((None, own_key))
 
     last_exc: Exception | None = None
-    for attempt, (pool_key_id, api_key) in enumerate(candidates):
-        attempt_config = {**config, "api_key": api_key}
-        start = time.monotonic()
-        try:
-            result = call_provider(messages, max_tokens, temperature, attempt_config, tools=tools)
-            result.cost = (
-                result.prompt_tokens / 1000 * config["input_price_per_1k"]
-                + result.completion_tokens / 1000 * config["output_price_per_1k"]
-            )
-            result.provider = config["provider"]
-            result.model_id = config["model_id"]
-            result.model_config_id = config_db_id
-            result.input_price_per_1k = config["input_price_per_1k"]
-            result.output_price_per_1k = config["output_price_per_1k"]
-            result.used_pool_key_id = pool_key_id
-            duration_ms = int((time.monotonic() - start) * 1000)
-            log_service.log_bg(
-                log_service.INFO, log_service.AI_CALL,
-                f"LLM call succeeded · {config['provider']} / {config['model_id']}",
-                details={
-                    "provider": config["provider"],
-                    "model_id": config["model_id"],
-                    "tier": tier,
-                    "prompt_tokens": result.prompt_tokens,
-                    "completion_tokens": result.completion_tokens,
-                    "cost": result.cost,
-                    "max_tokens": max_tokens,
-                    "temperature": temperature,
-                    "key_pool_attempt": attempt + 1,
-                    "pool_key_id": pool_key_id,
-                },
-                duration_ms=duration_ms,
-            )
-            return result
-        except Exception as exc:
-            duration_ms = int((time.monotonic() - start) * 1000)
-            last_exc = exc
-            if _is_key_error(exc) and attempt < len(candidates) - 1:
-                logger.warning(
-                    "API key attempt %d/%d failed (%s) — retrying with next key",
-                    attempt + 1, len(candidates), type(exc).__name__,
+    waits = 0
+    while True:
+        for attempt, (pool_key_id, api_key) in enumerate(candidates):
+            attempt_config = {**config, "api_key": api_key}
+            start = time.monotonic()
+            try:
+                result = call_provider(messages, max_tokens, temperature, attempt_config, tools=tools)
+                result.cost = (
+                    result.prompt_tokens / 1000 * config["input_price_per_1k"]
+                    + result.completion_tokens / 1000 * config["output_price_per_1k"]
                 )
-                if pool_key_id:
+                result.provider = config["provider"]
+                result.model_id = config["model_id"]
+                result.model_config_id = config_db_id
+                result.input_price_per_1k = config["input_price_per_1k"]
+                result.output_price_per_1k = config["output_price_per_1k"]
+                result.used_pool_key_id = pool_key_id
+                duration_ms = int((time.monotonic() - start) * 1000)
+                log_service.log_bg(
+                    log_service.INFO, log_service.AI_CALL,
+                    f"LLM call succeeded · {config['provider']} / {config['model_id']}",
+                    details={
+                        "provider": config["provider"],
+                        "model_id": config["model_id"],
+                        "tier": tier,
+                        "prompt_tokens": result.prompt_tokens,
+                        "completion_tokens": result.completion_tokens,
+                        "cost": result.cost,
+                        "max_tokens": max_tokens,
+                        "temperature": temperature,
+                        "key_pool_attempt": attempt + 1,
+                        "pool_key_id": pool_key_id,
+                    },
+                    duration_ms=duration_ms,
+                )
+                return result
+            except Exception as exc:
+                duration_ms = int((time.monotonic() - start) * 1000)
+                last_exc = exc
+                if _is_key_error(exc) and attempt < len(candidates) - 1:
+                    logger.warning(
+                        "API key attempt %d/%d failed (%s) — retrying with next key",
+                        attempt + 1, len(candidates), type(exc).__name__,
+                    )
+                    if pool_key_id:
+                        log_service.log_bg(
+                            log_service.WARNING, log_service.AI_CALL,
+                            f"Pool key {pool_key_id} returned 401/429 — failing over",
+                            details={
+                                "pool_key_id": pool_key_id,
+                                "provider": config.get("provider"),
+                                "model_id": config.get("model_id"),
+                                "tier": tier,
+                                "attempt": attempt + 1,
+                            },
+                            duration_ms=duration_ms,
+                            **log_service.exc_to_log_kwargs(exc),
+                        )
+                    continue
+                delay = _retry_delay(exc, waits)
+                if delay is not None:
+                    if waits >= settings.llm_rate_limit_retries:
+                        raise RateLimitExceeded(
+                            f"The AI service is rate limited: still {type(exc).__name__} "
+                            f"after {waits} retries"
+                        ) from exc
+                    waits += 1
+                    logger.warning(
+                        "Rate limited (%s) — waiting %.0fs before retry %d/%d",
+                        type(exc).__name__, delay, waits, settings.llm_rate_limit_retries,
+                    )
                     log_service.log_bg(
                         log_service.WARNING, log_service.AI_CALL,
-                        f"Pool key {pool_key_id} returned 401/429 — failing over",
+                        f"Rate limited · {config.get('provider', '?')} / {config.get('model_id', '?')} "
+                        f"— retry {waits}/{settings.llm_rate_limit_retries} in {delay:.0f}s",
                         details={
-                            "pool_key_id": pool_key_id,
                             "provider": config.get("provider"),
                             "model_id": config.get("model_id"),
                             "tier": tier,
-                            "attempt": attempt + 1,
+                            "retry": waits,
+                            "wait_seconds": round(delay, 1),
                         },
                         duration_ms=duration_ms,
                         **log_service.exc_to_log_kwargs(exc),
                     )
-                continue
-            log_service.log_bg(
-                log_service.ERROR, log_service.AI_CALL,
-                f"LLM call failed · {config.get('provider', '?')} / {config.get('model_id', '?')}",
-                details={
-                    "provider": config.get("provider"),
-                    "model_id": config.get("model_id"),
-                    "tier": tier,
-                    "max_tokens": max_tokens,
-                    "key_pool_attempt": attempt + 1,
-                    "key_pool_size": len(candidates),
-                    "pool_key_id": pool_key_id,
-                },
-                duration_ms=duration_ms,
-                **log_service.exc_to_log_kwargs(exc),
-            )
-            raise
+                    time.sleep(delay)
+                    break  # start over with the first key
+                log_service.log_bg(
+                    log_service.ERROR, log_service.AI_CALL,
+                    f"LLM call failed · {config.get('provider', '?')} / {config.get('model_id', '?')}",
+                    details={
+                        "provider": config.get("provider"),
+                        "model_id": config.get("model_id"),
+                        "tier": tier,
+                        "max_tokens": max_tokens,
+                        "key_pool_attempt": attempt + 1,
+                        "key_pool_size": len(candidates),
+                        "pool_key_id": pool_key_id,
+                    },
+                    duration_ms=duration_ms,
+                    **log_service.exc_to_log_kwargs(exc),
+                )
+                raise
 
-    raise last_exc  # type: ignore[misc]
 
 
 # ---------------------------------------------------------------------------
