@@ -27,6 +27,8 @@ class Settings(BaseSettings):
     google_service_account_json: str = ""
     # Timezone for the Date written on appended sheet rows
     sheet_timezone: str = "America/New_York"
+    # How many queue tasks may be generated at once (one resume API key each).
+    queue_max_workers: int = 4
     # Public address of the web app; used for links written into job sheets
     public_base_url: str = "https://aurexviper.pro"
 

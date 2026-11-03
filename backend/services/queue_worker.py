@@ -1,8 +1,11 @@
 """Background worker that processes QueueTask records sequentially.
 
 Architecture:
-- One asyncio task (_worker_loop) runs for the lifetime of the process.
-- Ticks every 3 s, picks one task at a time per user where queue_running = True.
+- settings.queue_max_workers asyncio tasks (_worker_loop) run for the lifetime of the
+  process, so that many tasks are generated at once.
+- Each worker ticks every 3 s and claims one task for a user where queue_running = True.
+  Users take turns: the next task comes from the user with the fewest tasks running,
+  then the one served longest ago, so a long queue never starves anyone else.
 - Pre-checks (clearance, banned company, duplicate) gate each task unless it was
   manually approved (status == 'approved'), which skips all pre-checks.
 """
@@ -14,6 +17,7 @@ from datetime import datetime, date
 
 from sqlalchemy import select, text
 
+from config import settings
 from database import SessionLocal
 from models.application import Application
 from models.queue import QueueTask
@@ -54,7 +58,11 @@ async def _recover_stale_tasks() -> None:
 # ---------------------------------------------------------------------------
 
 def _claim_next_task() -> str | None:
-    """Atomically claim one queued/approved task for a user with queue_running=True."""
+    """Atomically claim one queued/approved task for a user with queue_running=True.
+
+    Fair across users: prefer the user with the fewest tasks processing right now,
+    then the user whose last task started longest ago; within a user, queue order.
+    """
     db = SessionLocal()
     try:
         row = db.execute(
@@ -69,7 +77,14 @@ def _claim_next_task() -> str | None:
                          JOIN users u ON u.id = qt.user_id
                         WHERE qt.status IN ('queued', 'approved')
                           AND u.queue_running = TRUE
-                        ORDER BY qt.order ASC, qt.created_at ASC
+                        ORDER BY
+                              (SELECT COUNT(*) FROM queue_tasks r
+                                WHERE r.user_id = qt.user_id
+                                  AND r.status = 'processing') ASC,
+                              COALESCE((SELECT MAX(r.started_at) FROM queue_tasks r
+                                         WHERE r.user_id = qt.user_id),
+                                       TIMESTAMP 'epoch') ASC,
+                              qt.order ASC, qt.created_at ASC
                         LIMIT 1
                         FOR UPDATE OF qt SKIP LOCKED
                        )
@@ -205,7 +220,7 @@ async def _process_task(task_id: str) -> None:
         pool_key_id: str | None = None
         model_config_id = _get_resume_model_config_id()
         if model_config_id:
-            assignment = assign_key_for_job(model_config_id)
+            assignment = assign_key_for_job(model_config_id, task_id)
             if assignment:
                 pool_key_id, key_label = assignment
                 task.used_api_key_pool_id = pool_key_id
@@ -278,12 +293,14 @@ async def _process_task(task_id: str) -> None:
 # Worker loop
 # ---------------------------------------------------------------------------
 
-async def _worker_loop() -> None:
+async def _worker_loop(worker_no: int) -> None:
+    # Stagger the start so workers don't all poll on the same tick
+    await asyncio.sleep(worker_no * TICK_INTERVAL / max(1, settings.queue_max_workers))
     while True:
         try:
             task_id = _claim_next_task()
             if task_id:
-                logger.info("Queue worker claimed task %s", task_id)
+                logger.info("Queue worker %d claimed task %s", worker_no, task_id)
                 await _process_task(task_id)
         except Exception:
             logger.exception("Queue worker loop error")
@@ -297,5 +314,8 @@ async def _worker_loop() -> None:
 
 async def start_queue_worker() -> None:
     await _recover_stale_tasks()
-    asyncio.create_task(_worker_loop())
+    workers = max(1, settings.queue_max_workers)
+    logger.info("Starting %d queue workers", workers)
+    for n in range(workers):
+        asyncio.create_task(_worker_loop(n))
     logger.info("Queue worker started (tick=%ds)", TICK_INTERVAL)

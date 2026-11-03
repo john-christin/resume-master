@@ -81,11 +81,14 @@ def _get_active_model_config(role: str = "resume"):
     return None
 
 
-def assign_key_for_job(model_config_id: str) -> tuple[str, str | None] | None:
+def assign_key_for_job(model_config_id: str, task_id: str | None = None) -> tuple[str, str | None] | None:
     """Atomically claim the next pool key for a queue job (round-robin).
 
-    Locks the AIModelConfig row, picks the active pool key at
-    key_rotation_index % len(keys), increments the index, and commits.
+    Locks the AIModelConfig row and picks an active pool key, preferring keys that
+    no other task is using right now (so parallel workers spread over the pool),
+    at key_rotation_index % len(candidates). Increments the index and commits.
+    With task_id, the choice is recorded on that task in the same transaction so
+    the next worker already sees the key as taken.
 
     Returns (pool_key_id, label) or None if no active pool keys exist.
     """
@@ -112,9 +115,23 @@ def assign_key_for_job(model_config_id: str) -> tuple[str, str | None] | None:
         if not keys:
             return None
 
-        idx = config.key_rotation_index % len(keys)
-        chosen = keys[idx]
+        from models.queue import QueueTask
+
+        in_use = set(db.scalars(
+            select(QueueTask.used_api_key_pool_id).where(
+                QueueTask.status == "processing",
+                QueueTask.used_api_key_pool_id.is_not(None),
+            )
+        ))
+        candidates = [k for k in keys if k.id not in in_use] or keys
+        idx = config.key_rotation_index % len(candidates)
+        chosen = candidates[idx]
         config.key_rotation_index += 1
+        if task_id:
+            task = db.get(QueueTask, task_id)
+            if task:
+                task.used_api_key_pool_id = chosen.id
+                task.used_key_label = chosen.label
         db.commit()
         return (chosen.id, chosen.label)
     except Exception:
