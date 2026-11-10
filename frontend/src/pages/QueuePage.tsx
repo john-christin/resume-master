@@ -1,9 +1,11 @@
 import {
   AlertCircle,
+  CalendarDays,
   CheckCircle2,
   ChevronRight,
   Clock,
   DollarSign,
+  ListFilter,
   Loader2,
   Pause,
   Play,
@@ -13,7 +15,7 @@ import {
   Trash2,
   XCircle,
 } from "lucide-react";
-import { useCallback, useEffect, useRef, useState } from "react";
+import { forwardRef, useCallback, useEffect, useRef, useState } from "react";
 import { Link } from "react-router-dom";
 import {
   deleteTask,
@@ -24,10 +26,24 @@ import {
   updateTask,
 } from "../api/queue";
 import type { QueueStatus, QueueTask, QueueTaskStatus } from "../api/queue";
+import { getProfiles } from "../api/profile";
+import { getUserId } from "../auth";
+import Pagination from "../components/Pagination";
 import PageHeader from "../components/shared/PageHeader";
 import { Badge } from "../components/ui/badge";
 import { Button } from "../components/ui/button";
 import { Card, CardContent, CardHeader, CardTitle } from "../components/ui/card";
+import {
+  DropdownMenu,
+  DropdownMenuCheckboxItem,
+  DropdownMenuContent,
+  DropdownMenuItem,
+  DropdownMenuSeparator,
+  DropdownMenuTrigger,
+} from "../components/ui/dropdown-menu";
+import { Input } from "../components/ui/input";
+import { Popover, PopoverContent, PopoverTrigger } from "../components/ui/popover";
+import type { Profile } from "../types";
 
 const STATUS_TABS: { value: QueueTaskStatus | "all"; label: string }[] = [
   { value: "all", label: "All" },
@@ -60,6 +76,51 @@ const STATUS_ICONS: Record<QueueTaskStatus, React.ReactNode> = {
   skipped: <SkipForward className="h-3 w-3" />,
 };
 
+// "YYYY-MM-DD" in the user's local timezone, as <input type="date"> expects
+function toDateInput(d: Date): string {
+  const pad = (n: number) => String(n).padStart(2, "0");
+  return `${d.getFullYear()}-${pad(d.getMonth() + 1)}-${pad(d.getDate())}`;
+}
+
+// Start of that local day (plus offset days) as a real instant for the API
+function localDayToISO(day: string, offsetDays = 0): string {
+  const [y, m, d] = day.split("-").map(Number);
+  return new Date(y, m - 1, d + offsetDays).toISOString();
+}
+
+// The API returns naive UTC timestamps (no "Z"); read them as UTC, not local
+function parseUtc(ts: string): Date {
+  return new Date(/(Z|[+-]\d{2}:?\d{2})$/.test(ts) ? ts : `${ts}Z`);
+}
+
+// A column title that opens a filter; highlighted while its filter is active.
+// Radix triggers (asChild) hand it a ref and handlers, so both must reach the <button>.
+const FilterTrigger = forwardRef<
+  HTMLButtonElement,
+  {
+    label: string;
+    hint?: string;
+    active: boolean;
+    icon: React.ReactNode;
+  } & Omit<React.ButtonHTMLAttributes<HTMLButtonElement>, "children">
+>(({ label, hint, active, icon, className, ...props }, ref) => (
+  <button
+    ref={ref}
+    type="button"
+    {...props}
+    className={`inline-flex flex-col items-start rounded px-1 -mx-1 py-0.5 font-medium transition-colors hover:bg-muted ${
+      active ? "text-primary" : ""
+    } ${className ?? ""}`}
+  >
+    <span className="inline-flex items-center gap-1">
+      {label}
+      {icon}
+    </span>
+    {hint && <span className="text-[10px] font-normal opacity-80">{hint}</span>}
+  </button>
+));
+FilterTrigger.displayName = "FilterTrigger";
+
 function StatusBadge({ status }: { status: QueueTaskStatus }) {
   return (
     <span
@@ -81,6 +142,8 @@ function TaskRow({
   onDelete: (id: string) => void;
 }) {
   const [loading, setLoading] = useState(false);
+  // Tasks queued by someone else on a shared profile are view-only
+  const mine = task.user_id === getUserId();
 
   const act = async (action: "approve" | "retry" | "skip") => {
     setLoading(true);
@@ -104,6 +167,9 @@ function TaskRow({
       <td className="px-4 py-3 text-sm text-muted-foreground">
         {task.profile_name || "—"}
       </td>
+      <td className="px-4 py-3 text-sm text-muted-foreground">
+        {mine ? "You" : task.username || "—"}
+      </td>
       <td className="px-4 py-3">
         <StatusBadge status={task.status} />
       </td>
@@ -125,11 +191,11 @@ function TaskRow({
         )}
       </td>
       <td className="px-4 py-3 text-xs text-muted-foreground whitespace-nowrap">
-        {task.created_at ? new Date(task.created_at).toLocaleString() : "—"}
+        {task.created_at ? parseUtc(task.created_at).toLocaleString() : "—"}
       </td>
       <td className="px-4 py-3">
         <div className="flex items-center gap-1">
-          {task.status === "needs_review" && (
+          {mine && task.status === "needs_review" && (
             <Button
               size="sm"
               variant="outline"
@@ -141,7 +207,7 @@ function TaskRow({
               Approve
             </Button>
           )}
-          {(task.status === "failed" || task.status === "needs_review") && (
+          {mine && (task.status === "failed" || task.status === "needs_review") && (
             <Button
               size="sm"
               variant="outline"
@@ -153,7 +219,8 @@ function TaskRow({
               Retry
             </Button>
           )}
-          {task.status !== "processing" &&
+          {mine &&
+            task.status !== "processing" &&
             task.status !== "completed" &&
             task.status !== "skipped" && (
               <Button
@@ -174,7 +241,7 @@ function TaskRow({
               </Button>
             </Link>
           )}
-          {task.status !== "processing" && (
+          {mine && task.status !== "processing" && (
             <Button
               size="sm"
               variant="ghost"
@@ -195,24 +262,53 @@ export default function QueuePage() {
   const [status, setStatus] = useState<QueueStatus | null>(null);
   const [tasks, setTasks] = useState<QueueTask[]>([]);
   const [activeTab, setActiveTab] = useState<QueueTaskStatus | "all">("all");
+  // Default to today's tasks; clear both dates to see everything
+  const [dateFrom, setDateFrom] = useState(() => toDateInput(new Date()));
+  const [dateTo, setDateTo] = useState(() => toDateInput(new Date()));
+  // Empty = every profile I can see (owned or shared); otherwise only these
+  const [profileIds, setProfileIds] = useState<string[]>([]);
+  const [profiles, setProfiles] = useState<Profile[]>([]);
+  const [page, setPage] = useState(1);
+  const [pageSize, setPageSize] = useState(20);
+  const [total, setTotal] = useState(0);
+  const [totalPages, setTotalPages] = useState(1);
   const [loadingControl, setLoadingControl] = useState(false);
   const pollRef = useRef<ReturnType<typeof setInterval> | null>(null);
 
   const fetchStatus = useCallback(async () => {
     try {
-      const res = await getQueueStatus();
+      const res = await getQueueStatus({
+        profile_id: profileIds,
+        created_from: dateFrom ? localDayToISO(dateFrom) : undefined,
+        created_to: dateTo ? localDayToISO(dateTo, 1) : undefined,
+      });
       setStatus(res.data);
     } catch {}
-  }, []);
+  }, [profileIds, dateFrom, dateTo]);
 
   const fetchTasks = useCallback(async () => {
     try {
       const res = await listTasks({
         status: activeTab === "all" ? undefined : activeTab,
+        profile_id: profileIds,
+        created_from: dateFrom ? localDayToISO(dateFrom) : undefined,
+        created_to: dateTo ? localDayToISO(dateTo, 1) : undefined,
+        page,
+        page_size: pageSize,
       });
       setTasks(res.data.items);
+      setTotal(res.data.total);
+      setTotalPages(res.data.total_pages);
+      // Deleting/skipping the last row of a page can leave us past the end
+      if (page > res.data.total_pages) setPage(res.data.total_pages);
     } catch {}
-  }, [activeTab]);
+  }, [activeTab, profileIds, dateFrom, dateTo, page, pageSize]);
+
+  useEffect(() => {
+    getProfiles(true)
+      .then((res) => setProfiles(res.data))
+      .catch(() => {});
+  }, []);
 
   const refresh = useCallback(() => {
     fetchStatus();
@@ -226,6 +322,28 @@ export default function QueuePage() {
       if (pollRef.current) clearInterval(pollRef.current);
     };
   }, [refresh]);
+
+  const changeDates = (from: string, to: string) => {
+    setDateFrom(from);
+    setDateTo(to);
+    setPage(1);
+  };
+
+  const toggleProfile = (id: string, on: boolean) => {
+    setProfileIds((cur) => (on ? [...cur, id] : cur.filter((x) => x !== id)));
+    setPage(1);
+  };
+
+  const today = toDateInput(new Date());
+  const isToday = dateFrom === today && dateTo === today;
+  const isAllTime = !dateFrom && !dateTo;
+  const dateHint = isToday
+    ? "Today"
+    : isAllTime
+      ? "All time"
+      : dateFrom === dateTo
+        ? dateFrom
+        : `${dateFrom || "…"} – ${dateTo || "…"}`;
 
   const handleControl = async (action: "start" | "pause") => {
     setLoadingControl(true);
@@ -359,7 +477,10 @@ export default function QueuePage() {
             {STATUS_TABS.map((tab) => (
               <button
                 key={tab.value}
-                onClick={() => setActiveTab(tab.value)}
+                onClick={() => {
+                  setActiveTab(tab.value);
+                  setPage(1);
+                }}
                 className={`px-3 py-1 rounded-full text-xs font-medium transition-colors ${
                   activeTab === tab.value
                     ? "bg-primary text-primary-foreground"
@@ -367,9 +488,9 @@ export default function QueuePage() {
                 }`}
               >
                 {tab.label}
-                {tab.value !== "all" && (status?.counts[tab.value as QueueTaskStatus] ?? 0) > 0 && (
+                {tab.value !== "all" && (status?.list_counts?.[tab.value as QueueTaskStatus] ?? 0) > 0 && (
                   <span className="ml-1.5 opacity-70">
-                    {status?.counts[tab.value as QueueTaskStatus]}
+                    {status?.list_counts?.[tab.value as QueueTaskStatus]}
                   </span>
                 )}
               </button>
@@ -377,39 +498,164 @@ export default function QueuePage() {
           </div>
         </CardHeader>
         <CardContent className="p-0">
-          {tasks.length === 0 ? (
-            <div className="py-12 text-center text-muted-foreground text-sm">
-              No tasks in this view.
-            </div>
-          ) : (
-            <div className="overflow-x-auto">
-              <table className="w-full">
-                <thead>
-                  <tr className="border-b border-border text-xs text-muted-foreground">
-                    <th className="px-4 py-2.5 text-left font-medium">Job</th>
-                    <th className="px-4 py-2.5 text-left font-medium">Profile</th>
-                    <th className="px-4 py-2.5 text-left font-medium">Status</th>
-                    <th className="px-4 py-2.5 text-left font-medium">Key</th>
-                    <th className="px-4 py-2.5 text-left font-medium">Notes</th>
-                    <th className="px-4 py-2.5 text-left font-medium">Added</th>
-                    <th className="px-4 py-2.5 text-left font-medium">Actions</th>
+          <div className="overflow-x-auto">
+            <table className="w-full">
+              <thead>
+                <tr className="border-b border-border text-xs text-muted-foreground">
+                  <th className="px-4 py-2.5 text-left font-medium">Job</th>
+                  <th className="px-4 py-2.5 text-left font-medium">
+                    <DropdownMenu>
+                      <DropdownMenuTrigger asChild>
+                        <FilterTrigger
+                          label="Profile"
+                          hint={
+                            profileIds.length
+                              ? `${profileIds.length} selected`
+                              : "All profiles"
+                          }
+                          active={profileIds.length > 0}
+                          icon={<ListFilter className="h-3 w-3" />}
+                        />
+                      </DropdownMenuTrigger>
+                      <DropdownMenuContent align="start" className="max-h-72 overflow-y-auto">
+                        {profiles.length === 0 && (
+                          <div className="px-2 py-1.5 text-xs text-muted-foreground">
+                            No profiles
+                          </div>
+                        )}
+                        {profiles.map((p) => (
+                          <DropdownMenuCheckboxItem
+                            key={p.id}
+                            checked={profileIds.includes(p.id)}
+                            onCheckedChange={(on) => toggleProfile(p.id, on)}
+                            onSelect={(e) => e.preventDefault()} // stay open to pick several
+                          >
+                            {p.name}
+                            {p.is_shared && p.owner_username && (
+                              <span className="ml-1.5 text-xs text-muted-foreground">
+                                · {p.owner_username}
+                              </span>
+                            )}
+                          </DropdownMenuCheckboxItem>
+                        ))}
+                        {profileIds.length > 0 && (
+                          <>
+                            <DropdownMenuSeparator />
+                            <DropdownMenuItem
+                              onSelect={() => {
+                                setProfileIds([]);
+                                setPage(1);
+                              }}
+                            >
+                              Clear selection
+                            </DropdownMenuItem>
+                          </>
+                        )}
+                      </DropdownMenuContent>
+                    </DropdownMenu>
+                  </th>
+                  <th className="px-4 py-2.5 text-left font-medium">Added by</th>
+                  <th className="px-4 py-2.5 text-left font-medium">Status</th>
+                  <th className="px-4 py-2.5 text-left font-medium">Key</th>
+                  <th className="px-4 py-2.5 text-left font-medium">Notes</th>
+                  <th className="px-4 py-2.5 text-left font-medium">
+                    <Popover>
+                      <PopoverTrigger asChild>
+                        <FilterTrigger
+                          label="Added"
+                          hint={dateHint}
+                          active={!isToday}
+                          icon={<CalendarDays className="h-3 w-3" />}
+                        />
+                      </PopoverTrigger>
+                      <PopoverContent align="end" className="w-64 space-y-3">
+                        <div className="space-y-1">
+                          <div className="text-xs text-muted-foreground">From</div>
+                          <Input
+                            type="date"
+                            className="h-8 text-xs"
+                            value={dateFrom}
+                            max={dateTo || undefined}
+                            onChange={(e) => {
+                              const from = e.target.value;
+                              // keep the range valid: pushing From past To drags To along
+                              changeDates(from, from && dateTo && from > dateTo ? from : dateTo);
+                            }}
+                          />
+                        </div>
+                        <div className="space-y-1">
+                          <div className="text-xs text-muted-foreground">To</div>
+                          <Input
+                            type="date"
+                            className="h-8 text-xs"
+                            value={dateTo}
+                            min={dateFrom || undefined}
+                            onChange={(e) => {
+                              const to = e.target.value;
+                              changeDates(to && dateFrom && to < dateFrom ? to : dateFrom, to);
+                            }}
+                          />
+                        </div>
+                        <div className="flex gap-2">
+                          <Button
+                            size="sm"
+                            variant={isToday ? "default" : "outline"}
+                            className="h-8 flex-1 text-xs"
+                            onClick={() => changeDates(today, today)}
+                          >
+                            Today
+                          </Button>
+                          <Button
+                            size="sm"
+                            variant={isAllTime ? "default" : "outline"}
+                            className="h-8 flex-1 text-xs"
+                            onClick={() => changeDates("", "")}
+                          >
+                            All time
+                          </Button>
+                        </div>
+                      </PopoverContent>
+                    </Popover>
+                  </th>
+                  <th className="px-4 py-2.5 text-left font-medium">Actions</th>
+                </tr>
+              </thead>
+              <tbody>
+                {tasks.length === 0 ? (
+                  <tr>
+                    <td colSpan={8} className="py-12 text-center text-muted-foreground text-sm">
+                      {isToday
+                        ? "No tasks today. Use the Added filter to look at earlier days."
+                        : "No tasks in this view."}
+                    </td>
                   </tr>
-                </thead>
-                <tbody>
-                  {tasks.map((task) => (
+                ) : (
+                  tasks.map((task) => (
                     <TaskRow
                       key={task.id}
                       task={task}
                       onAction={handleAction}
                       onDelete={handleDelete}
                     />
-                  ))}
-                </tbody>
-              </table>
-            </div>
-          )}
+                  ))
+                )}
+              </tbody>
+            </table>
+          </div>
         </CardContent>
       </Card>
+
+      <Pagination
+        page={page}
+        totalPages={totalPages}
+        pageSize={pageSize}
+        total={total}
+        onPageChange={setPage}
+        onPageSizeChange={(s) => {
+          setPageSize(s);
+          setPage(1);
+        }}
+      />
     </div>
   );
 }

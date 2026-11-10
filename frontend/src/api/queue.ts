@@ -12,6 +12,7 @@ export type QueueTaskStatus =
 export interface QueueTask {
   id: string;
   user_id: string;
+  username: string | null; // who queued it
   profile_id: string | null;
   profile_name: string | null;
   doc_style_id: string | null;
@@ -32,7 +33,8 @@ export interface QueueTask {
 
 export interface QueueStatus {
   queue_running: boolean;
-  counts: Partial<Record<QueueTaskStatus, number>>;
+  counts: Partial<Record<QueueTaskStatus, number>>; // my own queue, all time
+  list_counts: Partial<Record<QueueTaskStatus, number>>; // same scope/dates as the list
   today_completed: number;
   today_cost: number;
   current_task: QueueTask | null;
@@ -46,11 +48,34 @@ export interface PaginatedTasks {
   total_pages: number;
 }
 
-export const getQueueStatus = () =>
-  api.get<QueueStatus>("/api/queue/status");
+// FastAPI wants repeated keys (profile_id=a&profile_id=b), not axios's profile_id[]=a
+const repeatParams = (params: Record<string, unknown>) => {
+  const q = new URLSearchParams();
+  for (const [k, v] of Object.entries(params)) {
+    if (Array.isArray(v)) v.forEach((x) => q.append(k, String(x)));
+    else if (v !== undefined && v !== null) q.append(k, String(v));
+  }
+  return q.toString();
+};
 
-export const listTasks = (params?: { status?: string; date?: string; page?: number }) =>
-  api.get<PaginatedTasks>("/api/queue", { params });
+export interface QueueFilter {
+  profile_id?: string[]; // empty = every profile I can see
+  created_from?: string; // ISO instant, inclusive
+  created_to?: string; // ISO instant, exclusive
+}
+
+export const getQueueStatus = (params?: QueueFilter) =>
+  api.get<QueueStatus>("/api/queue/status", { params, paramsSerializer: repeatParams });
+
+export const listTasks = (params?: {
+  status?: string;
+  profile_id?: string[];
+  created_from?: string; // ISO instant, inclusive
+  created_to?: string; // ISO instant, exclusive
+  page?: number;
+  page_size?: number;
+}) =>
+  api.get<PaginatedTasks>("/api/queue", { params, paramsSerializer: repeatParams });
 
 export const enqueueTask = (data: {
   profile_id: string;

@@ -1,10 +1,10 @@
 import json
 import math
-from datetime import datetime, date
+from datetime import datetime, timezone
 
 from fastapi import APIRouter, Body, Depends, HTTPException, Query
 from sqlalchemy import func, or_, select
-from sqlalchemy.orm import Session
+from sqlalchemy.orm import Session, selectinload
 
 from auth import get_approved_user
 from database import get_db
@@ -13,6 +13,7 @@ from models.queue import QueueTask
 from models.user import User
 from routers.generate import _get_accessible_profile
 from services import sheet_sync
+from services.access import visible_queue_tasks_clause
 
 router = APIRouter(prefix="/api/queue", tags=["queue"])
 
@@ -70,6 +71,7 @@ def _task_to_dict(task: QueueTask) -> dict:
     return {
         "id": task.id,
         "user_id": task.user_id,
+        "username": task.user.username if task.user else None,
         "profile_id": task.profile_id,
         "profile_name": task.profile_name,
         "doc_style_id": task.doc_style_id,
@@ -89,6 +91,32 @@ def _task_to_dict(task: QueueTask) -> dict:
         "completed_at": task.completed_at,
         "used_key_label": task.used_key_label,
     }
+
+
+def _to_naive_utc(dt: datetime) -> datetime:
+    if dt.tzinfo is None:
+        return dt
+    return dt.astimezone(timezone.utc).replace(tzinfo=None)
+
+
+def _filter_tasks(
+    stmt,
+    user: User,
+    profile_ids: list[str] | None,
+    created_from: datetime | None,
+    created_to: datetime | None,
+):
+    """Narrow a QueueTask query to what `user` may see, then to the chosen
+    profiles and date range. created_at is naive UTC; the client sends the range
+    as real instants so "that day" follows the user's own timezone."""
+    stmt = stmt.where(visible_queue_tasks_clause(user))
+    if profile_ids:
+        stmt = stmt.where(QueueTask.profile_id.in_(profile_ids))
+    if created_from:
+        stmt = stmt.where(QueueTask.created_at >= _to_naive_utc(created_from))
+    if created_to:
+        stmt = stmt.where(QueueTask.created_at < _to_naive_utc(created_to))
+    return stmt
 
 
 def _normalize_url(url: str | None) -> str:
@@ -216,28 +244,29 @@ def enqueue_task(
 @router.get("")
 def list_tasks(
     status: str | None = Query(None),
-    date: str | None = Query(None),  # "today" for today's tasks
+    profile_id: list[str] | None = Query(None),  # repeatable
+    created_from: datetime | None = Query(None),  # inclusive
+    created_to: datetime | None = Query(None),  # exclusive
     page: int = Query(1, ge=1),
     page_size: int = Query(50, ge=1, le=200),
     current_user: User = Depends(get_approved_user),
     db: Session = Depends(get_db),
 ):
-    stmt = select(QueueTask).where(QueueTask.user_id == current_user.id)
-    count_stmt = select(func.count(QueueTask.id)).where(QueueTask.user_id == current_user.id)
+    stmt = _filter_tasks(select(QueueTask), current_user, profile_id, created_from, created_to)
+    count_stmt = _filter_tasks(
+        select(func.count(QueueTask.id)), current_user, profile_id, created_from, created_to
+    )
 
     if status:
         stmt = stmt.where(QueueTask.status == status)
         count_stmt = count_stmt.where(QueueTask.status == status)
 
-    if date == "today":
-        today_start = datetime.combine(datetime.utcnow().date(), datetime.min.time())
-        stmt = stmt.where(QueueTask.created_at >= today_start)
-        count_stmt = count_stmt.where(QueueTask.created_at >= today_start)
-
     total = db.scalar(count_stmt) or 0
     total_pages = max(1, math.ceil(total / page_size))
 
-    stmt = stmt.order_by(QueueTask.order.asc(), QueueTask.created_at.asc())
+    # `order` is a per-user sequence, so it means nothing across users: newest first
+    stmt = stmt.options(selectinload(QueueTask.user))
+    stmt = stmt.order_by(QueueTask.created_at.desc(), QueueTask.id)
     stmt = stmt.offset((page - 1) * page_size).limit(page_size)
 
     tasks = db.scalars(stmt).all()
@@ -328,16 +357,28 @@ def pause_queue(
 
 @router.get("/status")
 def queue_status(
+    profile_id: list[str] | None = Query(None),
+    created_from: datetime | None = Query(None),
+    created_to: datetime | None = Query(None),
     current_user: User = Depends(get_approved_user),
     db: Session = Depends(get_db),
 ):
-    # Counts by status
+    # Counts by status: my own queue, all time (drives the summary cards)
     rows = db.execute(
         select(QueueTask.status, func.count(QueueTask.id))
         .where(QueueTask.user_id == current_user.id)
         .group_by(QueueTask.status)
     ).all()
     counts = {row[0]: row[1] for row in rows}
+
+    # Counts for the list's tabs: same profiles and date range as the list itself
+    list_rows = db.execute(
+        _filter_tasks(
+            select(QueueTask.status, func.count(QueueTask.id)),
+            current_user, profile_id, created_from, created_to,
+        ).group_by(QueueTask.status)
+    ).all()
+    list_counts = {row[0]: row[1] for row in list_rows}
 
     # Today's completed
     today_start = datetime.combine(datetime.utcnow().date(), datetime.min.time())
@@ -369,6 +410,7 @@ def queue_status(
     return {
         "queue_running": current_user.queue_running,
         "counts": counts,
+        "list_counts": list_counts,
         "today_completed": today_completed,
         "today_cost": today_cost,
         "current_task": _task_to_dict(current_task) if current_task else None,

@@ -5,6 +5,7 @@ from sqlalchemy.orm import Session
 from models.application import Application
 from models.profile import Profile
 from models.profile_share import profile_shares
+from models.queue import QueueTask
 from models.user import User
 
 
@@ -22,6 +23,17 @@ def visible_applications_clause(user: User):
         Application.user_id == user.id,
         Application.profile_id.in_(owned),
         Application.profile_id.in_(shared),
+    )
+
+
+def visible_queue_tasks_clause(user: User):
+    """Same rule for the queue: tasks the user queued, plus everyone's tasks on a
+    profile they own or that is shared with them. View-only for the latter."""
+    owned, shared = _profile_ids_of(user)
+    return or_(
+        QueueTask.user_id == user.id,
+        QueueTask.profile_id.in_(owned),
+        QueueTask.profile_id.in_(shared),
     )
 
 
