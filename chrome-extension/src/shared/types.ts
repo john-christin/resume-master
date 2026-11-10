@@ -79,6 +79,7 @@ export interface ApplicationExtra {
   salary_range: string | null
   resume_type: string | null
   required_skills: string[]
+  cover_letter_text: string | null
   call_stage: string | null
   call_status: string | null
   call_scheduled_at: string | null

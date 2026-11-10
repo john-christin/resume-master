@@ -1,5 +1,6 @@
-import { useState, useEffect, useRef } from 'react'
+import { useState, useEffect } from 'react'
 import type { FetchedFile, SWResponse } from '../../shared/types'
+import { attachToFileInput } from './fileInput'
 
 interface Props {
   title: string
@@ -29,7 +30,6 @@ export default function FileCard({ title, fileUrl, fillIndex, profileName }: Pro
   const [blob, setBlob] = useState<Blob | null>(null)
   const [filename, setFilename] = useState('')
   const [fillStatus, setFillStatus] = useState<FillStatus>('idle')
-  const highlightTimer = useRef<ReturnType<typeof setTimeout> | null>(null)
 
   useEffect(() => {
     let cancelled = false
@@ -53,65 +53,15 @@ export default function FileCard({ title, fileUrl, fillIndex, profileName }: Pro
 
     return () => {
       cancelled = true
-      if (highlightTimer.current) clearTimeout(highlightTimer.current)
     }
   }, [fileUrl])
 
   function handleFillInput() {
     if (!blob) return
-
-    // Query all file inputs in the host page (content script has full DOM access)
-    const inputs = Array.from(
-      document.querySelectorAll<HTMLInputElement>('input[type="file"]'),
-    )
-
-    if (inputs.length === 0) {
-      setFillStatus('not-found')
-      return
-    }
-
-    // Target the Nth input; fall back to the last one if there aren't enough
-    const input = inputs[Math.min(fillIndex, inputs.length - 1)]
-
-    try {
-      const renamedFilename = buildFilename(filename, profileName, title)
-      const file = new File([blob], renamedFilename, { type: blob.type })
-      const dt = new DataTransfer()
-      dt.items.add(file)
-
-      // Use the native prototype setter so React synthetic events fire correctly
-      const nativeSetter = Object.getOwnPropertyDescriptor(
-        window.HTMLInputElement.prototype,
-        'files',
-      )?.set
-      if (nativeSetter) {
-        nativeSetter.call(input, dt.files)
-      } else {
-        input.files = dt.files
-      }
-
-      // Dispatch both events — some frameworks listen to one or the other
-      input.dispatchEvent(new Event('change', { bubbles: true }))
-      input.dispatchEvent(new Event('input', { bubbles: true }))
-
-      // Briefly highlight the filled input so the user can see what happened
-      const prev = { outline: input.style.outline, outlineOffset: input.style.outlineOffset }
-      input.style.outline = '3px solid #6366f1'
-      input.style.outlineOffset = '3px'
-      highlightTimer.current = setTimeout(() => {
-        input.style.outline = prev.outline
-        input.style.outlineOffset = prev.outlineOffset
-      }, 2500)
-
-      // Scroll the input into view
-      input.scrollIntoView({ behavior: 'smooth', block: 'center' })
-
-      setFillStatus('filled')
-      // Reset status badge after a few seconds
-      setTimeout(() => setFillStatus('idle'), 4000)
-    } catch {
-      setFillStatus('error')
-    }
+    const result = attachToFileInput(blob, buildFilename(filename, profileName, title), fillIndex)
+    setFillStatus(result === 'filled' ? 'filled' : result)
+    // Reset status badge after a few seconds
+    if (result === 'filled') setTimeout(() => setFillStatus('idle'), 4000)
   }
 
   async function handleDownload() {

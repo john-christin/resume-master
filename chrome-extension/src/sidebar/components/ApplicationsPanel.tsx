@@ -1,7 +1,6 @@
-import { useState, useEffect, useRef } from 'react'
-import type { ApplicationExtra, ApplicationHit, AppChatReply, ChatMessage, Profile, SWResponse } from '../../shared/types'
-
-type Format = 'pdf' | 'docx'
+import { useState, useEffect } from 'react'
+import type { ApplicationExtra, ApplicationHit, Profile, SWResponse } from '../../shared/types'
+import { attachToFileInput, fetchFileBlob } from './fileInput'
 
 /**
  * Applications of the profiles picked in the extension, newest first.
@@ -133,10 +132,10 @@ function toSlug(name: string) {
 function ApplicationDetail({ hit, onBack, onChange }: {
   hit: ApplicationHit; onBack: () => void; onChange: (hit: ApplicationHit) => void
 }) {
-  const [downloading, setDownloading] = useState<Format | null>(null)
+  const [busy, setBusy] = useState<string | null>(null)
+  const [flashed, setFlashed] = useState<{ key: string; text: string; ok: boolean } | null>(null)
   const [savingApplied, setSavingApplied] = useState(false)
   const [error, setError] = useState('')
-  const [chatOpen, setChatOpen] = useState(false)
   const [extra, setExtra] = useState<ApplicationExtra | null>(null)
 
   // Location, salary, skills… aren't in the list rows, so load the full application
@@ -153,17 +152,69 @@ function ApplicationDetail({ hit, onBack, onChange }: {
   const coverBase = fileName(hit.cover_letter_path)
   const slug = toSlug(hit.profile_name || 'Resume')
 
-  /** Resume + cover letter, both in the same format. */
-  async function handleDownloadBoth(format: Format) {
-    setDownloading(format)
+  const documents = [
+    { key: 'resume', label: 'Resume', base: resumeBase, filename: `${slug}_Resume.pdf`, fillIndex: 0 },
+    { key: 'cover', label: 'Cover Letter', base: coverBase, filename: `${slug}_Cover_Letter.pdf`, fillIndex: 1 },
+  ].filter((doc) => doc.base)
+
+  /** Briefly show the outcome on the button that was pressed. */
+  function flash(key: string, text: string, ok: boolean) {
+    setFlashed({ key, text, ok })
+    setTimeout(() => setFlashed((cur) => (cur?.key === key ? null : cur)), 2500)
+  }
+
+  async function handleDownload(doc: (typeof documents)[number]) {
+    const key = `download-${doc.key}`
+    setBusy(key)
     setError('')
-    const files = [
-      ...(resumeBase ? [{ url: `/api/download/${resumeBase}.${format}`, filename: `${slug}_Resume.${format}` }] : []),
-      ...(coverBase ? [{ url: `/api/download/${coverBase}.${format}`, filename: `${slug}_Cover_Letter.${format}` }] : []),
-    ]
-    const res: SWResponse = await chrome.runtime.sendMessage({ type: 'DOWNLOAD_APP_FILES', files })
-    setDownloading(null)
+    const res: SWResponse = await chrome.runtime.sendMessage({
+      type: 'DOWNLOAD_APP_FILES',
+      files: [{ url: `/api/download/${doc.base}.pdf`, filename: doc.filename }],
+    })
+    setBusy(null)
     if (!res.ok) setError(res.error)
+    else flash(key, '✓ Downloaded', true)
+  }
+
+  /** Put the PDF into the job page's file input (resume first, cover letter second). */
+  async function handleAttach(doc: (typeof documents)[number]) {
+    const key = `attach-${doc.key}`
+    setBusy(key)
+    setError('')
+    const file = await fetchFileBlob(`/api/download/${doc.base}.pdf`)
+    setBusy(null)
+    if (!file) {
+      setError(`Failed to load the ${doc.label.toLowerCase()}`)
+      return
+    }
+    const result = attachToFileInput(file.blob, doc.filename, doc.fillIndex)
+    if (result === 'filled') flash(key, '✓ Attached', true)
+    else flash(key, result === 'not-found' ? 'No file input on this page' : 'Attach failed', false)
+  }
+
+  async function handleCopyCoverLetter() {
+    if (!extra?.cover_letter_text) return
+    try {
+      await navigator.clipboard.writeText(extra.cover_letter_text)
+      flash('copy-cover', '✓ Copied', true)
+    } catch {
+      flash('copy-cover', 'Copy failed', false)
+    }
+  }
+
+  function actionLabel(key: string, label: string) {
+    if (flashed?.key === key) return flashed.text
+    return busy === key ? 'Working…' : label
+  }
+
+  function actionClass(key: string, primary = false) {
+    const base = 'py-2 rounded-xl text-xs font-medium transition-colors disabled:opacity-40'
+    if (flashed?.key === key) {
+      return `${base} border ${flashed.ok ? 'bg-emerald-950/50 border-emerald-800 text-emerald-400' : 'bg-amber-950/50 border-amber-800 text-amber-400'}`
+    }
+    return primary
+      ? `${base} bg-indigo-600 hover:bg-indigo-500 text-white`
+      : `${base} border border-slate-700 text-slate-300 hover:text-slate-100 hover:border-slate-600`
   }
 
   async function handleApplied(applied: boolean) {
@@ -246,139 +297,43 @@ function ApplicationDetail({ hit, onBack, onChange }: {
         )}
       </div>
 
-      {/* Documents: resume + cover letter together */}
-      {resumeBase || coverBase ? (
-        <div className="flex gap-2">
-          {(['pdf', 'docx'] as const).map((format) => (
-            <button
-              key={format}
-              onClick={() => handleDownloadBoth(format)}
-              disabled={downloading !== null}
-              className="flex-1 py-2 rounded-xl bg-indigo-600 hover:bg-indigo-500 disabled:opacity-40 text-white text-xs font-medium transition-colors"
-            >
-              {downloading === format ? 'Downloading…' : `↓ Download both (${format === 'pdf' ? 'PDF' : 'Word'})`}
-            </button>
+      {/* Documents: download or attach each as PDF, copy the cover letter text */}
+      {documents.length > 0 || extra?.cover_letter_text ? (
+        <div className="grid grid-cols-2 gap-2">
+          {documents.map((doc) => (
+            <div key={doc.key} className="contents">
+              <button
+                onClick={() => handleDownload(doc)}
+                disabled={busy !== null}
+                className={actionClass(`download-${doc.key}`, true)}
+              >
+                {actionLabel(`download-${doc.key}`, `↓ Download ${doc.label}`)}
+              </button>
+              <button
+                onClick={() => handleAttach(doc)}
+                disabled={busy !== null}
+                className={actionClass(`attach-${doc.key}`)}
+              >
+                {actionLabel(`attach-${doc.key}`, `📎 Attach ${doc.label}`)}
+              </button>
+            </div>
           ))}
+          {extra?.cover_letter_text && (
+            <button
+              onClick={handleCopyCoverLetter}
+              className={`col-span-2 ${actionClass('copy-cover')}`}
+            >
+              {actionLabel('copy-cover', 'Copy Cover Letter')}
+            </button>
+          )}
         </div>
       ) : (
-        <p className="text-xs text-slate-500">No documents generated for this application yet.</p>
+        <p className="text-xs text-slate-500">
+          {extra ? 'No documents generated for this application yet.' : 'Loading documents…'}
+        </p>
       )}
 
       {error && <div className="text-xs text-red-400 bg-red-950/40 border border-red-900 rounded-lg px-3 py-2">{error}</div>}
-
-      {/* Chat about this application */}
-      <button
-        onClick={() => setChatOpen((o) => !o)}
-        className="w-full py-1.5 rounded-lg border border-slate-700 hover:border-slate-600 text-xs text-slate-400 hover:text-slate-200 transition-colors"
-      >
-        {chatOpen ? 'Hide chat' : 'Chat about this application'}
-      </button>
-      {chatOpen && <AppChat appId={hit.id} />}
-    </div>
-  )
-}
-
-/** Compact chat bound to one application. */
-function AppChat({ appId }: { appId: string }) {
-  const [messages, setMessages] = useState<ChatMessage[]>([])
-  const [input, setInput] = useState('')
-  const [loading, setLoading] = useState(false)
-  const [error, setError] = useState('')
-  const [copied, setCopied] = useState<number | null>(null)
-  const bottomRef = useRef<HTMLDivElement>(null)
-
-  useEffect(() => {
-    let cancelled = false
-    setMessages([])
-    setLoading(true)
-    chrome.runtime.sendMessage({ type: 'GET_APP_CHAT', appId }).then((res: SWResponse<ChatMessage[]>) => {
-      if (cancelled) return
-      setLoading(false)
-      if (!res.ok) setError(res.error)
-      else setMessages(res.data.map((m) => ({ role: m.role, content: m.content })))
-    })
-    return () => { cancelled = true }
-  }, [appId])
-
-  useEffect(() => {
-    bottomRef.current?.scrollIntoView({ behavior: 'smooth' })
-  }, [messages, loading])
-
-  async function handleSend() {
-    const text = input.trim()
-    if (!text || loading) return
-    const next: ChatMessage[] = [...messages, { role: 'user', content: text }]
-    setMessages(next)
-    setInput('')
-    setError('')
-    setLoading(true)
-    const res: SWResponse<AppChatReply> = await chrome.runtime.sendMessage({ type: 'APP_CHAT', appId, content: text })
-    setLoading(false)
-    if (!res.ok) {
-      setError(res.error)
-      return
-    }
-    setMessages([...next, { role: 'assistant', content: res.data.message.content }])
-  }
-
-  function handleCopy(idx: number, text: string) {
-    navigator.clipboard.writeText(text).then(() => {
-      setCopied(idx)
-      setTimeout(() => setCopied(null), 2000)
-    })
-  }
-
-  return (
-    <div className="rounded-xl border border-slate-800 bg-slate-900/40 flex flex-col">
-      <div className="max-h-64 overflow-y-auto av-panel px-3 py-3 space-y-3">
-        {messages.length === 0 && !loading && (
-          <p className="text-center text-slate-600 text-xs py-4">Ask about this application.</p>
-        )}
-        {messages.map((msg, idx) => (
-          <div key={idx} className={`flex flex-col gap-1 ${msg.role === 'user' ? 'items-end' : 'items-start'}`}>
-            <div
-              className={`max-w-[88%] rounded-xl px-3 py-2 text-xs leading-relaxed whitespace-pre-wrap ${
-                msg.role === 'user' ? 'bg-indigo-600 text-white rounded-br-sm' : 'bg-slate-800 text-slate-200 rounded-bl-sm'
-              }`}
-            >
-              {msg.content}
-            </div>
-            {msg.role === 'assistant' && (
-              <button onClick={() => handleCopy(idx, msg.content)}
-                className="text-[10px] text-slate-600 hover:text-slate-400 transition-colors px-1">
-                {copied === idx ? '✓ Copied' : 'Copy'}
-              </button>
-            )}
-          </div>
-        ))}
-        {loading && <p className="text-xs text-slate-500">Thinking…</p>}
-        {error && <div className="text-xs text-red-400 bg-red-950/40 border border-red-900 rounded-lg px-3 py-2">{error}</div>}
-        <div ref={bottomRef} />
-      </div>
-      <div className="border-t border-slate-800 px-3 py-2 flex gap-2 items-end">
-        <textarea
-          value={input}
-          onChange={(e) => setInput(e.target.value)}
-          onKeyDown={(e) => {
-            if (e.key === 'Enter' && !e.shiftKey) {
-              e.preventDefault()
-              handleSend()
-            }
-          }}
-          placeholder="Ask a question… (Enter to send)"
-          rows={2}
-          className="av-input flex-1 resize-none text-xs"
-        />
-        <button
-          onClick={handleSend}
-          disabled={!input.trim() || loading}
-          className="flex-shrink-0 w-8 h-8 rounded-lg bg-indigo-600 hover:bg-indigo-500 disabled:opacity-40 disabled:cursor-not-allowed flex items-center justify-center transition-colors"
-        >
-          <svg className="w-4 h-4 text-white" fill="none" viewBox="0 0 24 24" stroke="currentColor">
-            <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 19V5m-7 7l7-7 7 7" />
-          </svg>
-        </button>
-      </div>
     </div>
   )
 }
