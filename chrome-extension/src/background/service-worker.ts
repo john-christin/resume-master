@@ -1,4 +1,4 @@
-import type { ChatResponse, ExtractedJobData, FetchedFile, MessageToSW, Profile, ProfileDetails, SWResponse } from '../shared/types'
+import type { ChatResponse, ExtractedJobData, FetchedFile, MessageToSW, Profile, ProfileDetails, SWResponse, TabDraft } from '../shared/types'
 
 const DEFAULT_BASE_URL = 'https://aurexviper.pro'
 
@@ -43,17 +43,115 @@ async function authFetch(path: string, init: RequestInit = {}): Promise<Response
   return res
 }
 
+// ── Per-tab drafts ───────────────────────────────────────────────────────────
+// One TabDraft per browser tab in chrome.storage.session. The service worker is the
+// only writer: surfaces send patches, and writes for the same tab run one after the
+// other so two of them can't overwrite each other.
+
+const draftKey = (tabId: number) => `draft_${tabId}`
+const draftWriteChains = new Map<number, Promise<void>>()
+
+function mutateDraft(tabId: number, change: (draft: TabDraft | undefined) => TabDraft | undefined): Promise<void> {
+  const previous = draftWriteChains.get(tabId) ?? Promise.resolve()
+  // a failed earlier write must not block the ones after it
+  const next = previous.catch(() => {}).then(async () => {
+    const key = draftKey(tabId)
+    const stored = (await chrome.storage.session.get(key))[key] as TabDraft | undefined
+    const updated = change(stored)
+    if (updated) await chrome.storage.session.set({ [key]: updated })
+    else await chrome.storage.session.remove(key)
+  })
+  draftWriteChains.set(tabId, next)
+  next.catch(() => {}).finally(() => {
+    if (draftWriteChains.get(tabId) === next) draftWriteChains.delete(tabId)
+  })
+  return next
+}
+
+async function loadDraft(tabId: number): Promise<TabDraft | null> {
+  await draftWriteChains.get(tabId)?.catch(() => {}) // see writes that are still in flight
+  const key = draftKey(tabId)
+  return ((await chrome.storage.session.get(key))[key] as TabDraft | undefined) ?? null
+}
+
+const EMPTY_DRAFT: TabDraft = {
+  pageUrl: null,
+  jobTitle: '',
+  company: '',
+  jobUrl: '',
+  actualUrl: '',
+  posted: '',
+  jobDescription: '',
+  result: null,
+  activeTab: 'app',
+  selectedApp: null,
+}
+
+// Chrome reuses tab ids only after a restart (which clears session storage), but a
+// closed tab's draft is dropped right away anyway
+chrome.tabs.onRemoved.addListener((tabId) => {
+  mutateDraft(tabId, () => undefined).catch(() => {})
+})
+
+// "Apply" often opens the employer's site in a new tab: it inherits the job and the
+// generated documents (not the page, the open panel tab or the selected application),
+// so the files can be attached there.
+chrome.tabs.onCreated.addListener((tab) => {
+  const { id, openerTabId } = tab
+  if (id === undefined || openerTabId === undefined) return
+  loadDraft(openerTabId)
+    .then((opener) => {
+      if (!opener) return
+      return mutateDraft(id, (existing) => existing ?? {
+        ...EMPTY_DRAFT,
+        jobTitle: opener.jobTitle,
+        company: opener.company,
+        jobUrl: opener.jobUrl,
+        actualUrl: opener.actualUrl,
+        posted: opener.posted,
+        jobDescription: opener.jobDescription,
+        result: opener.result,
+      })
+    })
+    .catch(() => {})
+})
+
+// The result used to be one global value shared by every tab
+chrome.runtime.onInstalled.addListener(() => {
+  chrome.storage.local.remove('last_result')
+})
+
 chrome.runtime.onMessage.addListener(
-  (msg: MessageToSW, _sender, sendResponse) => {
-    handle(msg)
+  (msg: MessageToSW, sender, sendResponse) => {
+    handle(msg, sender)
       .then(sendResponse)
       .catch((e: Error) => sendResponse({ ok: false, error: e.message }))
     return true // keep channel open for async
   },
 )
 
-async function handle(msg: MessageToSW): Promise<SWResponse> {
+async function handle(msg: MessageToSW, sender: chrome.runtime.MessageSender): Promise<SWResponse> {
   switch (msg.type) {
+    case 'GET_DRAFT': {
+      const tabId = sender.tab?.id
+      if (tabId === undefined) return { ok: false, error: 'No tab' }
+      return { ok: true, data: await loadDraft(tabId) }
+    }
+
+    case 'PATCH_DRAFT': {
+      const tabId = sender.tab?.id
+      if (tabId === undefined) return { ok: false, error: 'No tab' }
+      await mutateDraft(tabId, (draft) => ({ ...(draft ?? EMPTY_DRAFT), ...msg.patch }))
+      return { ok: true, data: null }
+    }
+
+    case 'CLEAR_DRAFT': {
+      const tabId = sender.tab?.id
+      if (tabId === undefined) return { ok: false, error: 'No tab' }
+      await mutateDraft(tabId, () => undefined)
+      return { ok: true, data: null }
+    }
+
     case 'LOGIN': {
       const base = await getBaseUrl()
       const res = await fetch(`${base}/api/auth/login`, {

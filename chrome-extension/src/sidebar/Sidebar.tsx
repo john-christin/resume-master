@@ -1,5 +1,5 @@
 import { useState, useEffect, useRef, useCallback } from 'react'
-import type { ApplicationHit, AppChatReply, ChatMessage, ChatRequest, ChatResponse, DuplicateCheck, ExtractedJobData, GenerateResult, Profile, ProfileDetails, SWResponse } from '../shared/types'
+import type { ApplicationHit, AppChatReply, ChatMessage, ChatRequest, ChatResponse, DuplicateCheck, ExtractedJobData, GenerateResult, Profile, ProfileDetails, SWResponse, TabDraft } from '../shared/types'
 import FileCard from './components/FileCard'
 import ApplicationsPanel, { HitList, hitLabel, useApplicationSearch } from './components/ApplicationsPanel'
 
@@ -97,6 +97,12 @@ function findPostedText(text: string): string {
   return m ? m[1] : ''
 }
 
+/** The current page without its #hash: the identity a tab's job fields belong to. */
+function pageKey(): string {
+  const u = new URL(window.location.href)
+  return u.origin + u.pathname.replace(/\/$/, '') + u.search
+}
+
 export default function Widget() {
   const [pos, setPos] = useState<Pos>(defaultPos)
   const [open, setOpen] = useState(false)
@@ -111,19 +117,98 @@ export default function Widget() {
   const [posted, setPosted] = useState('')
   const [jobDescription, setJobDescription] = useState('')
   const [error, setError] = useState('')
-  const [activeTab, setActiveTab] = useState<'app' | 'apps' | 'chat' | 'details'>('app')
+  const [activeTab, setActiveTab] = useState<TabDraft['activeTab']>('app')
   // Application picked in the History tab; the Q&A Chat tab follows it
   const [selectedApp, setSelectedApp] = useState<ApplicationHit | null>(null)
+  // Set once this tab's saved draft has been loaded; nothing is saved before that
+  const [draftReady, setDraftReady] = useState(false)
   const posRef = useRef(pos)
   posRef.current = pos
 
-  // Restore saved position + last generation result
+  // Restore saved position (shared by every tab)
   useEffect(() => {
-    chrome.storage.local.get(['widget_pos', 'last_result']).then(({ widget_pos, last_result }) => {
+    chrome.storage.local.get('widget_pos').then(({ widget_pos }) => {
       if (widget_pos) setPos(clampPos((widget_pos as Pos).x, (widget_pos as Pos).y))
-      if (last_result) setStage({ name: 'results', result: last_result as GenerateResult })
     })
   }, [])
+
+  // Restore this tab's draft. On a different page than the one it was saved on, the job
+  // fields start blank again, but the generated documents stay so they can still be attached.
+  useEffect(() => {
+    let cancelled = false
+    chrome.runtime.sendMessage({ type: 'GET_DRAFT' }).then((res: SWResponse<TabDraft | null>) => {
+      if (cancelled) return
+      const draft = res?.ok ? res.data : null
+      if (draft) {
+        hasDraftRef.current = true
+        // pageUrl is null on a tab opened from another one: take the inherited job as it is
+        if (!draft.pageUrl || draft.pageUrl === pageKey()) {
+          setJobTitle(draft.jobTitle)
+          setCompany(draft.company)
+          setJobUrl(draft.jobUrl || window.location.href)
+          setActualUrl(draft.actualUrl)
+          setPosted(draft.posted)
+          setJobDescription(draft.jobDescription)
+        }
+        if (draft.result) setStage({ name: 'results', result: draft.result })
+        setActiveTab(draft.activeTab)
+        setSelectedApp(draft.selectedApp)
+      }
+      setDraftReady(true)
+    }).catch(() => setDraftReady(true))
+    return () => { cancelled = true }
+  }, [])
+
+  // Save the draft (the service worker merges it into this tab's stored one)
+  const draftNow: Partial<TabDraft> = {
+    jobTitle, company, jobUrl, actualUrl, posted, jobDescription,
+    result: stage.name === 'results' ? stage.result : null,
+    activeTab,
+    selectedApp,
+  }
+  const draftRef = useRef(draftNow)
+  draftRef.current = draftNow
+  // A tab nobody used gets no draft; once there is one it is kept up to date, even when blanked
+  const hasDraftRef = useRef(false)
+  const saveDraft = useCallback(() => {
+    const d = draftRef.current
+    const blank = !d.jobTitle && !d.company && !d.actualUrl && !d.posted && !d.jobDescription
+      && !d.result && !d.selectedApp && d.activeTab === 'app' && (!d.jobUrl || d.jobUrl === window.location.href)
+    if (!hasDraftRef.current && blank) return
+    hasDraftRef.current = true
+    chrome.runtime.sendMessage({ type: 'PATCH_DRAFT', patch: { ...d, pageUrl: pageKey() } })
+  }, [])
+  useEffect(() => {
+    if (!draftReady) return
+    const t = setTimeout(saveDraft, 400)
+    return () => clearTimeout(t)
+  }, [draftReady, saveDraft, jobTitle, company, jobUrl, actualUrl, posted, jobDescription, stage, activeTab, selectedApp])
+
+  // Don't lose the last edits when the page is left within the debounce window
+  useEffect(() => {
+    if (!draftReady) return
+    window.addEventListener('pagehide', saveDraft)
+    return () => window.removeEventListener('pagehide', saveDraft)
+  }, [draftReady, saveDraft])
+
+  // Single-page sites change the page without reloading: a different page is a different job
+  useEffect(() => {
+    if (!draftReady) return
+    let last = pageKey()
+    const t = setInterval(() => {
+      const now = pageKey()
+      if (now === last) return
+      last = now
+      setJobTitle('')
+      setCompany('')
+      setJobUrl(window.location.href)
+      setActualUrl('')
+      setPosted('')
+      setJobDescription('')
+      setError('')
+    }, 1000)
+    return () => clearInterval(t)
+  }, [draftReady])
 
   // Persist position with debounce
   useEffect(() => {
@@ -199,7 +284,6 @@ export default function Widget() {
       setStage({ name: 'form' })
       return
     }
-    chrome.storage.local.set({ last_result: res.data })
     setStage({ name: 'results', result: res.data })
   }
 
@@ -276,7 +360,6 @@ export default function Widget() {
   }
 
   function handleReset() {
-    chrome.storage.local.remove('last_result')
     setStage({ name: 'form' })
     setJobTitle('')
     setCompany('')

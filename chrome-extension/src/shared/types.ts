@@ -120,6 +120,26 @@ export interface ExtractedJobData {
   posted?: string
 }
 
+/**
+ * Everything the widget keeps for one browser tab. Stored by the service worker in
+ * chrome.storage.session (survives page loads, cleared when the tab closes or the
+ * browser restarts).
+ */
+export interface TabDraft {
+  /** The page (without #hash) the job fields were last edited on. null = inherited from the opener tab. */
+  pageUrl: string | null
+  jobTitle: string
+  company: string
+  jobUrl: string
+  actualUrl: string
+  posted: string
+  jobDescription: string
+  /** The generated documents, kept so they can still be attached after leaving the job page. */
+  result: GenerateResult | null
+  activeTab: 'app' | 'apps' | 'chat' | 'details'
+  selectedApp: ApplicationHit | null
+}
+
 // Messages sent from content script / popup → service worker
 export type MessageToSW =
   | { type: 'LOGIN'; username: string; password: string }
@@ -143,6 +163,9 @@ export type MessageToSW =
   | { type: 'DOWNLOAD_APP_FILES'; files: { url: string; filename: string }[] }
   | { type: 'GET_APP_CHAT'; appId: string }
   | { type: 'APP_CHAT'; appId: string; content: string }
+  | { type: 'GET_DRAFT' }
+  | { type: 'PATCH_DRAFT'; patch: Partial<TabDraft> }
+  | { type: 'CLEAR_DRAFT' }
 
 export type SWResponse<T = unknown> =
   | { ok: true; data: T }
