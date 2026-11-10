@@ -15,6 +15,7 @@ from models.user import User
 from prompts import CHAT_INTERVIEW_PREP
 from services import ai_service
 from services.access import can_access_application
+from services.experience import total_experience_years
 from .generate import _get_accessible_profile
 
 router = APIRouter(prefix="/api", tags=["chat"])
@@ -85,6 +86,33 @@ def _get_own_application(app_id: str, user: User, db: Session) -> Application:
     return app
 
 
+# Answers to form questions should be steady, and a form can hold many questions
+CHAT_TEMPERATURE = 0.2
+CHAT_MAX_TOKENS = 1024
+
+_DESCRIPTION_LIMIT = 1500
+
+
+def _profile_context(profile) -> tuple[str, str]:
+    """(total experience, full work history) from the master profile, which holds
+    far more than the highlights on any one tailored resume."""
+    if not profile:
+        return "Not available.", "Not available."
+
+    years = total_experience_years([
+        {"start_date": e.start_date, "end_date": e.end_date} for e in profile.experiences
+    ])
+    total = f"{years}+ years (time actually worked)" if years else "Not available."
+
+    lines = []
+    for exp in profile.experiences:
+        dates = f"{exp.start_date or ''} – {exp.end_date or 'Present'}"
+        lines.append(f"- {exp.title} at {exp.company} ({dates})")
+        if exp.description:
+            lines.append(f"  {exp.description[:_DESCRIPTION_LIMIT]}")
+    return total, "\n".join(lines) or "None listed."
+
+
 def _build_system_prompt(app: Application, db: Session) -> str:
     if app.profile_id:
         try:
@@ -136,9 +164,13 @@ def _build_system_prompt(app: Application, db: Session) -> str:
         educations_text = "Not available."
         candidate_name = app.profile_name or "Candidate"
 
+    total_experience, work_history = _profile_context(profile)
+
     return CHAT_INTERVIEW_PREP.format(
         name=candidate_name,
+        total_experience=total_experience,
         experiences=experiences_text,
+        work_history=work_history,
         educations=educations_text,
         job_title=app.job_title or "Not specified",
         company=app.company or "Not specified",
@@ -236,8 +268,8 @@ async def send_application_chat(
     result = await asyncio.to_thread(
         ai_service._call_llm,
         ai_messages,
-        512,
-        0.7,
+        CHAT_MAX_TOKENS,
+        CHAT_TEMPERATURE,
         "chat",
         req.model_config_id,
     )
@@ -290,7 +322,8 @@ async def chat(
     profile = _get_accessible_profile(req.profile_id, current_user, db)
 
     # No stored Application/tailored_bullets in this generic, pre-generation
-    # endpoint — only bare company/title/dates are available as context.
+    # endpoint — the highlights are just company/title/dates; the full work
+    # history comes from the master profile.
     exp_lines = []
     for exp in profile.experiences:
         dates = f"{exp.start_date or ''} – {exp.end_date or 'Present'}"
@@ -303,9 +336,13 @@ async def chat(
         edu_lines.append(f"- {parts} — {edu.school} ({edu.end_date or ''})")
     educations_text = "\n".join(edu_lines) or "None listed."
 
+    total_experience, work_history = _profile_context(profile)
+
     system_prompt = CHAT_INTERVIEW_PREP.format(
         name=profile.name,
+        total_experience=total_experience,
         experiences=experiences_text,
+        work_history=work_history,
         educations=educations_text,
         job_title=req.job_title or "Not specified",
         company=req.company or "Not specified",
@@ -320,8 +357,8 @@ async def chat(
     result = await asyncio.to_thread(
         ai_service._call_llm,
         messages,
-        512,
-        0.7,
+        CHAT_MAX_TOKENS,
+        CHAT_TEMPERATURE,
         "chat",
     )
 

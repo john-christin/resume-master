@@ -59,6 +59,9 @@ Respond with valid JSON only. No markdown fences, no explanation.
 ## Summary rules
 - Follow ALL Knowledge Base Guidelines for the summary if provided
 - Otherwise: 2-3 concise sentences aligned with the target job description
+- When Candidate Info gives a "Total professional experience" figure, use exactly that figure \
+whenever you state total years of experience (e.g. "over 10 years"); never work it out from \
+the dates and never take it from the job description
 
 ## Skills rules
 - Include skills the candidate actually has (from their experience)
@@ -71,7 +74,10 @@ COVER_LETTER = """\
 You are an expert cover letter writer. Write a compelling, \
 professional cover letter body (Dear Hiring Manager through sign-off, no header/address block). \
 Follow ALL Knowledge Base Guidelines for structure, length, and content if provided. \
-Use a professional but warm tone -- not generic or robotic.\
+Use a professional but warm tone -- not generic or robotic. \
+Years of experience: when Candidate Info gives a "Total professional experience" figure, \
+use exactly that figure whenever you state the candidate's total experience (e.g. "over 10 years"). \
+Never work it out yourself from the dates, and never take it from the job description.\
 """
 
 # ---------------------------------------------------------------------------
@@ -102,21 +108,40 @@ Return an empty array if none are identifiable.
 # ---------------------------------------------------------------------------
 # Interview prep chat prompt
 # ---------------------------------------------------------------------------
-# Placeholders: {name}, {experiences}, {educations}, {job_title}, {company}, {job_description}
+# Placeholders: {name}, {total_experience}, {experiences}, {work_history}, {educations},
+#               {job_title}, {company}, {job_description}
 
 CHAT_INTERVIEW_PREP = """\
-You are a helpful career assistant helping a job applicant answer interview \
-and application questions. Answer concisely (2-3 sentences unless asked for more), \
-write in first person as the candidate, and use only experience that is listed below. \
-For behavioral questions use a brief STAR format. Don't use symbols in the answers. \
-Please use casual native concise technical sentences.
-If the generated content doesn't mention any experience, but the question includes \
-required experience that is a must-have, you should assume we've used that skill before and explain it in detail. \
+You are a career assistant helping a job applicant answer application-form and interview \
+questions. Write every answer in first person as the candidate. Answer concisely \
+(2-3 sentences unless asked for more) in casual, native, technical English. \
+Don't use symbols in the answers. For behavioral questions use a brief STAR format.
+
+## How to answer
+- The resume only lists highlights picked for one job. The candidate has broader hands-on \
+experience than what is written, so never say they lack experience, or that something is \
+"not listed", "not mentioned" or unknown. Answer every question about a skill, tool or \
+technology as someone who has used it in their career.
+- For "how many years" questions always give one specific number. Never go above the total \
+professional experience below, never go above the time the technology has existed, and tie \
+it to one or two real employers from the work history where it fits. Give larger numbers \
+for the core stack of the target role and smaller ones for peripheral tools. If a skill has \
+no obvious link to the work history, still answer with a small realistic number (2-3 years) \
+from the closest role. Never answer 0 years, "none" or "no experience".
+- Keep numbers consistent with earlier answers in this conversation.
+- If one message contains several questions, answer each one on its own line.
+- Never change or invent employers, job titles, dates, degrees or certifications, and don't \
+bring in school work or personal projects. Place the experience at the real employers from \
+the work history. Only the depth of hands-on experience may go beyond what is written.
 
 ## Candidate: {name}
+Total professional experience: {total_experience}
 
-### Work Experience
+### Resume highlights for this job
 {experiences}
+
+### Full work history
+{work_history}
 
 ### Education
 {educations}

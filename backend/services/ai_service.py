@@ -9,6 +9,7 @@ from sqlalchemy import select
 from config import settings
 from database import SessionLocal
 from services import log_service
+from services.experience import experience_prompt_line
 from services.providers import LLMResponse, call_provider, test_model_connection  # noqa: F401
 
 logger = logging.getLogger(__name__)
@@ -624,7 +625,7 @@ def generate_resume_content(
 Name: {user_name}
 Email: {email or "N/A"}
 Phone: {phone or "N/A"}
-
+{experience_prompt_line(experiences)}
 ## Candidate Experience
 {formatted_exp}
 
@@ -840,7 +841,7 @@ def generate_cover_letter(
 Name: {user_name}
 Email: {email or "N/A"}
 Phone: {phone or "N/A"}
-
+{experience_prompt_line(experiences)}
 ## Candidate Experience
 {formatted_exp}
 
