@@ -18,7 +18,8 @@ class Settings(BaseSettings):
     cors_origins: str = "https://aurexviper.pro"
     jwt_secret_key: str = "CHANGE-ME-IN-PRODUCTION"
     jwt_algorithm: str = "HS256"
-    jwt_access_token_expire_minutes: int = 1440
+    # Session TTL: 7 days idle. Active sessions are renewed (see auth.refreshed_token).
+    jwt_access_token_expire_minutes: int = 10080
     default_admin_username: str = ""
     default_input_price_per_1k: float = 0.005
     default_output_price_per_1k: float = 0.015

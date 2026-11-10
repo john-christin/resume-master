@@ -1,6 +1,7 @@
 import { useState, useEffect, useRef, useCallback } from 'react'
-import type { ApplicationHit, AppChatReply, ChatMessage, ChatRequest, ChatResponse, ExtractedJobData, GenerateResult, Profile, ProfileDetails, SWResponse } from '../shared/types'
+import type { ApplicationHit, AppChatReply, ChatMessage, ChatRequest, ChatResponse, DuplicateCheck, ExtractedJobData, GenerateResult, Profile, ProfileDetails, SWResponse } from '../shared/types'
 import FileCard from './components/FileCard'
+import ApplicationsPanel, { HitList, hitLabel, useApplicationSearch } from './components/ApplicationsPanel'
 
 interface AuthState {
   isLoggedIn: boolean
@@ -15,6 +16,7 @@ type Stage =
   | { name: 'generating' }
   | { name: 'results'; result: GenerateResult }
   | { name: 'queuing' }
+  | { name: 'duplicate'; found: { profile: Profile; check: DuplicateCheck }[]; clear: Profile[] }
   | { name: 'queued'; count: number }
 
 interface Pos { x: number; y: number }
@@ -109,7 +111,9 @@ export default function Widget() {
   const [posted, setPosted] = useState('')
   const [jobDescription, setJobDescription] = useState('')
   const [error, setError] = useState('')
-  const [activeTab, setActiveTab] = useState<'app' | 'chat' | 'details'>('app')
+  const [activeTab, setActiveTab] = useState<'app' | 'apps' | 'chat' | 'details'>('app')
+  // Application picked in the History tab; the Q&A Chat tab follows it
+  const [selectedApp, setSelectedApp] = useState<ApplicationHit | null>(null)
   const posRef = useRef(pos)
   posRef.current = pos
 
@@ -208,6 +212,34 @@ export default function Widget() {
     setError('')
     setStage({ name: 'queuing' })
 
+    // Look for an earlier application (or queued task) for the same job on each profile.
+    // If the check itself fails, queue anyway: the queue worker checks again.
+    const jobUrls = [actualUrl, jobUrl].filter(Boolean)
+    const checks = await Promise.all(profiles.map(async (profile) => {
+      const res: SWResponse<DuplicateCheck> = await chrome.runtime.sendMessage({
+        type: 'CHECK_DUPLICATES',
+        profileId: profile.id,
+        company: company || undefined,
+        jobTitle: jobTitle || undefined,
+        jobUrls,
+      })
+      return { profile, check: res.ok ? res.data : null }
+    }))
+    const found = checks.flatMap(({ profile, check }) =>
+      check && (check.applications.length > 0 || check.queued.length > 0) ? [{ profile, check }] : [])
+
+    if (found.length > 0) {
+      const dupIds = new Set(found.map((f) => f.profile.id))
+      setStage({ name: 'duplicate', found, clear: profiles.filter((p) => !dupIds.has(p.id)) })
+      return
+    }
+    await queueProfiles(profiles, false)
+  }
+
+  async function queueProfiles(profiles: Profile[], allowDuplicate: boolean) {
+    setError('')
+    setStage({ name: 'queuing' })
+
     let successCount = 0
     let lastError = ''
     for (const profile of profiles) {
@@ -223,6 +255,7 @@ export default function Widget() {
           job_source_url: jobUrl || undefined,
           posted_text: posted || undefined,
           job_description: jobDescription || undefined,
+          allow_duplicate: allowDuplicate || undefined,
         },
       })
       if (res.ok) successCount++
@@ -255,6 +288,10 @@ export default function Widget() {
   }
 
   const panel = panelPos(pos)
+  // The profiles picked in the extension popup (falls back to the single active one)
+  const selectedProfiles: Profile[] = auth.confirmedProfiles.length > 0
+    ? auth.confirmedProfiles
+    : auth.profileId ? [{ id: auth.profileId, name: auth.profileName || '' }] : []
   const canQueue = auth.isLoggedIn && !!auth.profileId && jobDescription.trim() !== ''
   const canGenerate = auth.isLoggedIn && !!auth.profileId && jobTitle.trim() && jobDescription.trim()
 
@@ -340,7 +377,7 @@ export default function Widget() {
           {/* Tabs */}
           {auth.isLoggedIn && auth.profileId && (
             <div className="flex border-b border-slate-800 flex-shrink-0">
-              {(['app', 'chat', 'details'] as const).map((tab) => (
+              {(['app', 'apps', 'chat', 'details'] as const).map((tab) => (
                 <button
                   key={tab}
                   onClick={() => setActiveTab(tab)}
@@ -350,7 +387,7 @@ export default function Widget() {
                       : 'text-slate-500 hover:text-slate-300'
                   }`}
                 >
-                  {tab === 'app' ? 'Application' : tab === 'chat' ? 'Q&A Chat' : 'Details'}
+                  {tab === 'app' ? 'Application' : tab === 'apps' ? 'History' : tab === 'chat' ? 'Q&A Chat' : 'Details'}
                 </button>
               ))}
             </div>
@@ -364,9 +401,14 @@ export default function Widget() {
               <NoProfile />
             ) : activeTab === 'details' ? (
               <DetailsPanel profileId={auth.profileId} />
+            ) : activeTab === 'apps' ? (
+              <ApplicationsPanel profiles={selectedProfiles} selected={selectedApp} onSelect={setSelectedApp} />
             ) : activeTab === 'chat' ? (
               <ChatPanel
                 profileId={auth.profileId}
+                profileIds={selectedProfiles.map((p) => p.id)}
+                selected={selectedApp}
+                onSelect={setSelectedApp}
                 jobTitle={stage.name === 'results' ? stage.result.job_title : jobTitle}
                 company={stage.name === 'results' ? (stage.result.company ?? company) : company}
                 jobDescription={jobDescription}
@@ -395,6 +437,14 @@ export default function Widget() {
               <Generating />
             ) : stage.name === 'queuing' ? (
               <Queuing />
+            ) : stage.name === 'duplicate' ? (
+              <DuplicateWarning
+                found={stage.found}
+                clear={stage.clear}
+                onCancel={() => setStage({ name: 'form' })}
+                onQueueRest={() => queueProfiles(stage.clear, false)}
+                onProceed={() => queueProfiles([...stage.found.map((f) => f.profile), ...stage.clear], true)}
+              />
             ) : stage.name === 'queued' ? (
               <Queued count={stage.count} onReset={handleReset} />
             ) : (
@@ -521,21 +571,22 @@ function parseLocation(loc: string): { city?: string; state?: string; zip?: stri
 
 interface ChatPanelProps {
   profileId: string
+  profileIds: string[]
+  selected: ApplicationHit | null
+  onSelect: (hit: ApplicationHit | null) => void
   jobTitle: string
   company: string
   jobDescription: string
 }
 
-function ChatPanel({ profileId, jobTitle, company, jobDescription }: ChatPanelProps) {
+function ChatPanel({ profileId, profileIds, selected, onSelect, jobTitle, company, jobDescription }: ChatPanelProps) {
   const [messages, setMessages] = useState<ChatMessage[]>([])
   const [input, setInput] = useState('')
   const [loading, setLoading] = useState(false)
   const [error, setError] = useState('')
   const [copied, setCopied] = useState<number | null>(null)
-  const [selected, setSelected] = useState<ApplicationHit | null>(null)
-  const [query, setQuery] = useState('')
-  const [results, setResults] = useState<ApplicationHit[] | null>(null)
-  const [searching, setSearching] = useState(false)
+  const { query, setQuery, results, setResults, searching, error: searchError, search: handleSearch, loadRecent } =
+    useApplicationSearch(profileIds)
   const bottomRef = useRef<HTMLDivElement>(null)
   const textareaRef = useRef<HTMLTextAreaElement>(null)
 
@@ -543,49 +594,31 @@ function ChatPanel({ profileId, jobTitle, company, jobDescription }: ChatPanelPr
     bottomRef.current?.scrollIntoView({ behavior: 'smooth' })
   }, [messages, loading])
 
-  async function handleSearch() {
-    const q = query.trim()
-    if (!q) {
-      setResults(null)
-      return
-    }
-    setSearching(true)
-    setError('')
-    const res: SWResponse<ApplicationHit[]> = await chrome.runtime.sendMessage({
-      type: 'SEARCH_APPLICATIONS',
-      query: q,
-    })
-    setSearching(false)
-    if (!res.ok) {
-      setError(res.error)
-      return
-    }
-    setResults(res.data)
-  }
-
-  async function selectApplication(hit: ApplicationHit) {
-    setSelected(hit)
-    setResults(null)
-    setQuery('')
+  // Load the saved conversation whenever the selected application changes
+  const selectedId = selected?.id
+  useEffect(() => {
     setMessages([])
     setError('')
+    if (!selectedId) return
+    let cancelled = false
     setLoading(true)
-    const res: SWResponse<ChatMessage[]> = await chrome.runtime.sendMessage({
-      type: 'GET_APP_CHAT',
-      appId: hit.id,
+    chrome.runtime.sendMessage({ type: 'GET_APP_CHAT', appId: selectedId }).then((res: SWResponse<ChatMessage[]>) => {
+      if (cancelled) return
+      setLoading(false)
+      if (!res.ok) setError(res.error)
+      else setMessages(res.data.map((m) => ({ role: m.role, content: m.content })))
     })
-    setLoading(false)
-    if (!res.ok) {
-      setError(res.error)
-      return
-    }
-    setMessages(res.data.map((m) => ({ role: m.role, content: m.content })))
+    return () => { cancelled = true }
+  }, [selectedId])
+
+  function selectApplication(hit: ApplicationHit) {
+    setResults(null)
+    setQuery('')
+    onSelect(hit)
   }
 
   function useCurrentJob() {
-    setSelected(null)
-    setMessages([])
-    setError('')
+    onSelect(null)
   }
 
   async function handleSend() {
@@ -668,7 +701,7 @@ function ChatPanel({ profileId, jobTitle, company, jobDescription }: ChatPanelPr
           <div className="flex items-center gap-2 rounded-lg bg-indigo-950/50 border border-indigo-900/60 px-3 py-2">
             <div className="flex-1 min-w-0">
               <p className="text-xs text-slate-200 truncate">
-                {selected.company || 'Unknown company'} – {selected.job_title}
+                {hitLabel(selected)}
               </p>
               <p className="text-[10px] text-slate-500 truncate">Chatting about this application</p>
             </div>
@@ -694,6 +727,7 @@ function ChatPanel({ profileId, jobTitle, company, jobDescription }: ChatPanelPr
                 setResults(null)
               }
             }}
+            onFocus={() => { if (!results && !searching && !query.trim()) loadRecent() }}
             placeholder={searching ? 'Searching…' : 'Search past applications: company or role, then Enter'}
             className="av-input w-full text-xs"
           />
@@ -701,24 +735,7 @@ function ChatPanel({ profileId, jobTitle, company, jobDescription }: ChatPanelPr
 
         {results && !selected && (
           <div className="absolute left-3 right-3 top-full z-10 mt-1 max-h-64 overflow-y-auto rounded-lg border border-slate-700 bg-slate-900 shadow-lg">
-            {results.length === 0 ? (
-              <p className="px-3 py-2 text-xs text-slate-500">No matching applications</p>
-            ) : (
-              results.map((hit) => (
-                <button
-                  key={hit.id}
-                  onClick={() => selectApplication(hit)}
-                  className="block w-full text-left px-3 py-2 hover:bg-slate-800 transition-colors"
-                >
-                  <p className="text-xs text-slate-200 truncate">
-                    {hit.company || 'Unknown company'} – {hit.job_title}
-                  </p>
-                  <p className="text-[10px] text-slate-500 truncate">
-                    {[hit.profile_name, new Date(hit.created_at).toLocaleDateString()].filter(Boolean).join(' · ')}
-                  </p>
-                </button>
-              ))
-            )}
+            <HitList hits={results} onPick={selectApplication} />
           </div>
         )}
       </div>
@@ -771,8 +788,8 @@ function ChatPanel({ profileId, jobTitle, company, jobDescription }: ChatPanelPr
           </div>
         )}
 
-        {error && (
-          <div className="text-xs text-red-400 bg-red-950/40 border border-red-900 rounded-lg px-3 py-2">{error}</div>
+        {(error || searchError) && (
+          <div className="text-xs text-red-400 bg-red-950/40 border border-red-900 rounded-lg px-3 py-2">{error || searchError}</div>
         )}
 
         <div ref={bottomRef} />
@@ -1031,6 +1048,59 @@ function Queuing() {
     <div className="flex flex-col items-center justify-center px-6 py-14 gap-4">
       <div className="w-9 h-9 border-2 border-indigo-500 border-t-transparent rounded-full animate-spin" />
       <p className="text-sm text-slate-400 text-center">Adding to queue…</p>
+    </div>
+  )
+}
+
+function DuplicateWarning({ found, clear, onCancel, onQueueRest, onProceed }: {
+  found: { profile: Profile; check: DuplicateCheck }[]
+  clear: Profile[]
+  onCancel: () => void
+  onQueueRest: () => void
+  onProceed: () => void
+}) {
+  return (
+    <div className="px-4 py-4 space-y-3">
+      <div className="rounded-xl bg-amber-950/40 border border-amber-900/60 px-3 py-2.5">
+        <p className="text-xs font-medium text-amber-300">Already applied to this job</p>
+        <p className="text-[11px] text-amber-400/80 mt-0.5">Nothing was added to the queue.</p>
+      </div>
+      <div className="space-y-2">
+        {found.map(({ profile, check }) => (
+          <div key={profile.id} className="rounded-lg border border-slate-800 bg-slate-900/60 px-3 py-2">
+            <p className="text-xs font-medium text-slate-200">{profile.name}</p>
+            {check.applications.map((a) => (
+              <p key={a.id} className="text-[11px] text-slate-400 mt-1">
+                {[a.company, a.job_title].filter(Boolean).join(' – ')}
+                <span className={a.applied ? 'text-emerald-400' : 'text-slate-500'}>
+                  {a.applied
+                    ? ` · applied${a.applied_at ? ` ${new Date(a.applied_at).toLocaleDateString()}` : ''}`
+                    : ` · generated ${new Date(a.created_at).toLocaleDateString()}, not marked applied`}
+                </span>
+              </p>
+            ))}
+            {check.queued.map((t) => (
+              <p key={t.id} className="text-[11px] text-slate-400 mt-1">
+                Already in the queue<span className="text-slate-500"> · {t.status.replace('_', ' ')}</span>
+              </p>
+            ))}
+          </div>
+        ))}
+      </div>
+      <button onClick={onCancel}
+        className="w-full py-2.5 rounded-xl bg-indigo-600 hover:bg-indigo-500 text-white text-sm font-medium transition-colors">
+        Cancel
+      </button>
+      {clear.length > 0 && (
+        <button onClick={onQueueRest}
+          className="w-full py-2 rounded-xl border border-slate-700 hover:border-slate-600 text-slate-300 text-xs transition-colors">
+          Queue only {clear.map((p) => p.name).join(', ')}
+        </button>
+      )}
+      <button onClick={onProceed}
+        className="w-full py-2 rounded-xl border border-amber-900/60 hover:border-amber-700 text-amber-400 hover:text-amber-300 text-xs transition-colors">
+        Proceed anyway
+      </button>
     </div>
   )
 }

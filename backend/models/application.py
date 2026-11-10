@@ -34,7 +34,7 @@ class Application(Base):
     resume_type: Mapped[str | None] = mapped_column(String(100), nullable=True)
     tailored_bullets: Mapped[str | None] = mapped_column(Text, nullable=True)
     cover_letter_text: Mapped[str | None] = mapped_column(Text, nullable=True)
-    salary_range: Mapped[str | None] = mapped_column(String(200), nullable=True)
+    salary_range: Mapped[str | None] = mapped_column(Text, nullable=True)
     required_skills: Mapped[str | None] = mapped_column(Text, nullable=True)  # JSON array
     resume_path: Mapped[str | None] = mapped_column(String(500), nullable=True)
     cover_letter_path: Mapped[str | None] = mapped_column(

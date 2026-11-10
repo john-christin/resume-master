@@ -12,9 +12,26 @@ async function getToken(): Promise<string | null> {
   return (access_token as string) || null
 }
 
+/**
+ * Keep the session in step with the server: store the renewed token it sends back
+ * while we're active, and drop the stale one on 401 so the popup and widget show the
+ * sign-in screen instead of failing to load data. The profile selection is kept.
+ */
+async function syncSession(res: Response, sentToken: string | null): Promise<void> {
+  const renewed = res.headers.get('X-Access-Token')
+  if (renewed && res.ok) {
+    await chrome.storage.local.set({ access_token: renewed })
+  } else if (res.status === 401 && sentToken) {
+    // Only if nobody signed in again while this request was in flight
+    if (sentToken === (await getToken())) {
+      await chrome.storage.local.remove(['access_token', 'username', 'user_role', 'user_status'])
+    }
+  }
+}
+
 async function authFetch(path: string, init: RequestInit = {}): Promise<Response> {
   const [token, base] = await Promise.all([getToken(), getBaseUrl()])
-  return fetch(`${base}${path}`, {
+  const res = await fetch(`${base}${path}`, {
     ...init,
     headers: {
       'Content-Type': 'application/json',
@@ -22,6 +39,8 @@ async function authFetch(path: string, init: RequestInit = {}): Promise<Response
       ...(init.headers as Record<string, string> | undefined),
     },
   })
+  await syncSession(res, token)
+  return res
 }
 
 chrome.runtime.onMessage.addListener(
@@ -102,6 +121,20 @@ async function handle(msg: MessageToSW): Promise<SWResponse> {
       return { ok: true, data }
     }
 
+    case 'CHECK_DUPLICATES': {
+      const res = await authFetch('/api/queue/check-duplicates', {
+        method: 'POST',
+        body: JSON.stringify({
+          profile_id: msg.profileId,
+          company: msg.company,
+          job_title: msg.jobTitle,
+          job_urls: msg.jobUrls,
+        }),
+      })
+      if (!res.ok) return { ok: false, error: 'Could not check for duplicates' }
+      return { ok: true, data: await res.json() }
+    }
+
     case 'AI_AUTOFILL': {
       const res = await authFetch('/api/ext/extract', {
         method: 'POST',
@@ -141,7 +174,8 @@ async function handle(msg: MessageToSW): Promise<SWResponse> {
       const res = await fetch(`${base}${msg.url}`, {
         headers: token ? { Authorization: `Bearer ${token}` } : {},
       })
-      if (!res.ok) return { ok: false, error: 'Failed to fetch file' }
+      await syncSession(res, token)
+      if (!res.ok) return { ok: false, error: res.status === 401 ? 'Session expired. Please sign in again.' : 'Failed to fetch file' }
 
       const contentType = res.headers.get('content-type') || 'application/octet-stream'
       const filename = msg.url.split('/').pop() || 'download'
@@ -196,11 +230,55 @@ async function handle(msg: MessageToSW): Promise<SWResponse> {
     }
 
     case 'SEARCH_APPLICATIONS': {
-      const q = encodeURIComponent(msg.query)
-      const res = await authFetch(`/api/applications?search=${q}&page_size=10`)
+      // Only the profiles picked in the extension; none picked means nothing to list
+      if (msg.profileIds.length === 0) return { ok: true, data: [] }
+      const params = new URLSearchParams({ page_size: '10' })
+      if (msg.query.trim()) params.set('search', msg.query.trim())
+      for (const id of msg.profileIds) params.append('profile_id', id)
+      const res = await authFetch(`/api/applications?${params}`)
       if (!res.ok) return { ok: false, error: 'Search failed' }
       const data = await res.json()
       return { ok: true, data: data.items }
+    }
+
+    case 'GET_APPLICATION': {
+      const res = await authFetch(`/api/applications/${msg.appId}`)
+      if (!res.ok) return { ok: false, error: 'Could not load application details' }
+      return { ok: true, data: await res.json() }
+    }
+
+    case 'SET_APPLIED': {
+      const res = await authFetch(`/api/applications/${msg.appId}/applied`, {
+        method: 'PATCH',
+        body: JSON.stringify({ applied: msg.applied }),
+      })
+      if (!res.ok) {
+        const err = await res.json().catch(() => ({ detail: 'Update failed' }))
+        return { ok: false, error: err.detail || 'Could not update applied status' }
+      }
+      return { ok: true, data: await res.json() }
+    }
+
+    case 'DOWNLOAD_APP_FILES': {
+      const [token, base] = await Promise.all([getToken(), getBaseUrl()])
+      for (const file of msg.files) {
+        const res = await fetch(`${base}${file.url}`, {
+          headers: token ? { Authorization: `Bearer ${token}` } : {},
+        })
+        await syncSession(res, token)
+        if (!res.ok) return { ok: false, error: res.status === 401 ? 'Session expired. Please sign in again.' : `Failed to fetch ${file.filename}` }
+        const bytes = new Uint8Array(await res.arrayBuffer())
+        let binary = ''
+        for (let i = 0; i < bytes.byteLength; i++) binary += String.fromCharCode(bytes[i])
+        const type = res.headers.get('content-type') || 'application/octet-stream'
+        await chrome.downloads.download({
+          url: `data:${type};base64,${btoa(binary)}`,
+          filename: file.filename,
+          conflictAction: 'overwrite',
+          saveAs: false,
+        })
+      }
+      return { ok: true, data: null }
     }
 
     case 'GET_APP_CHAT': {

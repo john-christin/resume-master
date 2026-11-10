@@ -1,7 +1,7 @@
 import uuid
 from datetime import datetime
 
-from sqlalchemy import DateTime, ForeignKey, Index, Integer, String, Text
+from sqlalchemy import Boolean, DateTime, ForeignKey, Index, Integer, String, Text
 from sqlalchemy.orm import Mapped, mapped_column, relationship
 
 from database import Base
@@ -37,6 +37,10 @@ class QueueTask(Base):
     # status: queued | processing | needs_review | approved | completed | failed | skipped
     status: Mapped[str] = mapped_column(String(20), default="queued", index=True)
     warnings: Mapped[str | None] = mapped_column(Text, nullable=True)  # JSON array
+    # The user saw the "already applied" warning (extension) and queued it anyway
+    allow_duplicate: Mapped[bool] = mapped_column(
+        Boolean, default=False, nullable=False, server_default="false"
+    )
     application_id: Mapped[str | None] = mapped_column(
         String(36), ForeignKey("applications.id", ondelete="SET NULL"), nullable=True
     )

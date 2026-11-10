@@ -63,6 +63,7 @@ def list_applications(
     sort_dir: str = "desc",
     call_status: str | None = None,
     profile_name: str | None = None,
+    profile_id: list[str] | None = Query(None),
     username: str | None = None,
     current_user: User = Depends(get_approved_user),
     db: Session = Depends(get_db),
@@ -90,6 +91,11 @@ def list_applications(
     if profile_name:
         stmt = stmt.where(Application.profile_name == profile_name)
         count_stmt = count_stmt.where(Application.profile_name == profile_name)
+
+    # Profile id filter (repeatable), used by the extension for the selected profiles
+    if profile_id:
+        stmt = stmt.where(Application.profile_id.in_(profile_id))
+        count_stmt = count_stmt.where(Application.profile_id.in_(profile_id))
 
     # Username filter (admin/caller only — bidders always see only their own)
     if username and current_user.role != "bidder":

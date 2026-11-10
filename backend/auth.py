@@ -32,6 +32,28 @@ def create_access_token(user_id: str) -> str:
     )
 
 
+def refreshed_token(token: str) -> str | None:
+    """Sliding session: a fresh token once less than half of the TTL is left.
+
+    Returns None while the token is young or when it is invalid/expired, so an
+    expired session can never renew itself.
+    """
+    try:
+        payload = jwt.decode(
+            token, settings.jwt_secret_key, algorithms=[settings.jwt_algorithm]
+        )
+    except JWTError:
+        return None
+    user_id = payload.get("sub")
+    exp = payload.get("exp")
+    if not user_id or not exp:
+        return None
+    remaining = exp - datetime.now(timezone.utc).timestamp()
+    if remaining < settings.jwt_access_token_expire_minutes * 60 / 2:
+        return create_access_token(user_id)
+    return None
+
+
 def get_current_user(
     credentials: HTTPAuthorizationCredentials = Depends(bearer_scheme),
     db: Session = Depends(get_db),

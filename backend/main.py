@@ -12,6 +12,7 @@ from sqlalchemy import select
 from starlette.middleware.base import BaseHTTPMiddleware
 from starlette.requests import Request
 
+from auth import refreshed_token
 from config import settings
 from database import SessionLocal
 from models.doc_style import DocStyle
@@ -244,6 +245,23 @@ class RequestLoggingMiddleware(BaseHTTPMiddleware):
             )
 
 
+class TokenRenewalMiddleware(BaseHTTPMiddleware):
+    """Hand back a renewed JWT in X-Access-Token so active users are never signed out."""
+
+    async def dispatch(self, request: Request, call_next):
+        response = await call_next(request)
+        auth_header = request.headers.get("authorization", "")
+        if (
+            request.url.path.startswith("/api/")
+            and response.status_code < 400
+            and auth_header.lower().startswith("bearer ")
+        ):
+            new_token = refreshed_token(auth_header[7:].strip())
+            if new_token:
+                response.headers["X-Access-Token"] = new_token
+        return response
+
+
 @asynccontextmanager
 async def lifespan(app: FastAPI):
     _seed_default_doc_styles()
@@ -274,7 +292,9 @@ app.add_middleware(
     allow_credentials=True,
     allow_methods=["*"],
     allow_headers=["*"],
+    expose_headers=["X-Access-Token"],
 )
+app.add_middleware(TokenRenewalMiddleware)
 app.add_middleware(RequestLoggingMiddleware)
 
 # Mount uploads directory for file serving

@@ -3,7 +3,7 @@ import math
 from datetime import datetime, date
 
 from fastapi import APIRouter, Body, Depends, HTTPException, Query
-from sqlalchemy import func, select
+from sqlalchemy import func, or_, select
 from sqlalchemy.orm import Session
 
 from auth import get_approved_user
@@ -91,6 +91,80 @@ def _task_to_dict(task: QueueTask) -> dict:
     }
 
 
+def _normalize_url(url: str | None) -> str:
+    """Compare job links ignoring the #fragment and a trailing slash."""
+    return (url or "").strip().split("#")[0].rstrip("/").lower()
+
+
+@router.post("/check-duplicates")
+def check_duplicates(
+    profile_id: str = Body(...),
+    company: str | None = Body(None),
+    job_title: str | None = Body(None),
+    job_urls: list[str] = Body(default_factory=list),
+    current_user: User = Depends(get_approved_user),
+    db: Session = Depends(get_db),
+):
+    """Has this job already been applied to (or queued) on this profile?
+
+    Matches an existing application by the same company + title or the same job
+    link; also reports a still-pending queue task for the same job.
+    """
+    _get_accessible_profile(profile_id, current_user, db)
+
+    urls = {u for u in (_normalize_url(x) for x in job_urls) if u}
+    same_job = []
+    if company and company.strip() and job_title and job_title.strip():
+        same_job.append(
+            (Application.company.ilike(company.strip()))
+            & (Application.job_title.ilike(job_title.strip()))
+        )
+    if urls:
+        same_job.append(func.lower(Application.job_url).in_(list(urls | {u + "/" for u in urls})))
+
+    applications = []
+    if same_job:
+        rows = db.scalars(
+            select(Application)
+            .where(Application.profile_id == profile_id, or_(*same_job))
+            .order_by(Application.created_at.desc())
+            .limit(5)
+        ).all()
+        applications = [
+            {
+                "id": a.id,
+                "company": a.company,
+                "job_title": a.job_title,
+                "applied": a.applied,
+                "applied_at": a.applied_at,
+                "created_at": a.created_at,
+            }
+            for a in rows
+        ]
+
+    pending = [
+        t for t in db.scalars(
+            select(QueueTask).where(
+                QueueTask.profile_id == profile_id,
+                QueueTask.status.in_(("queued", "processing", "needs_review", "approved")),
+            )
+        ).all()
+        if (urls and {_normalize_url(t.job_url), _normalize_url(t.job_source_url)} & urls)
+        or (
+            company and job_title and t.company and t.job_title
+            and t.company.strip().lower() == company.strip().lower()
+            and t.job_title.strip().lower() == job_title.strip().lower()
+        )
+    ]
+    return {
+        "applications": applications,
+        "queued": [
+            {"id": t.id, "company": t.company, "job_title": t.job_title, "status": t.status}
+            for t in pending
+        ],
+    }
+
+
 @router.post("")
 def enqueue_task(
     profile_id: str = Body(...),
@@ -102,6 +176,7 @@ def enqueue_task(
     job_board: str | None = Body(None),
     posted_text: str | None = Body(None),
     doc_style_id: str | None = Body(None),
+    allow_duplicate: bool = Body(False),
     current_user: User = Depends(get_approved_user),
     db: Session = Depends(get_db),
 ):
@@ -128,6 +203,7 @@ def enqueue_task(
         job_title=job_title,
         job_description=job_description,
         status="queued",
+        allow_duplicate=allow_duplicate,
         order=max_order + 1,
     )
     db.add(task)

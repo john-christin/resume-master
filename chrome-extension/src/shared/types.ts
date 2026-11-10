@@ -66,7 +66,22 @@ export interface ApplicationHit {
   job_title: string
   company: string | null
   profile_name: string | null
+  job_url: string | null
+  resume_path: string | null
+  cover_letter_path: string | null
+  applied: boolean
+  applied_at: string | null
   created_at: string
+}
+
+export interface ApplicationExtra {
+  location: string | null
+  salary_range: string | null
+  resume_type: string | null
+  required_skills: string[]
+  call_stage: string | null
+  call_status: string | null
+  call_scheduled_at: string | null
 }
 
 export interface AppChatReply {
@@ -82,6 +97,19 @@ export interface QueueJobPayload {
   job_title?: string
   job_description?: string
   doc_style_id?: string
+  allow_duplicate?: boolean
+}
+
+export interface DuplicateCheck {
+  applications: {
+    id: string
+    company: string | null
+    job_title: string
+    applied: boolean
+    applied_at: string | null
+    created_at: string
+  }[]
+  queued: { id: string; company: string | null; job_title: string | null; status: string }[]
 }
 
 export interface ExtractedJobData {
@@ -98,6 +126,7 @@ export type MessageToSW =
   | { type: 'GET_PROFILES' }
   | { type: 'GENERATE'; payload: GenerateRequest }
   | { type: 'QUEUE_JOB'; payload: QueueJobPayload }
+  | { type: 'CHECK_DUPLICATES'; profileId: string; company?: string; jobTitle?: string; jobUrls: string[] }
   | { type: 'AI_AUTOFILL'; url: string; text: string }
   | { type: 'SET_CONFIRMED_PROFILES'; profiles: Profile[] }
   | { type: 'GET_CONFIRMED_PROFILES' }
@@ -107,7 +136,10 @@ export type MessageToSW =
   | { type: 'GET_PROFILE_DETAILS'; profileId: string }
   | { type: 'DOWNLOAD_FILE'; filename: string; dataUrl: string }
   | { type: 'CHAT'; payload: ChatRequest }
-  | { type: 'SEARCH_APPLICATIONS'; query: string }
+  | { type: 'SEARCH_APPLICATIONS'; query: string; profileIds: string[] }
+  | { type: 'GET_APPLICATION'; appId: string }
+  | { type: 'SET_APPLIED'; appId: string; applied: boolean }
+  | { type: 'DOWNLOAD_APP_FILES'; files: { url: string; filename: string }[] }
   | { type: 'GET_APP_CHAT'; appId: string }
   | { type: 'APP_CHAT'; appId: string; content: string }
 

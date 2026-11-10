@@ -150,7 +150,7 @@ def _run_pre_checks(task_id: str) -> list[str]:
                 warnings.append(f"Banned company: {m.description or m.banned_name}")
 
         # Duplicate check
-        if task.company and task.job_title:
+        if task.company and task.job_title and not task.allow_duplicate:
             dupes = _find_duplicate_bids(
                 task.user_id,
                 task.profile_id,
